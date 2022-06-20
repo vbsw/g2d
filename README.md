@@ -6,7 +6,7 @@
 g2d is a package for Go to draw grphics with OpenGL 3.0. It is published on <https://github.com/vbsw/g2d> and <https://gitlab.com/vbsw/g2d>.
 
 ## Copyright
-Copyright 2021, Vitali Baumtrok (vbsw@mailbox.org).
+Copyright 2022, Vitali Baumtrok (vbsw@mailbox.org).
 
 g2d is distributed under the Boost Software License, version 1.0. (See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 
