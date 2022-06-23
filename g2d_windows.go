@@ -7,235 +7,125 @@
 
 package g2d
 
+// #cgo CFLAGS: -DG2D_WIN32 -DUNICODE
+// #cgo LDFLAGS: -luser32 -lgdi32 -lOpenGL32
+// #include "g2d.h"
+import "C"
 import (
-	"github.com/vbsw/oglr"
-	"github.com/vbsw/oglwnd"
+	"errors"
+	"strconv"
+	"unsafe"
 )
 
-// Handler
-type Handler interface {
-	OnCreate()
-	OnShow()
-	OnClose() bool
-	OnCustom(interface{})
-	OnDestroy()
-}
-
-// DefaultHandler
-type DefaultHandler struct {
-}
-
-// Parameters are the initialization parameters for Window.
-type Parameters struct {
-	oglwnd.Parameters
-	Handler Handler
-}
-
-// Window is a window with OpenGL context.
-type Window struct {
-	data   oglwnd.Window
-	state int
-}
-
-// tDummy is helper to load OpenGL 3.0 functions.
-type tDummy struct {
-	oglwnd.Window
-}
-
-type tHandlerAdapter struct {
-	handler Handler
-}
-
-// Init initializes g2d. Call this function before calling anyother function.
-func Init() error {
-	var err error
-	if !initialized {
-		var dummy tDummy
-		err = dummy.Create()
-		if err == nil {
-			ctx := dummy.Context()
-			err = ctx.MakeCurrent()
-			if err == nil {
-				err = oglr.Init()
-				if err == nil {
-					err = ctx.Release()
-				} else {
-					ctx.Release()
-				}
-			}
-			err = dummy.Destroy(err)
-			err = dummy.ReleaseMemory(err)
-		}
-		initialized = bool(err == nil)
-	}
-	return err
-}
-
-// ProcessWindowEvents retrieves messages from thread's message queue for all windows and calls window's
-// handler to process it. This function blocks until further messages are available and returns only if
-// all windows are destroyed.
-func ProcessWindowEvents() {
-	if initialized {
-		oglwnd.ProcessEvents()
-	} else {
-		panic(notInitialized)
-	}
-}
-
-// Init allocates window's ressources.
-func (wnd *Window) Init(params *Parameters) error {
-	if initialized {
-		var err error
-		if wnd.state == 0 {
-			err = wnd.data.Allocate()
-			if err == nil {
-				paramsOglWnd := newOglWndParams(params)
-				err = wnd.data.Init(paramsOglWnd)
-				if err == nil {
-					wglCPF, wglCCA := oglr.WGLFunctions()
-					wnd.data.SetWGLFunctions(wglCPF, wglCCA)
-					err = wnd.data.Create()
-					if err == nil {
-						wnd.state = 1
-					} else {
-						wnd.data.Destroy()
-					}
-				}
-				if err != nil {
-					wnd.data.ReleaseMemory()
-				}
-			}
-		}
-		return err
-	}
-	panic(notInitialized)
-}
-
-// Show makes window visible.
-func (wnd *Window) Show() error {
-	var err error
-	if wnd.state == 1 {
-		err = wnd.data.Show()
-		if err == nil {
-			wnd.state = 2
-		}
-	}
-	return err
-}
-
-// Destroy closes window and releases ressources associated with it.
-func (wnd *Window) Destroy() error {
-	var err error
-	if wnd.state > 0 {
-		err = wnd.data.Destroy()
-		if err == nil {
-			err = wnd.data.ReleaseMemory()
+func Start(engine AbstractEngine) {
+	err := engine.ParseOSArgs()
+	if err == nil {
+		base := engine.baseStruct()
+		if base.infoOnly {
+			engine.Info()
 		} else {
-			wnd.data.ReleaseMemory()
-		}
-		wnd.state = 0
-	}
-	return err
-}
-
-// Create creates objects in win32.
-func (dummy *tDummy) Create() error {
-	err := dummy.Allocate()
-	if err == nil {
-		params := new(oglwnd.Parameters)
-		params.Dummy = true
-		err = dummy.Init(params)
-		if err == nil {
-			err = dummy.Window.Create()
-		}
-		if err != nil {
-			dummy.Window.ReleaseMemory()
+			err = initC()
+			if err == nil {
+				engine.CreateWindow()
+				err = processEvents()
+			}
 		}
 	}
-	return err
-}
-
-// Destroy releases win32 objects.
-func (dummy *tDummy) Destroy(err error) error {
-	if err == nil {
-		err = dummy.Window.Destroy()
-	} else {
-		dummy.Window.Destroy()
+	if err != nil {
+		engine.Error(err)
 	}
-	return err
 }
 
-// ReleaseMemory releases struct memory allocated in C.
-func (dummy *tDummy) ReleaseMemory(err error) error {
-	if err == nil {
-		err = dummy.Window.ReleaseMemory()
-	} else {
-		dummy.Window.ReleaseMemory()
-	}
-	return err
+func initC() error {
+	var errC unsafe.Pointer
+	C.g2d_init(&errC)
+	return toError(errC)
 }
 
-func newOglWndParams(params *Parameters) *oglwnd.Parameters {
-	if params != nil {
-		paramsOglWnd := new(oglwnd.Parameters)
-		paramsOglWnd.ClientX = params.ClientX
-		paramsOglWnd.ClientY = params.ClientY
-		paramsOglWnd.ClientWidth = params.ClientWidth
-		paramsOglWnd.ClientHeight = params.ClientHeight
-		paramsOglWnd.ClientMinWidth = params.ClientMinWidth
-		paramsOglWnd.ClientMinHeight = params.ClientMinHeight
-		paramsOglWnd.ClientMaxWidth = params.ClientMaxWidth
-		paramsOglWnd.ClientMaxHeight = params.ClientMaxHeight
-		paramsOglWnd.Centered = params.Centered
-		paramsOglWnd.Borderless = params.Borderless
-		paramsOglWnd.Dragable = params.Dragable
-		paramsOglWnd.Resizable = params.Resizable
-		paramsOglWnd.Fullscreen = params.Fullscreen
-		paramsOglWnd.MouseLocked = params.MouseLocked
-		paramsOglWnd.Handler = params.newOglWndHandler()
-		return paramsOglWnd
+func processEvents() error {
+	var errC unsafe.Pointer
+	C.g2d_process_events(&errC)
+	return toError(errC)
+}
+
+// toError converts C error to Go error.
+func toError(errC unsafe.Pointer) error {
+	if errC != nil {
+		var errStr string
+		var errNumC C.int
+		var errWin32 C.g2d_ul_t
+		var errStrC *C.char
+		C.g2d_error(errC, &errNumC, &errWin32, &errStrC)
+		switch errNumC {
+		case 1:
+			errStr = "memory allocation failed"
+		case 2:
+			errStr = "get module instance failed"
+		case 3:
+			errStr = "register dummy class failed"
+		case 4:
+			errStr = "create dummy window failed"
+		case 5:
+			errStr = "get dummy device context failed"
+		case 6:
+			errStr = "choose dummy pixel format failed"
+		case 7:
+			errStr = "set dummy pixel format failed"
+		case 8:
+			errStr = "create dummy render context failed"
+		case 9:
+			errStr = "make dummy context current failed"
+		case 10:
+			errStr = "release dummy context failed"
+		case 11:
+			errStr = "deleting dummy render context failed"
+		case 12:
+			errStr = "destroying dummy window failed"
+		case 13:
+			errStr = "unregister dummy class failed"
+		case 14:
+			errStr = "swap dummy buffer failed"
+		case 15:
+			errStr = "window functions not initialized"
+		case 50:
+			errStr = "register class failed"
+		case 51:
+			errStr = "create window failed"
+		case 52:
+			errStr = "get device context failed"
+		case 53:
+			errStr = "choose pixel format failed"
+		case 54:
+			errStr = "set pixel format failed"
+		case 55:
+			errStr = "create render context failed"
+		case 56:
+			errStr = "make context current failed"
+		case 57:
+			errStr = "release context failed"
+		case 58:
+			errStr = "deleting render context failed"
+		case 59:
+			errStr = "destroying window failed"
+		case 60:
+			errStr = "unregister class failed"
+		case 61:
+			errStr = "swap buffer failed"
+		case 62:
+			errStr = "set title failed"
+		case 63:
+			errStr = "wgl functions not initialized"
+		default:
+			errStr = "unknown error " + strconv.FormatUint(uint64(errNumC), 10)
+		}
+		if errWin32 != 0 {
+			errStr = errStr + " (" + strconv.FormatUint(uint64(errWin32), 10) + ")"
+		}
+		if errStrC != nil {
+			errStr = errStr + "; " + C.GoString(errStrC)
+		}
+		C.g2d_error_free(errC)
+		return errors.New(errStr)
 	}
 	return nil
-}
-
-func (params *Parameters) newOglWndHandler() oglwnd.Handler {
-	adpr := new(tHandlerAdapter)
-	adpr.handler = params.Handler
-	return adpr
-}
-
-func (adpr *tHandlerAdapter) OnCreate(wnd *oglwnd.Window) {
-	adpr.handler.OnCreate()
-}
-
-func (adpr *tHandlerAdapter) OnShow(wnd *oglwnd.Window) {
-	adpr.handler.OnShow()
-}
-
-func (adpr *tHandlerAdapter) OnClose(wnd *oglwnd.Window) bool {
-	return adpr.handler.OnClose()
-}
-
-func (adpr *tHandlerAdapter) OnCustom(wnd *oglwnd.Window, event interface{}) {
-	adpr.handler.OnCustom(event)
-}
-
-func (adpr *tHandlerAdapter) OnDestroy(wnd *oglwnd.Window) {
-	adpr.handler.OnDestroy()
-}
-
-func (adpr *DefaultHandler) OnCreate() {
-}
-
-func (adpr *DefaultHandler) OnShow() {
-}
-
-func (adpr *DefaultHandler) OnClose() bool {
-	return true
-}
-
-func (adpr *DefaultHandler) OnCustom(event interface{}) {
-}
-
-func (adpr *DefaultHandler) OnDestroy() {
 }

@@ -12,7 +12,7 @@ import (
 )
 
 func TestInit(t *testing.T) {
-	err := Init()
+	err := initC()
 	if err != nil {
 		t.Error(err.Error())
 	}
