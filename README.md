@@ -26,13 +26,13 @@ g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 		params MyParameters
 	}
 
-	func (engine \*MyEngine) ParseOSArgs() error {
+	func (engine *MyEngine) ParseOSArgs() error {
 		infoOnly, err := engine.params.parseOSArgs()
 		engine.SetInfoOnly(infoOnly)
 		return err
 	}
 
-	func (engine \*MyEngine) Info() {
+	func (engine *MyEngine) Info() {
 		fmt.Println("version 1.0.0")
 	}
 
