@@ -41,7 +41,7 @@ g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 	}
 
 ## References
-- https://golang.org/doc/install
+- https://go.dev/doc/install
 - https://jmeubank.github.io/tdm-gcc/
 - https://git-scm.com/book/en/v2/Getting-Started-Installing-Git
 - https://dave.cheney.net/2013/10/12/how-to-use-conditional-compilation-with-the-go-build-tool
