@@ -12,6 +12,44 @@
 #include <gl/GL.h>
 #include "g2d.h"
 
+/* Go functions can not be passed to c directly.            */
+/* They can only be called from c.                          */
+/* This code is an indirection to call Go callbacks.        */
+/* _cgo_export.h is generated automatically by cgo.         */
+#include "_cgo_export.h"
+
+/* Exported functions from Go are:                          */
+/* g2dOnClose                                               */
+/* g2dOnDestroy                                             */
+
+// from wgl.h
+#define WGL_SAMPLE_BUFFERS_ARB            0x2041
+#define WGL_SAMPLES_ARB                   0x2042
+#define WGL_DRAW_TO_WINDOW_ARB            0x2001
+#define WGL_SWAP_METHOD_ARB               0x2007
+#define WGL_SUPPORT_OPENGL_ARB            0x2010
+#define WGL_DOUBLE_BUFFER_ARB             0x2011
+#define WGL_PIXEL_TYPE_ARB                0x2013
+#define WGL_TYPE_RGBA_ARB                 0x202B
+#define WGL_ACCELERATION_ARB              0x2003
+#define WGL_FULL_ACCELERATION_ARB         0x2027
+#define WGL_SWAP_EXCHANGE_ARB             0x2028
+#define WGL_SWAP_COPY_ARB                 0x2029
+#define WGL_SWAP_UNDEFINED_ARB            0x202A
+#define WGL_COLOR_BITS_ARB                0x2014
+#define WGL_ALPHA_BITS_ARB                0x201B
+#define WGL_DEPTH_BITS_ARB                0x2022
+#define WGL_STENCIL_BITS_ARB              0x2023
+#define WGL_CONTEXT_MAJOR_VERSION_ARB     0x2091
+#define WGL_CONTEXT_MINOR_VERSION_ARB     0x2092
+#define WGL_CONTEXT_PROFILE_MASK_ARB      0x9126
+#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB  0x00000001
+
+#define WGL_SWAP_METHOD_EXT               0x2007
+#define WGL_SWAP_EXCHANGE_EXT             0x2028
+#define WGL_SWAP_COPY_EXT                 0x2029
+#define WGL_SWAP_UNDEFINED_EXT            0x202A
+
 /* from wglext.h */
 typedef BOOL(WINAPI * PFNWGLCHOOSEPIXELFORMATARBPROC) (HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
 typedef HGLRC(WINAPI * PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareContext, const int *attribList);
@@ -53,6 +91,8 @@ typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei co
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
+#define CLASS_NAME TEXT("g2d")
+
 typedef struct {
 	int err_num;
 	g2d_ul_t err_win32;
@@ -72,7 +112,6 @@ typedef struct {
 
 typedef struct {
 	int x, y, width, height;
-	int x_wnd, y_wnd, width_wnd, height_wnd;
 } client_t;
 
 typedef struct {
@@ -82,28 +121,31 @@ typedef struct {
 } config_t;
 
 typedef struct {
+	int dragging, dragging_cust, locked;
+	int minimized, maximized, resizing;
+	int focus;
+} state_t;
+
+typedef struct {
 	window_t wnd;
 	client_t client;
-	LPTSTR title;
+	client_t client_bak;
 	config_t config;
-	BOOL initialized;
+	state_t state;
 	int go_obj_id;
-	void *ext1;
-	void *cust;
-	void (*class_register)(void*, void**);
-	void (*window_create)(void*, void**);
-	void (*context_create)(void*, void**);
-	BOOL (*message_proc)(void*, HWND, UINT, WPARAM, LPARAM, LRESULT*);
-	void (*destroy)(void*, void**);
-	void (*free)(void*, void**);
-	PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB;
-	PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 } window_data_t;
 
 static error_t err_no_mem = {1, ERROR_SUCCESS, NULL};
 static error_t *err_static = NULL;
 static HINSTANCE instance = NULL;
 static BOOL initialized = FALSE;
+static int active_windows = 0;
+/*
+static struct {
+	int count;
+	BOOL force_destroy;
+} active_windows = {0, FALSE};
+*/
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
@@ -155,7 +197,33 @@ static void *error_new(const int err_num, const DWORD err_win32, char *const err
 	return (void*)&err_no_mem;
 }
 
+static BOOL is_class_registered() {
+	WNDCLASSEX wcx;
+	if (GetClassInfoEx(instance, CLASS_NAME, &wcx))
+		return TRUE;
+	return FALSE;
+}
+
 #include "win32_init.h"
+#include "win32_window.h"
+
+void *g2d_string_new(void *const data, const int length, void **const err) {
+	LPTSTR str = NULL;
+	if (length > 0 && err[0] == NULL) {
+		#ifdef UNICODE
+		str = (LPTSTR)malloc(sizeof(WCHAR) * length);
+		if (str)
+			MultiByteToWideChar(CP_UTF8, 0, (const char*)data, length, str, length);
+		#else
+		str = (LPTSTR)malloc(sizeof(char) * length);
+		if (str) {
+			memcpy(str, data, length);
+		#endif
+		else
+			err[0] = (void*)&err_no_mem;
+	}
+	return (void*)str;
+}
 
 void g2d_error_free(void *const err) {
 	error_t *const err_t = (error_t*)err;
@@ -175,12 +243,18 @@ void g2d_error(void *const err, int *const err_num, g2d_ul_t *const err_win32, c
 }
 
 void g2d_process_events(void **const err) {
-	MSG msg;
-	while (GetMessage(&msg, NULL, 0, 0) > 0 && err_static == NULL) {
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+	if (active_windows > 0) {
+		MSG msg;
+		while (GetMessage(&msg, NULL, 0, 0) > 0 && err_static == NULL) {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
 	}
 	err[0] = (void*)err_static;
+}
+
+void g2d_set_static_err(const int go_obj) {
+	err_static = error_new(100, (DWORD) go_obj, NULL);
 }
 
 /* #if defined(G2D_WIN32) */
