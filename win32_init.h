@@ -94,7 +94,7 @@ static void dummy_context_init(window_t *const dummy, void **const err) {
 	}
 }
 
-static void dummy_context_set_current(window_t *const dummy, void **const err) {
+static void dummy_make_context_current(window_t *const dummy, void **const err) {
 	if (err[0] == NULL)
 		if (!wglMakeCurrent(dummy[0].ctx.dc, dummy[0].ctx.rc))
 			err[0] = error_new(9, GetLastError(), NULL);
@@ -160,18 +160,20 @@ static void dummy_destroy(window_t *const dummy, void **const err) {
 	}
 }
 
-void g2d_init(void **const err) {
+void *g2d_init() {
+	void *err = NULL;
 	if (!initialized) {
 		window_t dummy;
 		ZeroMemory((void*)&dummy, sizeof(window_t));
-		module_init(err);
-		dummy_class_init(&dummy, err);
-		dummy_window_create(&dummy, err);
-		dummy_context_init(&dummy, err);
-		dummy_context_set_current(&dummy, err);
-		wgl_functions_init(err);
-		ogl_functions_init(err);
-		dummy_destroy(&dummy, err);
-		initialized = (BOOL)(err[0] == NULL);
+		module_init(&err);
+		dummy_class_init(&dummy, &err);
+		dummy_window_create(&dummy, &err);
+		dummy_context_init(&dummy, &err);
+		dummy_make_context_current(&dummy, &err);
+		wgl_functions_init(&err);
+		ogl_functions_init(&err);
+		dummy_destroy(&dummy, &err);
+		initialized = (BOOL)(err == NULL);
 	}
+	return err;
 }

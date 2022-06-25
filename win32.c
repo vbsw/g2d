@@ -20,7 +20,8 @@
 
 /* Exported functions from Go are:                          */
 /* g2dOnClose                                               */
-/* g2dOnDestroy                                             */
+/* g2dOnDestroyBegin                                        */
+/* g2dOnDestroyEnd                                          */
 
 // from wgl.h
 #define WGL_SAMPLE_BUFFERS_ARB            0x2041
@@ -207,22 +208,11 @@ static BOOL is_class_registered() {
 #include "win32_init.h"
 #include "win32_window.h"
 
-void *g2d_string_new(void *const data, const int length, void **const err) {
-	LPTSTR str = NULL;
-	if (length > 0 && err[0] == NULL) {
-		#ifdef UNICODE
-		str = (LPTSTR)malloc(sizeof(WCHAR) * length);
-		if (str)
-			MultiByteToWideChar(CP_UTF8, 0, (const char*)data, length, str, length);
-		#else
-		str = (LPTSTR)malloc(sizeof(char) * length);
-		if (str) {
-			memcpy(str, data, length);
-		#endif
-		else
-			err[0] = (void*)&err_no_mem;
-	}
-	return (void*)str;
+void g2d_error(void *const err, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+	error_t *const error = (error_t*)err;
+	err_num[0] = error->err_num;
+	err_win32[0] = error->err_win32;
+	err_str[0] = error->err_str;
 }
 
 void g2d_error_free(void *const err) {
@@ -235,14 +225,39 @@ void g2d_error_free(void *const err) {
 		free(err);
 }
 
-void g2d_error(void *const err, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
-	error_t *const error = (error_t*)err;
-	err_num[0] = error->err_num;
-	err_win32[0] = error->err_win32;
-	err_str[0] = error->err_str;
+void *g2d_string_new(void **const str, void *const go_cstr) {
+	void *err = NULL;
+	LPTSTR str_new = NULL;
+	size_t length;
+	if (go_cstr)
+		length = strlen(go_cstr);
+	else
+		length = 0;
+	#ifdef UNICODE
+	str_new = (LPTSTR)malloc(sizeof(WCHAR) * (length + 1));
+	if (str_new) {
+		if (length > 0)
+			MultiByteToWideChar(CP_UTF8, 0, (const char*)go_cstr, length, str_new, length);
+	#else
+	str_new = (LPTSTR)malloc(sizeof(char) * (length + 1));
+	if (str_new) {
+		if (length > 0)
+			memcpy(str_new, go_cstr, length);
+	#endif
+		str_new[length] = 0;
+	}
+	else
+		err = (void*)&err_no_mem;
+	str[0] = (void*)str_new;
+	return err;
 }
 
-void g2d_process_events(void **const err) {
+void g2d_string_free(void *const str) {
+	if (str)
+		free(str);
+}
+
+void *g2d_process_events() {
 	if (active_windows > 0) {
 		MSG msg;
 		while (GetMessage(&msg, NULL, 0, 0) > 0 && err_static == NULL) {
@@ -250,7 +265,7 @@ void g2d_process_events(void **const err) {
 			DispatchMessage(&msg);
 		}
 	}
-	err[0] = (void*)err_static;
+	return (void*)err_static;
 }
 
 void g2d_set_static_err(const int go_obj) {

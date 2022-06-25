@@ -12,118 +12,114 @@ package g2d
 // #include "g2d.h"
 import "C"
 import (
+	"fmt"
 	"errors"
 	"strconv"
 	"unsafe"
+//	"reflect"
 )
 
-func Start(engine AbstractEngine) {
-	if !running {
-		running = true
-		err := engine.ParseOSArgs()
-		if err == nil {
-			base := engine.baseStruct()
-			if base.infoOnly {
-				engine.Info()
-			} else {
-				err = initC()
-				if err == nil {
-					err = engine.CreateWindow()
-					err = processEvents(err)
+func Init(stub interface{}) {
+	if !initialized {
+		errC := C.g2d_init()
+		initialized = bool(errC == nil)
+		Err = toError(errC)
+	}
+}
+
+func Show(window AbstractWindow) {
+	if initialized {
+		if Err == nil {
+			params := newParameters()
+			Err = window.Config(params)
+			if Err == nil {
+				x := C.int(params.ClientX)
+				y := C.int(params.ClientY)
+				w := C.int(params.ClientWidth)
+				h := C.int(params.ClientHeight)
+				wn := C.int(params.ClientMinWidth)
+				hn := C.int(params.ClientMinHeight)
+				wx := C.int(params.ClientMaxWidth)
+				hx := C.int(params.ClientMaxHeight)
+				c := toCInt(params.Centered)
+				l := toCInt(params.MouseLocked)
+				b := toCInt(params.Borderless)
+				d := toCInt(params.Dragable)
+				r := toCInt(params.Resizable)
+				f := toCInt(params.Fullscreen)
+				t, errC := toTString(params.Title)
+				if errC == nil {
+					mgr, mgrId := registerManager(window)
+					errC = C.g2d_window_create(&mgr.data, mgrId, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t)
+					if errC != nil {
+						cb.Unregister(int(mgrId))
+					}
 				}
+				C.g2d_string_free(t)
+				Err = toError(errC)
 			}
 		}
-		if err != nil {
-			engine.Error(err)
-		}
-		cb.UnregisterAll()
-		running = false
 	} else {
-		panic("g2d engine already running")
+		panic(notInitialized)
 	}
 }
 
-func processEvents(err error) error {
-	if err == nil {
-		var errC unsafe.Pointer
-		C.g2d_process_events(&errC)
-		if errC != nil {
-			for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
-				C.g2d_window_destroy(cb.mgrs[i].data, &errC)
+func toTString(str string) (unsafe.Pointer, unsafe.Pointer) {
+	var strT unsafe.Pointer
+	strC := unsafe.Pointer(C.CString(str))
+	errC := C.g2d_string_new(&strT, strC)
+	C.g2d_string_free(strC)
+	return strT, errC
+}
+
+func ProcessEvents() {
+	if initialized {
+		if Err == nil {
+			if !processing {
+				processing = true
+				errC := C.g2d_process_events()
+				if errC != nil {
+					for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
+						errC = C.g2d_window_destroy(cb.mgrs[i].data, &errC)
+					}
+				}
+				cb.UnregisterAll()
+				Err = toError(errC)
+				processing = false
+			} else {
+				panic(alreadyProcessing)
 			}
 		}
-		err = toError(errC)
+	} else {
+		panic(notInitialized)
 	}
-	return err
 }
 
-func (bulder *WindowBuilder) CreateWindow() error {
-	if !initialized {
-		var errC unsafe.Pointer
-		bulder.ensureParams()
-		x := C.int(bulder.ClientX)
-		y := C.int(bulder.ClientY)
-		w := C.int(bulder.ClientWidth)
-		h := C.int(bulder.ClientHeight)
-		wn := C.int(bulder.ClientMinWidth)
-		hn := C.int(bulder.ClientMinHeight)
-		wx := C.int(bulder.ClientMaxWidth)
-		hx := C.int(bulder.ClientMaxHeight)
-		c := toCInt(bulder.Centered)
-		l := toCInt(bulder.MouseLocked)
-		b := toCInt(bulder.Borderless)
-		d := toCInt(bulder.Dragable)
-		r := toCInt(bulder.Resizable)
-		f := toCInt(bulder.Fullscreen)
-		t := C.g2d_string_new(unsafe.Pointer(&bulder.Title), C.int(len(bulder.Title)), &errC)
-		if errC != nil {
-			mgr, mgrId := registerManager(bulder.Handler)
-			C.g2d_window_create(&mgr.data, mgrId, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t, &errC)
-			if errC != nil {
-				cb.Unregister(int(mgrId))
-				mgr.handler = nil
-			}
-		}
-		return toError(errC)
-	}
-	panic("g2d engine not initialized")
+func newParameters() *Parameters {
+	params := new(Parameters)
+	params.ClientX = 50
+	params.ClientY = 50
+	params.ClientWidth = 640
+	params.ClientHeight = 480
+	params.ClientMinWidth = 0
+	params.ClientMinHeight = 0
+	params.ClientMaxWidth = 99999
+	params.ClientMaxHeight = 99999
+	params.MouseLocked = false
+	params.Borderless = false
+	params.Dragable = false
+	params.Resizable = true
+	params.Fullscreen = false
+	params.Centered = true
+	params.Title = "g2d - 0.1.0 世界"
+	return params
 }
 
-func registerManager(handler AbstractEventHandler) (*tManager, C.int) {
+func registerManager(window AbstractWindow) (*tManager, C.int) {
 	mgr := new(tManager)
-	mgr.handler = handler
+	mgr.wndBase = window.baseStruct()
+	mgr.wndAbst = window
 	return mgr, C.int(cb.Register(mgr))
-}
-
-func (bulder *WindowBuilder) ensureParams() {
-	if bulder.ClientMinWidth < 0 {
-		bulder.ClientMinWidth = 0
-	}
-	if bulder.ClientMinHeight < 0 {
-		bulder.ClientMinHeight = 0
-	}
-	if bulder.ClientMaxWidth <= 0 {
-		bulder.ClientMaxWidth = 99999
-	}
-	if bulder.ClientMaxHeight <= 0 {
-		bulder.ClientMaxHeight = 99999
-	}
-	if len(bulder.Title) == 0 {
-		bulder.Title = "OpenGL"
-	}
-	if bulder.Handler == nil {
-		bulder.Handler = new(EventHandler)
-	}
-}
-
-func initC() error {
-	if !initialized {
-		var errC unsafe.Pointer
-		C.g2d_init(&errC)
-		initialized = bool(errC != nil)
-		return toError(errC)
-	}
-	return nil
 }
 
 // toError converts C error to Go error.
@@ -195,7 +191,7 @@ func toError(errC unsafe.Pointer) error {
 			errStr = "wgl functions not initialized"
 		case 100:
 			C.g2d_error_free(errC)
-			return cb.mgrs[int(errWin32)].err
+			return Err
 		default:
 			errStr = "unknown error " + strconv.FormatUint(uint64(errNumC), 10)
 		}
@@ -214,27 +210,29 @@ func toError(errC unsafe.Pointer) error {
 //export g2dOnClose
 func g2dOnClose(objIdC C.int) {
 	mgr := cb.mgrs[int(objIdC)]
-	confirmed, err := mgr.handler.OnClose()
+	confirmed, err := mgr.wndAbst.Close()
 	if confirmed {
 		var errC unsafe.Pointer
-		C.g2d_window_destroy(mgr.data, &errC)
+		errC = C.g2d_window_destroy(mgr.data, &errC)
 		if err == nil && errC != nil {
 			err = toError(errC)
 		}
 	}
-	mgr.setError(err, objIdC)
+	Err = err
 }
 
-//export g2dOnDestroy
-func g2dOnDestroy(objIdC C.int) {
+//export g2dOnDestroyBegin
+func g2dOnDestroyBegin(objIdC C.int) {
 	mgr := cb.mgrs[int(objIdC)]
-	mgr.handler.OnDestroy()
+	mgr.wndAbst.Destroy()
 }
 
-// setError sets err_static to err_num = 100.
-func (mgr *tManager) setError(err error, objIdC C.int) {
-	if err != nil {
-		mgr.err = err
-		C.g2d_set_static_err(objIdC)
-	}
+//export g2dOnDestroyEnd
+func g2dOnDestroyEnd(objIdC C.int) {
+	cb.Unregister(int(objIdC))
+}
+
+//export goDebug
+func goDebug(a, b C.int, c, d C.g2d_ul_t) {
+	fmt.Println(a, b, c, d)
 }

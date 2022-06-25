@@ -80,7 +80,7 @@ static void window_config(window_data_t *const wnd_data, const int x, const int 
 }
 
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	LRESULT result = 0;
+	LRESULT result = DefWindowProc(hWnd, message, wParam, lParam);
 /*
 	if (running && !state.minimized) {
 		switch (message) {
@@ -288,6 +288,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 
 static void window_destroy(window_data_t *wnd_data) {
 	if (wnd_data) {
+		g2dOnDestroyBegin(wnd_data[0].go_obj_id);
 		if (wnd_data[0].wnd.ctx.rc) {
 			wglDeleteContext(wnd_data[0].wnd.ctx.rc);
 			wnd_data[0].wnd.ctx.rc = NULL;
@@ -304,7 +305,9 @@ static void window_destroy(window_data_t *wnd_data) {
 			UnregisterClass(wnd_data[0].wnd.cls.lpszClassName, wnd_data[0].wnd.cls.hInstance);
 			wnd_data[0].wnd.cls.lpszClassName = NULL;
 		}
+		g2dOnDestroyEnd(wnd_data[0].go_obj_id);
 		free(wnd_data);
+		active_windows--;
 	}
 }
 
@@ -423,24 +426,28 @@ static void window_show(window_data_t *const wnd_data, void **const err) {
 	}
 }
 
-void g2d_window_create(void **const data, const int go_obj, const int x, const int y, const int w, const int h, const int wn, const int hn,
-	const int wx, const int hx, const int b, const int d, const int r, const int f, const int l, const int c, void *t, void **const err) {
-	if (initialized && err[0] == NULL) {
-		window_data_t *const wnd_data = window_allocate(err);
-		window_config(wnd_data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, err);
-		class_register(wnd_data, err);
-		window_create(wnd_data, ensure_title(t), err);
-		window_show(wnd_data, err);
-		if (err[0] == NULL)
+void *g2d_window_create(void **const data, const int go_obj, const int x, const int y, const int w, const int h, const int wn, const int hn,
+	const int wx, const int hx, const int b, const int d, const int r, const int f, const int l, const int c, void *t) {
+	void *err = NULL;
+	if (initialized) {
+		window_data_t *const wnd_data = window_allocate(&err);
+		window_config(wnd_data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, &err);
+		class_register(wnd_data, &err);
+		window_create(wnd_data, ensure_title(t), &err);
+		window_show(wnd_data, &err);
+		if (err == NULL) {
 			data[0] = (void*)wnd_data;
-		else
+			active_windows++;
+		} else {
 			window_destroy(wnd_data);
+		}
 	}
+	return err;
 }
 
-void g2d_window_destroy(void *data, void **err) {
+void *g2d_window_destroy(void *data, void **const err) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	g2dOnDestroy(wnd_data[0].go_obj_id);
+	g2dOnDestroyBegin(wnd_data[0].go_obj_id);
 	if (wnd_data[0].wnd.ctx.rc) {
 		if (!wglDeleteContext(wnd_data[0].wnd.ctx.rc) && err[0] == NULL) {
 			err[0] = error_new(58, GetLastError(), NULL);
@@ -468,4 +475,8 @@ void g2d_window_destroy(void *data, void **err) {
 		if (!is_class_registered())
 			PostQuitMessage(0);
 	}
+	g2dOnDestroyEnd(wnd_data[0].go_obj_id);
+	free(data);
+	active_windows--;
+	return err[0];
 }

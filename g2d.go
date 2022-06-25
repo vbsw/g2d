@@ -10,45 +10,39 @@ package g2d
 
 import "C"
 import (
-	"fmt"
 	"unsafe"
 )
 
-type Engine struct {
-	infoOnly bool
-}
+const (
+	notInitialized = "g2d not initialized"
+	alreadyProcessing = "already processing events"
+)
 
-type AbstractEngine interface {
-	baseStruct() *Engine
-	ParseOSArgs() error
-	Info()
-	CreateWindow() error
-	Error(err error)
-}
+var (
+	Err error
+	initialized bool
+	processing bool
+	cb tCallback
+)
 
-type WindowBuilder struct {
+type Parameters struct {
 	ClientX, ClientY                  int
 	ClientWidth, ClientHeight         int
 	ClientMinWidth, ClientMinHeight   int
 	ClientMaxWidth, ClientMaxHeight   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
-	Handler                           AbstractEventHandler
 	Title string
 }
 
-type EventHandler struct {
+type Window struct {
 }
 
-type AbstractEventHandler interface {
-	OnClose() (bool, error)
-	OnDestroy()
-}
-
-type tManager struct {
-	handler AbstractEventHandler
-	data unsafe.Pointer
-	err error
+type AbstractWindow interface {
+	Config(params *Parameters) error
+	Close() (bool, error)
+	Destroy()
+	baseStruct() *Window
 }
 
 // tCallback holds objects identified by ids.
@@ -57,39 +51,25 @@ type tCallback struct {
 	unused []int
 }
 
-var (
-	running, initialized bool
-	cb tCallback
-)
-
-func (engine *Engine) baseStruct() *Engine {
-	return engine
+type tManager struct {
+	data unsafe.Pointer
+	wndBase *Window
+	wndAbst AbstractWindow
 }
 
-func (engine *Engine) ParseOSArgs() error {
+func (window *Window) Config(params *Parameters) error {
 	return nil
 }
 
-func (engine *Engine) SetInfoOnly(infoOnly bool) {
-	engine.infoOnly = infoOnly
-}
-
-func (engine *Engine) Info() {
-}
-
-func (engine *Engine) CreateWindow() error {
-	return nil
-}
-
-func (engine *Engine) Error(err error) {
-	fmt.Println("error:", err.Error())
-}
-
-func (handler *EventHandler) OnClose() (bool, error) {
+func (window *Window) Close() (bool, error) {
 	return true, nil
 }
 
-func (handler *EventHandler) OnDestroy() {
+func (window *Window) Destroy() {
+}
+
+func (window *Window) baseStruct() *Window {
+	return window
 }
 
 // Register returns a new id number for mgr. It will not be garbage collected until
