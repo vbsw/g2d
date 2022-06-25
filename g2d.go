@@ -10,6 +10,7 @@ package g2d
 
 import "C"
 import (
+	timepkg "time"
 	"unsafe"
 )
 
@@ -23,20 +24,26 @@ var (
 	initialized bool
 	processing  bool
 	cb          tCallback
+	timeStart   timepkg.Time
 )
 
 type Parameters struct {
 	ClientX, ClientY                  int
 	ClientWidth, ClientHeight         int
-	ClientMinWidth, ClientMinHeight   int
-	ClientMaxWidth, ClientMaxHeight   int
+	ClientWidthMin, ClientHeightMin   int
+	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
 	Title                             string
 }
 
 type Properties struct {
-	Fullscreen bool
+	ClientX, ClientY                  int
+	ClientWidth, ClientHeight         int
+	ClientWidthMin, ClientHeightMin   int
+	ClientWidthMax, ClientHeightMax   int
+	MouseLocked, Borderless, Dragable bool
+	Resizable, Fullscreen   bool
 	Title   string
 }
 
@@ -45,17 +52,23 @@ type Command struct {
 	CloseUnc bool
 }
 
+type Time struct {
+	NanosUpdatePrev int64
+	NanosUpdateCurr int64
+}
+
 type Window struct {
 	Props Properties
 	Cmd Command
+	Time Time
 }
 
 type AbstractWindow interface {
 	Config(params *Parameters) error
-	KeyDown(key int, repeated uint) error
-	KeyUp(key int) error
-	Close() (bool, error)
-	Destroy()
+	KeyDown(key int, repeated uint, nanos int64) error
+	KeyUp(key int, nanos int64) error
+	Close(nanos int64) (bool, error)
+	Destroy(nanos int64)
 	baseStruct() *Window
 	updatePropsResetCmd(props Properties)
 	propsAndCmd() (Properties, Command)
@@ -75,23 +88,31 @@ type tCallback struct {
 	unused []int
 }
 
+func (t *Time) NanosNow() int64 {
+	return time()
+}
+
 func (window *Window) Config(params *Parameters) error {
 	return nil
 }
 
-func (window *Window) KeyDown(key int, repeated uint) error {
+func (window *Window) KeyDown(key int, repeated uint, nanos int64) error {
 	return nil
 }
 
-func (window *Window) KeyUp(key int) error {
+func (window *Window) KeyUp(key int, nanos int64) error {
 	return nil
 }
 
-func (window *Window) Close() (bool, error) {
+func (window *Window) Close(nanos int64) (bool, error) {
 	return true, nil
 }
 
-func (window *Window) Destroy() {
+func (window *Window) Destroy(nanos int64) {
+}
+
+func (window *Window) baseStruct() *Window {
+	return window
 }
 
 func (window *Window) updatePropsResetCmd(props Properties) {
@@ -102,10 +123,6 @@ func (window *Window) updatePropsResetCmd(props Properties) {
 
 func (window *Window) propsAndCmd() (Properties, Command) {
 	return window.Props, window.Cmd
-}
-
-func (window *Window) baseStruct() *Window {
-	return window
 }
 
 // Register returns a new id number for mgr. It will not be garbage collected until
@@ -135,6 +152,12 @@ func (cb *tCallback) UnregisterAll() {
 	for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
 		cb.Unregister(i)
 	}
+}
+
+func time() int64 {
+	timeNow := timepkg.Now()
+	d := timeNow.Sub(timeStart)
+	return d.Nanoseconds()
 }
 
 // toCInt converts bool value to C int value.

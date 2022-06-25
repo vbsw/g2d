@@ -13,6 +13,7 @@ package g2d
 import "C"
 import (
 	"errors"
+	timepkg "time"
 	"fmt"
 	"strconv"
 	"unsafe"
@@ -21,6 +22,7 @@ import (
 func Init(stub interface{}) {
 	if !initialized {
 		errC := C.g2d_init()
+		timeStart = timepkg.Now()
 		initialized = bool(errC == nil)
 		Err = toError(errC)
 	}
@@ -36,10 +38,10 @@ func Show(window AbstractWindow) {
 				y := C.int(params.ClientY)
 				w := C.int(params.ClientWidth)
 				h := C.int(params.ClientHeight)
-				wn := C.int(params.ClientMinWidth)
-				hn := C.int(params.ClientMinHeight)
-				wx := C.int(params.ClientMaxWidth)
-				hx := C.int(params.ClientMaxHeight)
+				wn := C.int(params.ClientWidthMin)
+				hn := C.int(params.ClientHeightMin)
+				wx := C.int(params.ClientWidthMax)
+				hx := C.int(params.ClientHeightMax)
 				c := toCInt(params.Centered)
 				l := toCInt(params.MouseLocked)
 				b := toCInt(params.Borderless)
@@ -100,10 +102,10 @@ func newParameters() *Parameters {
 	params.ClientY = 50
 	params.ClientWidth = 640
 	params.ClientHeight = 480
-	params.ClientMinWidth = 0
-	params.ClientMinHeight = 0
-	params.ClientMaxWidth = 99999
-	params.ClientMaxHeight = 99999
+	params.ClientWidthMin = 0
+	params.ClientHeightMin = 0
+	params.ClientWidthMax = 99999
+	params.ClientHeightMax = 99999
 	params.MouseLocked = false
 	params.Borderless = false
 	params.Dragable = false
@@ -125,40 +127,36 @@ func registerNewManager(window AbstractWindow, title string) (*tManager, C.int) 
 func (mgr *tManager) updatePropsResetCmd() {
 	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
 	C.g2d_window_props(mgr.data, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
-/*
 	mgr.props.ClientX = int(x)
 	mgr.props.ClientY = int(y)
-	mgr.props.ClientW = uint(w)
-	mgr.props.ClientH = uint(h)
-	mgr.props.MinWidth = uint(wMin)
-	mgr.props.MinHeight = uint(hMin)
-	mgr.props.MaxWidth = uint(wMax)
-	mgr.props.MaxHeight = uint(hMax)
+	mgr.props.ClientWidth = int(w)
+	mgr.props.ClientHeight = int(h)
+	mgr.props.ClientWidthMin = int(wn)
+	mgr.props.ClientHeightMin = int(hn)
+	mgr.props.ClientWidthMax = int(wx)
+	mgr.props.ClientHeightMax = int(hx)
 	mgr.props.Borderless = bool(b != 0)
 	mgr.props.Dragable = bool(d != 0)
 	mgr.props.Resizable = bool(r != 0)
 	mgr.props.Fullscreen = bool(f != 0)
 	mgr.props.MouseLocked = bool(l != 0)
-*/
-	mgr.props.Fullscreen = bool(f != 0)
 	mgr.wndAbst.updatePropsResetCmd(mgr.props)
 }
 
 func (mgr *tManager) applyProps(props Properties) {
-	const stubInt, stubBool = 0, false
-	x := C.int(stubInt)
-	y := C.int(stubInt)
-	w := C.int(stubInt)
-	h := C.int(stubInt)
-	wn := C.int(stubInt)
-	hn := C.int(stubInt)
-	wx := C.int(stubInt)
-	hx := C.int(stubInt)
-	b := toCInt(stubBool)
-	d := toCInt(stubBool)
-	r := toCInt(stubBool)
+	x := C.int(mgr.props.ClientX)
+	y := C.int(mgr.props.ClientY)
+	w := C.int(mgr.props.ClientWidth)
+	h := C.int(mgr.props.ClientHeight)
+	wn := C.int(mgr.props.ClientWidthMin)
+	hn := C.int(mgr.props.ClientHeightMin)
+	wx := C.int(mgr.props.ClientWidthMax)
+	hx := C.int(mgr.props.ClientHeightMax)
+	b := toCInt(mgr.props.Borderless)
+	d := toCInt(mgr.props.Dragable)
+	r := toCInt(mgr.props.Resizable)
 	f := toCInt(props.Fullscreen)
-	l := toCInt(stubBool)
+	l := toCInt(mgr.props.MouseLocked)
 	C.g2d_window_props_apply(mgr.data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l)
 }
 
@@ -190,27 +188,33 @@ func (mgr *tManager) applyPropsAndCmd() {
 
 //export g2dKeyDown
 func g2dKeyDown(objIdC, code C.int, repeated C.g2d_ui_t) {
+	nanos := time()
 	mgr := cb.mgrs[int(objIdC)]
 	mgr.updatePropsResetCmd()
-	err := mgr.wndAbst.KeyDown(int(code), uint(repeated))
+	mgr.wndBase.Time.NanosUpdateCurr = nanos
+	err := mgr.wndAbst.KeyDown(int(code), uint(repeated), nanos)
 	setErr(err)
 	mgr.applyPropsAndCmd()
 }
 
 //export g2dKeyUp
 func g2dKeyUp(objIdC, code C.int) {
+	nanos := time()
 	mgr := cb.mgrs[int(objIdC)]
 	mgr.updatePropsResetCmd()
-	err := mgr.wndAbst.KeyUp(int(code))
+	mgr.wndBase.Time.NanosUpdateCurr = nanos
+	err := mgr.wndAbst.KeyUp(int(code), nanos)
 	setErr(err)
 	mgr.applyPropsAndCmd()
 }
 
 //export g2dClose
 func g2dClose(objIdC C.int) {
+	nanos := time()
 	mgr := cb.mgrs[int(objIdC)]
 	mgr.updatePropsResetCmd()
-	confirmed, err := mgr.wndAbst.Close()
+	mgr.wndBase.Time.NanosUpdateCurr = nanos
+	confirmed, err := mgr.wndAbst.Close(nanos)
 	setErr(err)
 	if confirmed {
 		mgr.destroy()
@@ -220,9 +224,11 @@ func g2dClose(objIdC C.int) {
 
 //export g2dDestroyBegin
 func g2dDestroyBegin(objIdC C.int) {
+	nanos := time()
 	mgr := cb.mgrs[int(objIdC)]
 	mgr.updatePropsResetCmd()
-	mgr.wndAbst.Destroy()
+	mgr.wndBase.Time.NanosUpdateCurr = nanos
+	mgr.wndAbst.Destroy(nanos)
 }
 
 //export g2dDestroyEnd
