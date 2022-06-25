@@ -118,16 +118,48 @@ func registerNewManager(window AbstractWindow, title string) (*tManager, C.int) 
 	mgr := new(tManager)
 	mgr.wndBase = window.baseStruct()
 	mgr.wndAbst = window
-	mgr.title = title
+	mgr.props.Title = title
 	return mgr, C.int(cb.Register(mgr))
 }
 
 func (mgr *tManager) updatePropsResetCmd() {
-	// TODO update mgr props
+	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
+	C.g2d_window_props(mgr.data, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
+/*
+	mgr.props.ClientX = int(x)
+	mgr.props.ClientY = int(y)
+	mgr.props.ClientW = uint(w)
+	mgr.props.ClientH = uint(h)
+	mgr.props.MinWidth = uint(wMin)
+	mgr.props.MinHeight = uint(hMin)
+	mgr.props.MaxWidth = uint(wMax)
+	mgr.props.MaxHeight = uint(hMax)
+	mgr.props.Borderless = bool(b != 0)
+	mgr.props.Dragable = bool(d != 0)
+	mgr.props.Resizable = bool(r != 0)
+	mgr.props.Fullscreen = bool(f != 0)
+	mgr.props.MouseLocked = bool(l != 0)
+*/
+	mgr.props.Fullscreen = bool(f != 0)
 	mgr.wndAbst.updatePropsResetCmd(mgr.props)
 }
 
 func (mgr *tManager) applyProps(props Properties) {
+	const stubInt, stubBool = 0, false
+	x := C.int(stubInt)
+	y := C.int(stubInt)
+	w := C.int(stubInt)
+	h := C.int(stubInt)
+	wn := C.int(stubInt)
+	hn := C.int(stubInt)
+	wx := C.int(stubInt)
+	hx := C.int(stubInt)
+	b := toCInt(stubBool)
+	d := toCInt(stubBool)
+	r := toCInt(stubBool)
+	f := toCInt(props.Fullscreen)
+	l := toCInt(stubBool)
+	C.g2d_window_props_apply(mgr.data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l)
 }
 
 func (mgr *tManager) applyCmd(cmd Command) {

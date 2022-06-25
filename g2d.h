@@ -17,6 +17,8 @@ extern void *g2d_process_events();
 extern void g2d_err_static_set(int go_obj);
 extern void *g2d_window_create(void **data, int go_obj, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t);
 extern void *g2d_window_destroy(void *data, void **err);
+extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
+extern void g2d_window_props_apply(void *data, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l);
 extern void g2d_message_close_post(void *data);
 /*
 extern void g2d_free(void *data);

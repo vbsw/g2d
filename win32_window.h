@@ -419,11 +419,9 @@ static void context_create(window_data_t *const wnd_data, void **const err) {
 }
 
 static void fullscreen_set(window_data_t *const wnd_data) {
-	if (wnd_data[0].config.fullscreen) {
-		int mx, my, mw, mh; monitor_metrics(MonitorFromWindow(wnd_data[0].wnd.hndl, MONITOR_DEFAULTTONEAREST), &mx, &my, &mw, &mh);
-		SetWindowLong(wnd_data[0].wnd.hndl, GWL_STYLE, 0);
-		SetWindowPos(wnd_data[0].wnd.hndl, HWND_TOP, mx, my, mw, mh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-	}
+	int mx, my, mw, mh; monitor_metrics(MonitorFromWindow(wnd_data[0].wnd.hndl, MONITOR_DEFAULTTONEAREST), &mx, &my, &mw, &mh);
+	SetWindowLong(wnd_data[0].wnd.hndl, GWL_STYLE, 0);
+	SetWindowPos(wnd_data[0].wnd.hndl, HWND_TOP, mx, my, mw, mh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 }
 
 static void client_props_update(window_data_t *const wnd_data) {
@@ -445,10 +443,18 @@ static void cursor_clip_update(window_data_t *const wnd_data) {
 	}
 }
 
+static void window_pos_set(window_data_t *const wnd_data, const int x, const int y, const int w, const int h) {
+	int wx, wy, ww, wh; window_metrics(wnd_data, &wx, &wy, &ww, &wh);
+	SetWindowLong(wnd_data[0].wnd.hndl, GWL_STYLE, wnd_data[0].config.style);
+	SetWindowPos(wnd_data[0].wnd.hndl, HWND_TOP, wx, wy, ww, wh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+	cursor_clip_update(wnd_data);
+}
+
 static void window_show(window_data_t *const wnd_data, void **const err) {
 	if (err[0] == NULL) {
 		ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
-		fullscreen_set(wnd_data);
+		if (wnd_data[0].config.fullscreen)
+			fullscreen_set(wnd_data);
 		client_props_update(wnd_data);
 		cursor_clip_update(wnd_data);
 	}
@@ -507,4 +513,71 @@ void *g2d_window_destroy(void *data, void **const err) {
 	free(data);
 	active_windows--;
 	return err[0];
+}
+
+void g2d_window_props(void *const data, int *const x, int *const y, int *const w, int *const h, int *const wn, int *const hn,
+	int *const wx, int *const hx, int *const b, int *const d, int *const r, int *const f, int *const l) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	*x = wnd_data[0].client.x;
+	*y = wnd_data[0].client.y;
+	*w = wnd_data[0].client.width;
+	*h = wnd_data[0].client.height;
+	*wn = wnd_data[0].config.width_min;
+	*hn = wnd_data[0].config.height_min;
+	*wx = wnd_data[0].config.width_max;
+	*hx = wnd_data[0].config.height_max;
+	*b = wnd_data[0].config.borderless;
+	*d = wnd_data[0].config.dragable;
+	*r = wnd_data[0].config.resizable;
+	*f = wnd_data[0].config.fullscreen;
+	*l = wnd_data[0].config.locked;
+}
+
+void g2d_window_props_apply(void *const data, const int x, const int y, const int w, const int h, const int wn, const int hn,
+	const int wx, const int hx, const int b, const int d, const int r, const int f, const int l) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	const BOOL xywh = FALSE;
+	const BOOL fc = (BOOL)(wnd_data[0].config.fullscreen != f);
+	wnd_data[0].config.fullscreen = f;
+	if (fc && f) {
+		fullscreen_set(wnd_data);
+	} else if (fc) {
+		if (!xywh)
+			wnd_data[0].client = wnd_data[0].client_bak;
+		window_pos_set(wnd_data, wnd_data[0].client.x, wnd_data[0].client.y, wnd_data[0].client.width, wnd_data[0].client.height);
+	}
+/*
+	const int xywh = (x != client.x || y != client.y || w != client.width || h != client.height);
+	const int mm = (wMin != config.widthMin || hMin != config.heightMin || wMax != config.widthMax || hMax != config.heightMax);
+	const int stl = (b != config.borderless || r != config.resizable);
+	const int fs = (f != config.fullscreen);
+	client.x = x;
+	client.y = y;
+	client.width = w;
+	client.height = h;
+	config.widthMin = wMin;
+	config.heightMin = hMin;
+	config.widthMax = wMax;
+	config.heightMax = hMax;
+	config.borderless = b;
+	config.dragable = d;
+	config.resizable = r;
+	config.fullscreen = f;
+	// fullscreen
+	if (fs && f) {
+		set_fullscreen();
+	// window
+	} else if (fs) {
+		if (!xywh)
+			restore_client_props();
+		set_window_pos(client.x, client.y, client.width, client.height);
+	} else if (!f) {
+		if (stl) {
+			set_window_pos(x, y, w, h);
+		} else if (xywh) {
+			move_window(x, y, w, h);
+		}
+	}
+	set_mouse_locked(l);
+*/
 }

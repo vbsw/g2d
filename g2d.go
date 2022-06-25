@@ -36,6 +36,8 @@ type Parameters struct {
 }
 
 type Properties struct {
+	Fullscreen bool
+	Title   string
 }
 
 type Command struct {
@@ -63,7 +65,6 @@ type tManager struct {
 	data    unsafe.Pointer
 	wndBase *Window
 	wndAbst AbstractWindow
-	title   string
 	props Properties
 	cmd  Command
 }
