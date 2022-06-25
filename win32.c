@@ -19,9 +19,9 @@
 #include "_cgo_export.h"
 
 /* Exported functions from Go are:                          */
-/* g2dOnClose                                               */
-/* g2dOnDestroyBegin                                        */
-/* g2dOnDestroyEnd                                          */
+/* g2dClose                                                 */
+/* g2dDestroyBegin                                          */
+/* g2dDestroyEnd                                            */
 
 // from wgl.h
 #define WGL_SAMPLE_BUFFERS_ARB            0x2041
@@ -133,6 +133,7 @@ typedef struct {
 	client_t client_bak;
 	config_t config;
 	state_t state;
+	int key_repeated[255];
 	int go_obj_id;
 } window_data_t;
 
@@ -205,6 +206,7 @@ static BOOL is_class_registered() {
 	return FALSE;
 }
 
+#include "win32_keys.h"
 #include "win32_init.h"
 #include "win32_window.h"
 
@@ -268,8 +270,13 @@ void *g2d_process_events() {
 	return (void*)err_static;
 }
 
-void g2d_set_static_err(const int go_obj) {
+void g2d_err_static_set(const int go_obj) {
 	err_static = error_new(100, (DWORD) go_obj, NULL);
+}
+
+void g2d_message_close_post(void *data) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	PostMessage(wnd_data[0].wnd.hndl, WM_CLOSE, 0, 0);
 }
 
 /* #if defined(G2D_WIN32) */

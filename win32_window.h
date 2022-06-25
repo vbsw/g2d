@@ -80,7 +80,36 @@ static void window_config(window_data_t *const wnd_data, const int x, const int 
 }
 
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	LRESULT result = DefWindowProc(hWnd, message, wParam, lParam);
+	LRESULT result = 0;
+	if (message == WM_NCCREATE) {
+		window_data_t *const wnd_data = (window_data_t*)(((CREATESTRUCT*)lParam)->lpCreateParams);
+		if (wnd_data)
+			SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)wnd_data);
+		result = DefWindowProc(hWnd, message, wParam, lParam);
+	} else {
+		window_data_t *const wnd_data = (window_data_t*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+		if (wnd_data) {
+			switch (message) {
+			case WM_CLOSE:
+				g2dClose(wnd_data[0].go_obj_id);
+				break;
+			case WM_KEYDOWN:
+				if (!key_down_process(wnd_data, message, wParam, lParam))
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+				break;
+			case WM_KEYUP:
+				if (!key_up_process(wnd_data, message, wParam, lParam))
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+				break;
+			default:
+				result = DefWindowProc(hWnd, message, wParam, lParam);
+			}
+		} else {
+			result = DefWindowProc(hWnd, message, wParam, lParam);
+		}
+	}
+	return result;
+
 /*
 	if (running && !state.minimized) {
 		switch (message) {
@@ -283,12 +312,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 		}
 	}
 */
-	return result;
 }
 
 static void window_destroy(window_data_t *wnd_data) {
 	if (wnd_data) {
-		g2dOnDestroyBegin(wnd_data[0].go_obj_id);
+		g2dDestroyBegin(wnd_data[0].go_obj_id);
 		if (wnd_data[0].wnd.ctx.rc) {
 			wglDeleteContext(wnd_data[0].wnd.ctx.rc);
 			wnd_data[0].wnd.ctx.rc = NULL;
@@ -305,7 +333,7 @@ static void window_destroy(window_data_t *wnd_data) {
 			UnregisterClass(wnd_data[0].wnd.cls.lpszClassName, wnd_data[0].wnd.cls.hInstance);
 			wnd_data[0].wnd.cls.lpszClassName = NULL;
 		}
-		g2dOnDestroyEnd(wnd_data[0].go_obj_id);
+		g2dDestroyEnd(wnd_data[0].go_obj_id);
 		free(wnd_data);
 		active_windows--;
 	}
@@ -336,7 +364,7 @@ static void window_create(window_data_t *const wnd_data, LPCTSTR const title, vo
 	if (err[0] == NULL) {
 		int x, y, w, h; window_metrics(wnd_data, &x, &y, &w, &h);
 		const DWORD style = wnd_data[0].config.style;
-		wnd_data[0].wnd.hndl = CreateWindow(wnd_data[0].wnd.cls.lpszClassName, title, style, x, y, w, h, NULL, NULL, wnd_data[0].wnd.cls.hInstance, NULL);
+		wnd_data[0].wnd.hndl = CreateWindow(wnd_data[0].wnd.cls.lpszClassName, title, style, x, y, w, h, NULL, NULL, wnd_data[0].wnd.cls.hInstance, (LPVOID)wnd_data);
 		if (!wnd_data[0].wnd.hndl)
 			err[0] = error_new(51, GetLastError(), NULL);
 	}
@@ -447,7 +475,7 @@ void *g2d_window_create(void **const data, const int go_obj, const int x, const 
 
 void *g2d_window_destroy(void *data, void **const err) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	g2dOnDestroyBegin(wnd_data[0].go_obj_id);
+	g2dDestroyBegin(wnd_data[0].go_obj_id);
 	if (wnd_data[0].wnd.ctx.rc) {
 		if (!wglDeleteContext(wnd_data[0].wnd.ctx.rc) && err[0] == NULL) {
 			err[0] = error_new(58, GetLastError(), NULL);
@@ -475,7 +503,7 @@ void *g2d_window_destroy(void *data, void **const err) {
 		if (!is_class_registered())
 			PostQuitMessage(0);
 	}
-	g2dOnDestroyEnd(wnd_data[0].go_obj_id);
+	g2dDestroyEnd(wnd_data[0].go_obj_id);
 	free(data);
 	active_windows--;
 	return err[0];

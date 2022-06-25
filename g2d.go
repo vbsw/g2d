@@ -14,15 +14,15 @@ import (
 )
 
 const (
-	notInitialized = "g2d not initialized"
+	notInitialized    = "g2d not initialized"
 	alreadyProcessing = "already processing events"
 )
 
 var (
-	Err error
+	Err         error
 	initialized bool
-	processing bool
-	cb tCallback
+	processing  bool
+	cb          tCallback
 )
 
 type Parameters struct {
@@ -32,32 +32,57 @@ type Parameters struct {
 	ClientMaxWidth, ClientMaxHeight   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
-	Title string
+	Title                             string
+}
+
+type Properties struct {
+}
+
+type Command struct {
+	CloseReq bool
+	CloseUnc bool
 }
 
 type Window struct {
+	Props Properties
+	Cmd Command
 }
 
 type AbstractWindow interface {
 	Config(params *Parameters) error
+	KeyDown(key int, repeated uint) error
+	KeyUp(key int) error
 	Close() (bool, error)
 	Destroy()
 	baseStruct() *Window
+	updatePropsResetCmd(props Properties)
+	propsAndCmd() (Properties, Command)
+}
+
+type tManager struct {
+	data    unsafe.Pointer
+	wndBase *Window
+	wndAbst AbstractWindow
+	title   string
+	props Properties
+	cmd  Command
 }
 
 // tCallback holds objects identified by ids.
 type tCallback struct {
-	mgrs  []*tManager
+	mgrs   []*tManager
 	unused []int
 }
 
-type tManager struct {
-	data unsafe.Pointer
-	wndBase *Window
-	wndAbst AbstractWindow
+func (window *Window) Config(params *Parameters) error {
+	return nil
 }
 
-func (window *Window) Config(params *Parameters) error {
+func (window *Window) KeyDown(key int, repeated uint) error {
+	return nil
+}
+
+func (window *Window) KeyUp(key int) error {
 	return nil
 }
 
@@ -66,6 +91,16 @@ func (window *Window) Close() (bool, error) {
 }
 
 func (window *Window) Destroy() {
+}
+
+func (window *Window) updatePropsResetCmd(props Properties) {
+	window.Props = props
+	window.Cmd.CloseReq = false
+	window.Cmd.CloseUnc = false
+}
+
+func (window *Window) propsAndCmd() (Properties, Command) {
+	return window.Props, window.Cmd
 }
 
 func (window *Window) baseStruct() *Window {

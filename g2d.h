@@ -7,15 +7,17 @@ extern "C" {
 
 #if defined(G2D_WIN32)
 typedef unsigned long g2d_ul_t;
+typedef unsigned int g2d_ui_t;
 extern void g2d_error(void *err, int *err_num, g2d_ul_t *err_win32, char **err_str);
 extern void g2d_error_free(void *err);
 extern void *g2d_string_new(void **str, void *go_cstr);
 extern void g2d_string_free(void *str);
 extern void *g2d_init();
 extern void *g2d_process_events();
-extern void g2d_set_static_err(int go_obj);
+extern void g2d_err_static_set(int go_obj);
 extern void *g2d_window_create(void **data, int go_obj, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t);
 extern void *g2d_window_destroy(void *data, void **err);
+extern void g2d_message_close_post(void *data);
 /*
 extern void g2d_free(void *data);
 extern void g2d_window_allocate(void **data, void **err);

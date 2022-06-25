@@ -12,11 +12,10 @@ package g2d
 // #include "g2d.h"
 import "C"
 import (
-	"fmt"
 	"errors"
+	"fmt"
 	"strconv"
 	"unsafe"
-//	"reflect"
 )
 
 func Init(stub interface{}) {
@@ -49,7 +48,7 @@ func Show(window AbstractWindow) {
 				f := toCInt(params.Fullscreen)
 				t, errC := toTString(params.Title)
 				if errC == nil {
-					mgr, mgrId := registerManager(window)
+					mgr, mgrId := registerNewManager(window, params.Title)
 					errC = C.g2d_window_create(&mgr.data, mgrId, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t)
 					if errC != nil {
 						cb.Unregister(int(mgrId))
@@ -111,18 +110,107 @@ func newParameters() *Parameters {
 	params.Resizable = true
 	params.Fullscreen = false
 	params.Centered = true
-	params.Title = "g2d - 0.1.0 世界"
+	params.Title = "g2d - 0.1.0"
 	return params
 }
 
-func registerManager(window AbstractWindow) (*tManager, C.int) {
+func registerNewManager(window AbstractWindow, title string) (*tManager, C.int) {
 	mgr := new(tManager)
 	mgr.wndBase = window.baseStruct()
 	mgr.wndAbst = window
+	mgr.title = title
 	return mgr, C.int(cb.Register(mgr))
 }
 
-// toError converts C error to Go error.
+func (mgr *tManager) updatePropsResetCmd() {
+	// TODO update mgr props
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+}
+
+func (mgr *tManager) applyProps(props Properties) {
+}
+
+func (mgr *tManager) applyCmd(cmd Command) {
+	if cmd.CloseUnc {
+		mgr.destroy()
+	} else if cmd.CloseReq {
+		C.g2d_message_close_post(mgr.data)
+	}
+}
+
+func (mgr *tManager) destroy() {
+	var errC unsafe.Pointer
+	errC = C.g2d_window_destroy(mgr.data, &errC)
+	setErr(toError(errC))
+}
+
+func (mgr *tManager) applyPropsAndCmd() {
+	if Err == nil {
+		props, cmd := mgr.wndAbst.propsAndCmd()
+		if mgr.props != props {
+			mgr.applyProps(props)
+		}
+		if mgr.cmd != cmd {
+			mgr.applyCmd(cmd)
+		}
+	}
+}
+
+//export g2dKeyDown
+func g2dKeyDown(objIdC, code C.int, repeated C.g2d_ui_t) {
+	mgr := cb.mgrs[int(objIdC)]
+	mgr.updatePropsResetCmd()
+	err := mgr.wndAbst.KeyDown(int(code), uint(repeated))
+	setErr(err)
+	mgr.applyPropsAndCmd()
+}
+
+//export g2dKeyUp
+func g2dKeyUp(objIdC, code C.int) {
+	mgr := cb.mgrs[int(objIdC)]
+	mgr.updatePropsResetCmd()
+	err := mgr.wndAbst.KeyUp(int(code))
+	setErr(err)
+	mgr.applyPropsAndCmd()
+}
+
+//export g2dClose
+func g2dClose(objIdC C.int) {
+	mgr := cb.mgrs[int(objIdC)]
+	mgr.updatePropsResetCmd()
+	confirmed, err := mgr.wndAbst.Close()
+	setErr(err)
+	if confirmed {
+		mgr.destroy()
+	}
+	mgr.applyPropsAndCmd()
+}
+
+//export g2dDestroyBegin
+func g2dDestroyBegin(objIdC C.int) {
+	mgr := cb.mgrs[int(objIdC)]
+	mgr.updatePropsResetCmd()
+	mgr.wndAbst.Destroy()
+}
+
+//export g2dDestroyEnd
+func g2dDestroyEnd(objIdC C.int) {
+	cb.Unregister(int(objIdC))
+}
+
+//export goDebug
+func goDebug(a, b C.int, c, d C.g2d_ul_t) {
+	fmt.Println(a, b, c, d)
+}
+
+func setErr(err error) {
+	if err != nil && Err == nil {
+		Err = err
+		C.g2d_err_static_set(0)
+	}
+}
+
+// toError converts C struct to Go error.
 func toError(errC unsafe.Pointer) error {
 	if errC != nil {
 		var errStr string
@@ -193,10 +281,13 @@ func toError(errC unsafe.Pointer) error {
 			C.g2d_error_free(errC)
 			return Err
 		default:
-			errStr = "unknown error " + strconv.FormatUint(uint64(errNumC), 10)
+			errStr = "unknown error"
 		}
-		if errWin32 != 0 {
-			errStr = errStr + " (" + strconv.FormatUint(uint64(errWin32), 10) + ")"
+		errStr = errStr + " (" + strconv.FormatUint(uint64(errNumC), 10)
+		if errWin32 == 0 {
+			errStr = errStr + ")"
+		} else {
+			errStr = errStr + ", " + strconv.FormatUint(uint64(errWin32), 10) + ")"
 		}
 		if errStrC != nil {
 			errStr = errStr + "; " + C.GoString(errStrC)
@@ -205,34 +296,4 @@ func toError(errC unsafe.Pointer) error {
 		return errors.New(errStr)
 	}
 	return nil
-}
-
-//export g2dOnClose
-func g2dOnClose(objIdC C.int) {
-	mgr := cb.mgrs[int(objIdC)]
-	confirmed, err := mgr.wndAbst.Close()
-	if confirmed {
-		var errC unsafe.Pointer
-		errC = C.g2d_window_destroy(mgr.data, &errC)
-		if err == nil && errC != nil {
-			err = toError(errC)
-		}
-	}
-	Err = err
-}
-
-//export g2dOnDestroyBegin
-func g2dOnDestroyBegin(objIdC C.int) {
-	mgr := cb.mgrs[int(objIdC)]
-	mgr.wndAbst.Destroy()
-}
-
-//export g2dOnDestroyEnd
-func g2dOnDestroyEnd(objIdC C.int) {
-	cb.Unregister(int(objIdC))
-}
-
-//export goDebug
-func goDebug(a, b C.int, c, d C.g2d_ul_t) {
-	fmt.Println(a, b, c, d)
 }
