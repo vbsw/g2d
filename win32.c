@@ -94,6 +94,8 @@ typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
 #define CLASS_NAME TEXT("g2d")
 
+static const WPARAM const MSG_SHOW = (WPARAM)"message shown";
+
 typedef struct {
 	int err_num;
 	g2d_ul_t err_win32;
@@ -137,7 +139,7 @@ typedef struct {
 	int go_obj_id;
 } window_data_t;
 
-static error_t err_no_mem = {1, ERROR_SUCCESS, NULL};
+static error_t err_no_mem = {1, 0, NULL};
 static error_t *err_static = NULL;
 static HINSTANCE instance = NULL;
 static BOOL initialized = FALSE;
@@ -206,6 +208,7 @@ static BOOL is_class_registered() {
 	return FALSE;
 }
 
+#include "win32_debug.h"
 #include "win32_keys.h"
 #include "win32_init.h"
 #include "win32_window.h"
@@ -274,9 +277,13 @@ void g2d_err_static_set(const int go_obj) {
 	err_static = error_new(100, (DWORD) go_obj, NULL);
 }
 
-void g2d_message_close_post(void *data) {
+void *g2d_message_post(void *data, const int id) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	PostMessage(wnd_data[0].wnd.hndl, WM_CLOSE, 0, 0);
+	void *err = NULL;
+	switch (id) {
+	case 0: if (!PostMessage(wnd_data[0].wnd.hndl, WM_CLOSE, 0, 0)) err = error_new(66, 0, NULL); break;
+	}
+	return err;
 }
 
 /* #if defined(G2D_WIN32) */

@@ -17,6 +17,7 @@ import (
 const (
 	notInitialized    = "g2d not initialized"
 	alreadyProcessing = "already processing events"
+	messageFailed = "message post failed"
 )
 
 var (
@@ -34,6 +35,7 @@ type Parameters struct {
 	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
+	LogicThread, GraphicThread bool
 	Title                             string
 }
 
@@ -53,8 +55,8 @@ type Command struct {
 }
 
 type Time struct {
-	NanosUpdatePrev int64
-	NanosUpdateCurr int64
+	NanosUpdate int64
+	NanosEvent int64
 }
 
 type Window struct {
@@ -65,27 +67,74 @@ type Window struct {
 
 type AbstractWindow interface {
 	Config(params *Parameters) error
-	KeyDown(key int, repeated uint, nanos int64) error
-	KeyUp(key int, nanos int64) error
-	Close(nanos int64) (bool, error)
-	Destroy(nanos int64)
+	Create() error
+	Show() error
+	KeyDown(key int, repeated uint) error
+	KeyUp(key int) error
+	Close() (bool, error)
+	Destroy()
 	baseStruct() *Window
 	updatePropsResetCmd(props Properties)
 	propsAndCmd() (Properties, Command)
 }
 
-type tManager struct {
+type tManager interface {
+	onCreate(nanos int64)
+	onShow(nanos int64)
+	onKeyDown(key int, repeated uint, nanos int64)
+	onKeyUp(key int, nanos int64)
+	onClose(nanos int64)
+	onDestroy(nanos int64)
+	destroy()
+}
+
+type tManagerBase struct {
 	data    unsafe.Pointer
-	wndBase *Window
 	wndAbst AbstractWindow
+	wndBase *Window
 	props Properties
+}
+
+type tManagerNoThreads struct {
+	tManagerBase
 	cmd  Command
+}
+
+type tManagerLogicThread struct {
+	tManagerBase
+}
+
+type tManagerGraphicThread struct {
+}
+
+type tManagerLogicGraphicThread struct {
 }
 
 // tCallback holds objects identified by ids.
 type tCallback struct {
-	mgrs   []*tManager
+	mgrs   []tManager
 	unused []int
+}
+
+func newParameters() *Parameters {
+	params := new(Parameters)
+	params.ClientX = 50
+	params.ClientY = 50
+	params.ClientWidth = 640
+	params.ClientHeight = 480
+	params.ClientWidthMin = 0
+	params.ClientHeightMin = 0
+	params.ClientWidthMax = 99999
+	params.ClientHeightMax = 99999
+	params.MouseLocked = false
+	params.Borderless = false
+	params.Dragable = false
+	params.Resizable = true
+	params.Fullscreen = false
+	params.Centered = true
+	params.LogicThread = true
+	params.Title = "g2d - 0.1.0"
+	return params
 }
 
 func (t *Time) NanosNow() int64 {
@@ -96,19 +145,27 @@ func (window *Window) Config(params *Parameters) error {
 	return nil
 }
 
-func (window *Window) KeyDown(key int, repeated uint, nanos int64) error {
+func (window *Window) Create() error {
 	return nil
 }
 
-func (window *Window) KeyUp(key int, nanos int64) error {
+func (window *Window) Show() error {
 	return nil
 }
 
-func (window *Window) Close(nanos int64) (bool, error) {
+func (window *Window) KeyDown(key int, repeated uint) error {
+	return nil
+}
+
+func (window *Window) KeyUp(key int) error {
+	return nil
+}
+
+func (window *Window) Close() (bool, error) {
 	return true, nil
 }
 
-func (window *Window) Destroy(nanos int64) {
+func (window *Window) Destroy() {
 }
 
 func (window *Window) baseStruct() *Window {
@@ -127,7 +184,7 @@ func (window *Window) propsAndCmd() (Properties, Command) {
 
 // Register returns a new id number for mgr. It will not be garbage collected until
 // Unregister is called with this id.
-func (cb *tCallback) Register(mgr *tManager) int {
+func (cb *tCallback) Register(mgr tManager) int {
 	if len(cb.unused) == 0 {
 		cb.mgrs = append(cb.mgrs, mgr)
 		return len(cb.mgrs) - 1
@@ -152,6 +209,46 @@ func (cb *tCallback) UnregisterAll() {
 	for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
 		cb.Unregister(i)
 	}
+}
+
+func newManager(window AbstractWindow, params *Parameters, data unsafe.Pointer) tManager {
+	var mgr tManager
+	if params.LogicThread {
+		if params.GraphicThread {
+			mgr = newManagerNoThreads(window, params, data)
+		} else {
+			mgr = newManagerNoThreads(window, params, data)
+			//mgr = newManagerLogicThread(window, params, data)
+		}
+	} else {
+		if params.GraphicThread {
+			mgr = newManagerNoThreads(window, params, data)
+		} else {
+			mgr = newManagerNoThreads(window, params, data)
+		}
+	}
+	return mgr
+}
+
+func newManagerNoThreads(window AbstractWindow, params *Parameters, data unsafe.Pointer) tManager {
+	mgr := new(tManagerNoThreads)
+	mgr.initBase(window, params, data)
+	return mgr
+}
+
+/*
+func newManagerLogicThread(window AbstractWindow, params *Parameters, data unsafe.Pointer) tManager {
+	mgr := new(tManagerLogicThread)
+	mgr.initBase(window, params, data)
+	return mgr
+}
+*/
+
+func (mgr *tManagerBase) initBase(window AbstractWindow, params *Parameters, data unsafe.Pointer) {
+	mgr.wndBase = window.baseStruct()
+	mgr.wndAbst = window
+	mgr.props.Title = params.Title
+	mgr.data = data
 }
 
 func time() int64 {

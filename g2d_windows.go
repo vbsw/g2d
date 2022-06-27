@@ -19,6 +19,10 @@ import (
 	"unsafe"
 )
 
+const (
+	msgClose = 0
+)
+
 func Init(stub interface{}) {
 	if !initialized {
 		errC := C.g2d_init()
@@ -32,36 +36,51 @@ func Show(window AbstractWindow) {
 	if initialized {
 		if Err == nil {
 			params := newParameters()
+			window.baseStruct().Time.NanosEvent = time()
+			window.baseStruct().Time.NanosUpdate = window.baseStruct().Time.NanosEvent
 			Err = window.Config(params)
-			if Err == nil {
-				x := C.int(params.ClientX)
-				y := C.int(params.ClientY)
-				w := C.int(params.ClientWidth)
-				h := C.int(params.ClientHeight)
-				wn := C.int(params.ClientWidthMin)
-				hn := C.int(params.ClientHeightMin)
-				wx := C.int(params.ClientWidthMax)
-				hx := C.int(params.ClientHeightMax)
-				c := toCInt(params.Centered)
-				l := toCInt(params.MouseLocked)
-				b := toCInt(params.Borderless)
-				d := toCInt(params.Dragable)
-				r := toCInt(params.Resizable)
-				f := toCInt(params.Fullscreen)
-				t, errC := toTString(params.Title)
-				if errC == nil {
-					mgr, mgrId := registerNewManager(window, params.Title)
-					errC = C.g2d_window_create(&mgr.data, mgrId, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t)
-					if errC != nil {
-						cb.Unregister(int(mgrId))
-					}
-				}
-				C.g2d_string_free(t)
-				Err = toError(errC)
-			}
+			createWindow(window, params)
 		}
 	} else {
 		panic(notInitialized)
+	}
+}
+
+func createWindow(window AbstractWindow, params *Parameters) {
+	if Err == nil {
+		x := C.int(params.ClientX)
+		y := C.int(params.ClientY)
+		w := C.int(params.ClientWidth)
+		h := C.int(params.ClientHeight)
+		wn := C.int(params.ClientWidthMin)
+		hn := C.int(params.ClientHeightMin)
+		wx := C.int(params.ClientWidthMax)
+		hx := C.int(params.ClientHeightMax)
+		c := toCInt(params.Centered)
+		l := toCInt(params.MouseLocked)
+		b := toCInt(params.Borderless)
+		d := toCInt(params.Dragable)
+		r := toCInt(params.Resizable)
+		f := toCInt(params.Fullscreen)
+		t, errC := toTString(params.Title)
+		if errC == nil {
+			var data unsafe.Pointer
+			mgrId := cb.Register(nil)
+			errC = C.g2d_window_create(&data, C.int(mgrId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t)
+			if errC == nil {
+				cb.mgrs[mgrId] = newManager(window, params, data)
+				cb.mgrs[mgrId].onCreate(time())
+				if Err == nil {
+					errC = C.g2d_window_show(data)
+				} else {
+					cb.mgrs[mgrId].destroy()
+				}
+			} else {
+				cb.Unregister(mgrId)
+			}
+		}
+		C.g2d_string_free(t)
+		setErr(toError(errC))
 	}
 }
 
@@ -80,12 +99,11 @@ func ProcessEvents() {
 				processing = true
 				errC := C.g2d_process_events()
 				if errC != nil {
+					Err = toError(errC)
 					for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
-						errC = C.g2d_window_destroy(cb.mgrs[i].data, &errC)
+						cb.mgrs[i].destroy()
 					}
 				}
-				cb.UnregisterAll()
-				Err = toError(errC)
 				processing = false
 			} else {
 				panic(alreadyProcessing)
@@ -96,35 +114,7 @@ func ProcessEvents() {
 	}
 }
 
-func newParameters() *Parameters {
-	params := new(Parameters)
-	params.ClientX = 50
-	params.ClientY = 50
-	params.ClientWidth = 640
-	params.ClientHeight = 480
-	params.ClientWidthMin = 0
-	params.ClientHeightMin = 0
-	params.ClientWidthMax = 99999
-	params.ClientHeightMax = 99999
-	params.MouseLocked = false
-	params.Borderless = false
-	params.Dragable = false
-	params.Resizable = true
-	params.Fullscreen = false
-	params.Centered = true
-	params.Title = "g2d - 0.1.0"
-	return params
-}
-
-func registerNewManager(window AbstractWindow, title string) (*tManager, C.int) {
-	mgr := new(tManager)
-	mgr.wndBase = window.baseStruct()
-	mgr.wndAbst = window
-	mgr.props.Title = title
-	return mgr, C.int(cb.Register(mgr))
-}
-
-func (mgr *tManager) updatePropsResetCmd() {
+func (mgr *tManagerBase) updateProps() {
 	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
 	C.g2d_window_props(mgr.data, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
 	mgr.props.ClientX = int(x)
@@ -140,10 +130,9 @@ func (mgr *tManager) updatePropsResetCmd() {
 	mgr.props.Resizable = bool(r != 0)
 	mgr.props.Fullscreen = bool(f != 0)
 	mgr.props.MouseLocked = bool(l != 0)
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
 }
 
-func (mgr *tManager) applyProps(props Properties) {
+func (mgr *tManagerBase) applyProps(props Properties) {
 	x := C.int(mgr.props.ClientX)
 	y := C.int(mgr.props.ClientY)
 	w := C.int(mgr.props.ClientWidth)
@@ -160,75 +149,153 @@ func (mgr *tManager) applyProps(props Properties) {
 	C.g2d_window_props_apply(mgr.data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l)
 }
 
-func (mgr *tManager) applyCmd(cmd Command) {
+func (mgr *tManagerBase) applyCmd(cmd Command) {
 	if cmd.CloseUnc {
 		mgr.destroy()
 	} else if cmd.CloseReq {
-		C.g2d_message_close_post(mgr.data)
+		errC := C.g2d_message_post(mgr.data, msgClose)
+		setErr(toError(errC))
 	}
 }
 
-func (mgr *tManager) destroy() {
+func (mgr *tManagerBase) createToWindow(nanos int64) error {
+	mgr.wndBase.Time.NanosEvent = nanos
+	err := mgr.wndAbst.Create()
+	return err
+}
+
+func (mgr *tManagerBase) showToWindow(nanos int64) error {
+	mgr.wndBase.Time.NanosEvent = nanos
+	err := mgr.wndAbst.Show()
+	return err
+}
+
+func (mgr *tManagerBase) keyDownToWindow(code int, repeated uint, nanos int64) error {
+	mgr.wndBase.Time.NanosEvent = nanos
+	err := mgr.wndAbst.KeyDown(int(code), uint(repeated))
+	return err
+}
+
+func (mgr *tManagerBase) keyUpToWindow(code int, nanos int64) error {
+	mgr.wndBase.Time.NanosEvent = nanos
+	err := mgr.wndAbst.KeyUp(int(code))
+	return err
+}
+
+func (mgr *tManagerBase) closeToWindow(nanos int64) (bool,error) {
+	mgr.wndBase.Time.NanosEvent = nanos
+	confirmed, err := mgr.wndAbst.Close()
+	return confirmed, err
+}
+
+func (mgr *tManagerBase) destroyToWindow(nanos int64) {
+	mgr.wndBase.Time.NanosEvent = nanos
+	mgr.wndAbst.Destroy()
+}
+
+func (mgr *tManagerBase) destroy() {
 	var errC unsafe.Pointer
 	errC = C.g2d_window_destroy(mgr.data, &errC)
 	setErr(toError(errC))
 }
 
-func (mgr *tManager) applyPropsAndCmd() {
-	if Err == nil {
-		props, cmd := mgr.wndAbst.propsAndCmd()
-		if mgr.props != props {
-			mgr.applyProps(props)
-		}
-		if mgr.cmd != cmd {
-			mgr.applyCmd(cmd)
-		}
+func (mgr *tManagerNoThreads) onCreate(nanos int64) {
+	mgr.updateProps()
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	err := mgr.createToWindow(nanos)
+	setErr(err)
+	// only properties - no commands, because window isn't even shown, yet
+	if Err == nil && mgr.props != mgr.wndBase.Props {
+		// TODO test functionality
+		mgr.applyProps(mgr.wndBase.Props)
 	}
 }
 
-//export g2dKeyDown
-func g2dKeyDown(objIdC, code C.int, repeated C.g2d_ui_t) {
-	nanos := time()
-	mgr := cb.mgrs[int(objIdC)]
-	mgr.updatePropsResetCmd()
-	mgr.wndBase.Time.NanosUpdateCurr = nanos
-	err := mgr.wndAbst.KeyDown(int(code), uint(repeated), nanos)
+func (mgr *tManagerNoThreads) onShow(nanos int64) {
+	mgr.updateProps()
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	err := mgr.showToWindow(nanos)
 	setErr(err)
-	mgr.applyPropsAndCmd()
+	mgr.applyPropsAndCmdFromWindow()
 }
 
-//export g2dKeyUp
-func g2dKeyUp(objIdC, code C.int) {
-	nanos := time()
-	mgr := cb.mgrs[int(objIdC)]
-	mgr.updatePropsResetCmd()
-	mgr.wndBase.Time.NanosUpdateCurr = nanos
-	err := mgr.wndAbst.KeyUp(int(code), nanos)
+func (mgr *tManagerNoThreads) onKeyDown(code int, repeated uint, nanos int64) {
+	mgr.updateProps()
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	err := mgr.keyDownToWindow(code, repeated, nanos)
 	setErr(err)
-	mgr.applyPropsAndCmd()
+	mgr.applyPropsAndCmdFromWindow()
 }
 
-//export g2dClose
-func g2dClose(objIdC C.int) {
-	nanos := time()
-	mgr := cb.mgrs[int(objIdC)]
-	mgr.updatePropsResetCmd()
-	mgr.wndBase.Time.NanosUpdateCurr = nanos
-	confirmed, err := mgr.wndAbst.Close(nanos)
+func (mgr *tManagerNoThreads) onKeyUp(code int, nanos int64) {
+	mgr.updateProps()
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	err := mgr.keyUpToWindow(code, nanos)
+	setErr(err)
+	mgr.applyPropsAndCmdFromWindow()
+}
+
+func (mgr *tManagerNoThreads) onClose(nanos int64) {
+	mgr.updateProps()
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	confirmed, err := mgr.closeToWindow(nanos)
 	setErr(err)
 	if confirmed {
 		mgr.destroy()
 	}
-	mgr.applyPropsAndCmd()
+	mgr.applyPropsAndCmdFromWindow()
+}
+
+func (mgr *tManagerNoThreads) onDestroy(nanos int64) {
+	mgr.updateProps()
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	mgr.destroyToWindow(nanos)
+}
+
+func (mgr *tManagerNoThreads) applyPropsAndCmdFromWindow() {
+	if Err == nil {
+		if mgr.props != mgr.wndBase.Props {
+			mgr.applyProps(mgr.wndBase.Props)
+		}
+		if mgr.cmd != mgr.wndBase.Cmd {
+			mgr.applyCmd(mgr.wndBase.Cmd)
+		}
+	}
+}
+
+/*
+func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) {
+	mgr.updateProps()
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	err := mgr.keyDownToWindow(code, repeated, nanos)
+	setErr(err)
+	mgr.applyPropsAndCmdFromWindow()
+}
+*/
+
+//export g2dShow
+func g2dShow(objIdC C.int) {
+	cb.mgrs[int(objIdC)].onShow(time())
+}
+
+//export g2dKeyDown
+func g2dKeyDown(objIdC, code C.int, repeated C.g2d_ui_t) {
+	cb.mgrs[int(objIdC)].onKeyDown(int(code), uint(repeated), time())
+}
+
+//export g2dKeyUp
+func g2dKeyUp(objIdC, code C.int) {
+	cb.mgrs[int(objIdC)].onKeyUp(int(code), time())
+}
+
+//export g2dClose
+func g2dClose(objIdC C.int) {
+	cb.mgrs[int(objIdC)].onClose(time())
 }
 
 //export g2dDestroyBegin
 func g2dDestroyBegin(objIdC C.int) {
-	nanos := time()
-	mgr := cb.mgrs[int(objIdC)]
-	mgr.updatePropsResetCmd()
-	mgr.wndBase.Time.NanosUpdateCurr = nanos
-	mgr.wndAbst.Destroy(nanos)
+	cb.mgrs[int(objIdC)].onDestroy(time())
 }
 
 //export g2dDestroyEnd
@@ -239,6 +306,11 @@ func g2dDestroyEnd(objIdC C.int) {
 //export goDebug
 func goDebug(a, b C.int, c, d C.g2d_ul_t) {
 	fmt.Println(a, b, c, d)
+}
+
+//export goDebugStr
+func goDebugStr(code C.g2d_ul_t, strC C.g2d_lpcstr) {
+	fmt.Println(C.GoString(strC), code)
 }
 
 func setErr(err error) {
@@ -315,6 +387,13 @@ func toError(errC unsafe.Pointer) error {
 			errStr = "set title failed"
 		case 63:
 			errStr = "wgl functions not initialized"
+		case 64:
+			errStr = notInitialized
+		case 65:
+			// on show
+			errStr = messageFailed
+		case 66:
+			errStr = messageFailed
 		case 100:
 			C.g2d_error_free(errC)
 			return Err

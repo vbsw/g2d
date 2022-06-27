@@ -89,6 +89,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 	} else {
 		window_data_t *const wnd_data = (window_data_t*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 		if (wnd_data) {
+			print_message(message);
 			switch (message) {
 			case WM_CLOSE:
 				g2dClose(wnd_data[0].go_obj_id);
@@ -101,6 +102,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 				if (!key_up_process(wnd_data, message, wParam, lParam))
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 				break;
+			case WM_APP:
+				if (wParam == MSG_SHOW) {
+					g2dShow(wnd_data[0].go_obj_id);
+					break;
+				}
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);
 			}
@@ -413,7 +419,7 @@ static void context_create(window_data_t *const wnd_data, void **const err) {
 				err[0] = error_new(53, GetLastError(), NULL);
 			}
 		} else {
-			err[0] = error_new(52, ERROR_SUCCESS, NULL);
+			err[0] = error_new(52, 0, NULL);
 		}
 	}
 }
@@ -468,12 +474,26 @@ void *g2d_window_create(void **const data, const int go_obj, const int x, const 
 		window_config(wnd_data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, &err);
 		class_register(wnd_data, &err);
 		window_create(wnd_data, ensure_title(t), &err);
-		window_show(wnd_data, &err);
-		if (err == NULL) {
+		context_create(wnd_data, &err);
+		if (err == NULL)
 			data[0] = (void*)wnd_data;
+		else
+			window_destroy(wnd_data);
+	} else {
+		err = error_new(64, GetLastError(), NULL);
+	}
+	return err;
+}
+
+void *g2d_window_show(void *const data) {
+	void *err = NULL;
+	window_data_t *const wnd_data = (window_data_t*)data;
+	window_show(wnd_data, &err);
+	if (err == NULL) {
+		if (PostMessage(wnd_data[0].wnd.hndl, WM_APP, MSG_SHOW, 0)) {
 			active_windows++;
 		} else {
-			window_destroy(wnd_data);
+			err = error_new(65, 0, NULL);
 		}
 	}
 	return err;

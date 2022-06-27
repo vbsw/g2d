@@ -19,7 +19,7 @@ static PROC get_proc(LPCSTR const func_name, void **const err) {
 				memcpy(err_str, func_name, length0);
 				err[0] = error_new(2, err_win32, err_str);
 			} else {
-				err[0] = error_new(1, ERROR_SUCCESS, NULL);
+				err[0] = error_new(1, 0, NULL);
 			}
 		}
 	}
