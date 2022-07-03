@@ -20,9 +20,17 @@ extern void *g2d_window_create(void **data, int go_obj, int x, int y, int w, int
 extern void *g2d_window_show(void *data);
 extern void *g2d_window_destroy(void *data, void **err);
 extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
-extern void g2d_window_props_apply(void *data, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l);
+extern void g2d_client_pos_set(void *data, int x, int y);
+extern void g2d_client_size_set(void *data, int width, int height);
+extern void *g2d_client_pos_apply(void *data);
+extern void *g2d_client_move(void *data);
+extern void g2d_window_style_set(void *data, int wn, int hn, int wx, int hx, int b, int d, int r, int l);
+extern void g2d_client_restore_bak(void *data);
 extern void *g2d_post_close(void *data);
 extern void *g2d_post_update(void *data);
+extern void *g2d_window_title_set(void *data, void *title);
+extern void *g2d_mouse_pos_set(void *data, int x, int y);
+extern void *g2d_window_fullscreen_set(void *data);
 /*
 extern void g2d_free(void *data);
 extern void g2d_window_allocate(void **data, void **err);

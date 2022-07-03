@@ -74,8 +74,8 @@ func createWindow(window AbstractWindow, params *Parameters) {
 			} else {
 				cb.Unregister(mgrId)
 			}
+			C.g2d_string_free(t)
 		}
-		C.g2d_string_free(t)
 		setErr(toError(errC))
 	}
 }
@@ -110,47 +110,123 @@ func ProcessEvents() {
 	}
 }
 
-func (mgr *tManagerBase) updateProps() {
+func (mgr *tManagerBase) propsFromWindow() Properties {
 	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
+	var props Properties
 	C.g2d_window_props(mgr.data, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
-	mgr.props.ClientX = int(x)
-	mgr.props.ClientY = int(y)
-	mgr.props.ClientWidth = int(w)
-	mgr.props.ClientHeight = int(h)
-	mgr.props.ClientWidthMin = int(wn)
-	mgr.props.ClientHeightMin = int(hn)
-	mgr.props.ClientWidthMax = int(wx)
-	mgr.props.ClientHeightMax = int(hx)
-	mgr.props.Borderless = bool(b != 0)
-	mgr.props.Dragable = bool(d != 0)
-	mgr.props.Resizable = bool(r != 0)
-	mgr.props.Fullscreen = bool(f != 0)
-	mgr.props.MouseLocked = bool(l != 0)
+	props.ClientX = int(x)
+	props.ClientY = int(y)
+	props.ClientWidth = int(w)
+	props.ClientHeight = int(h)
+	props.ClientWidthMin = int(wn)
+	props.ClientHeightMin = int(hn)
+	props.ClientWidthMax = int(wx)
+	props.ClientHeightMax = int(hx)
+	props.Borderless = bool(b != 0)
+	props.Dragable = bool(d != 0)
+	props.Resizable = bool(r != 0)
+	props.Fullscreen = bool(f != 0)
+	props.MouseLocked = bool(l != 0)
+	return props
 }
 
-func (mgr *tManagerBase) applyProps(props Properties) {
-	x := C.int(mgr.props.ClientX)
-	y := C.int(mgr.props.ClientY)
-	w := C.int(mgr.props.ClientWidth)
-	h := C.int(mgr.props.ClientHeight)
-	wn := C.int(mgr.props.ClientWidthMin)
-	hn := C.int(mgr.props.ClientHeightMin)
-	wx := C.int(mgr.props.ClientWidthMax)
-	hx := C.int(mgr.props.ClientHeightMax)
-	b := toCInt(mgr.props.Borderless)
-	d := toCInt(mgr.props.Dragable)
-	r := toCInt(mgr.props.Resizable)
-	f := toCInt(props.Fullscreen)
-	l := toCInt(mgr.props.MouseLocked)
-	C.g2d_window_props_apply(mgr.data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l)
+func (mgr *tManagerBase) setClientPos(x, y int) {
+	C.g2d_client_pos_set(mgr.data, C.int(x), C.int(y))
+}
+
+func (mgr *tManagerBase) setClientSize(width, height int) {
+	C.g2d_client_size_set(mgr.data, C.int(width), C.int(height))
+}
+
+func (mgr *tManagerBase) setWindowStyle(props Properties) {
+	wn := C.int(props.ClientWidthMin)
+	hn := C.int(props.ClientHeightMin)
+	wx := C.int(props.ClientWidthMax)
+	hx := C.int(props.ClientHeightMax)
+	b := toCInt(props.Borderless)
+	d := toCInt(props.Dragable)
+	r := toCInt(props.Resizable)
+	l := toCInt(props.MouseLocked)
+	C.g2d_window_style_set(mgr.data, wn, hn, wx, hx, b, d, r, l)
+}
+
+func (mgr *tManagerBase) applyFullscreen() {
+	if Err == nil {
+		errC := C.g2d_window_fullscreen_set(mgr.data)
+		setErr(toError(errC))
+	}
+}
+
+func (mgr *tManagerBase) applyClientPos() {
+	if Err == nil {
+		errC := C.g2d_client_pos_apply(mgr.data)
+		setErr(toError(errC))
+	}
+}
+
+func (mgr *tManagerBase) applyClientMove() {
+	if Err == nil {
+		errC := C.g2d_client_move(mgr.data)
+		setErr(toError(errC))
+	}
 }
 
 func (mgr *tManagerBase) applyCmd(cmd Command) {
-	if cmd.CloseUnc {
-		mgr.destroy()
-	} else if cmd.CloseReq {
-		errC := C.g2d_post_close(mgr.data)
+	if Err == nil {
+		if cmd.CloseUnc {
+			mgr.destroy()
+		} else if cmd.CloseReq {
+			errC := C.g2d_post_close(mgr.data)
+			setErr(toError(errC))
+		}
+	}
+}
+
+func (mgr *tManagerBase) applyMouse(x, y int) {
+	if Err == nil {
+		errC := C.g2d_mouse_pos_set(mgr.data, C.int(x), C.int(y))
 		setErr(toError(errC))
+	}
+}
+
+func (mgr *tManagerBase) applyTitle(title string) {
+	if Err == nil {
+		t, errC := toTString(title)
+		if errC == nil {
+			errC = C.g2d_window_title_set(mgr.data, t)
+			C.g2d_string_free(t)
+		}
+		setErr(toError(errC))
+	}
+}
+
+func (mgr *tManagerBase) applyProps(props Properties, mod tModification) {
+	if Err == nil && !mgr.wndBase.destroying {
+		if mod.pos {
+			mgr.setClientPos(props.ClientX, props.ClientY)
+		}
+		if mod.size {
+			mgr.setClientSize(props.ClientWidth, props.ClientHeight)
+		}
+		if mod.style {
+			mgr.setWindowStyle(props)
+		}
+		if mod.fsToggle && props.Fullscreen {
+			mgr.applyFullscreen()
+		} else if mod.fsToggle {
+			C.g2d_client_restore_bak(mgr.data)
+			mgr.applyClientPos()
+		} else if mod.style {
+			mgr.applyClientPos()
+		} else if mod.pos || mod.size {
+			mgr.applyClientMove()
+		}
+		if mod.mouse {
+			mgr.applyMouse(props.MouseX, props.MouseY)
+		}
+		if mod.title {
+			mgr.applyTitle(props.Title)
+		}
 	}
 }
 
@@ -208,92 +284,94 @@ func (mgr *tManagerBase) destroyToWindow(nanos int64) {
 
 func (mgr *tManagerBase) destroy() {
 	var errC unsafe.Pointer
+	mgr.wndBase.destroying = true
 	errC = C.g2d_window_destroy(mgr.data, &errC)
 	setErr(toError(errC))
 }
 
-func (mgr *tManagerNoThreads) onCreate(nanos int64) {
-	mgr.updateProps()
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
-	err := mgr.createToWindow(nanos)
-	setErr(err)
-	// only properties - no commands, because window isn't even shown, yet
-	if Err == nil && mgr.props != mgr.wndBase.Props {
-		// TODO test
-		mgr.applyProps(mgr.wndBase.Props)
+func (mgr *tManagerNoThreads) applyCmdUpdate() {
+	if Err == nil && !mgr.cmd.CloseUnc && !mgr.autoUpdate && mgr.cmd.Update {
+		errC := C.g2d_post_update(mgr.data)
+		setErr(toError(errC))
 	}
 }
 
+func (mgr *tManagerNoThreads) onCreate(nanos int64) {
+	props := mgr.propsFromWindow()
+	mgr.wndBase.resetPropsAndCmd(props)
+	err := mgr.createToWindow(nanos)
+	setErr(err)
+	// only properties - no commands, because window isn't even shown, yet
+	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
+}
+
 func (mgr *tManagerNoThreads) onShow(nanos int64) {
-	mgr.updateProps()
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	props := mgr.propsFromWindow()
+	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.showToWindow(nanos)
 	setErr(err)
-	mgr.applyPropsAndCmdFromWindow()
+	mgr.applyCmd(mgr.wndBase.Cmd)
+	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
+	mgr.applyCmdUpdate()
 }
 
 func (mgr *tManagerNoThreads) onKeyDown(code int, repeated uint, nanos int64) {
-	mgr.updateProps()
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	props := mgr.propsFromWindow()
+	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.keyDownToWindow(code, repeated, nanos)
 	setErr(err)
-	mgr.applyPropsAndCmdFromWindow()
+	mgr.applyCmd(mgr.wndBase.Cmd)
+	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
+	mgr.applyCmdUpdate()
 }
 
 func (mgr *tManagerNoThreads) onKeyUp(code int, nanos int64) {
-	mgr.updateProps()
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	props := mgr.propsFromWindow()
+	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.keyUpToWindow(code, nanos)
 	setErr(err)
-	mgr.applyPropsAndCmdFromWindow()
+	mgr.applyCmd(mgr.wndBase.Cmd)
+	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
+	mgr.applyCmdUpdate()
 }
 
 func (mgr *tManagerNoThreads) onUpdate(nanos int64) {
-	mgr.updateProps()
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	props := mgr.propsFromWindow()
+	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.updateToWindow(nanos)
 	setErr(err)
-	mgr.applyPropsAndCmdFromWindow()
+	mgr.applyCmd(mgr.wndBase.Cmd)
+	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
+	mgr.applyCmdUpdate()
 }
 
 func (mgr *tManagerNoThreads) onClose(nanos int64) {
-	mgr.updateProps()
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	props := mgr.propsFromWindow()
+	mgr.wndBase.resetPropsAndCmd(props)
 	confirmed, err := mgr.closeToWindow(nanos)
 	setErr(err)
 	if confirmed {
 		mgr.destroy()
+	} else {
+		mgr.applyCmd(mgr.wndBase.Cmd)
+		mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
+		mgr.applyCmdUpdate()
 	}
-	mgr.applyPropsAndCmdFromWindow()
 }
 
 func (mgr *tManagerNoThreads) onDestroy(nanos int64) {
-	mgr.updateProps()
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	props := mgr.propsFromWindow()
+	mgr.wndBase.resetPropsAndCmd(props)
 	mgr.destroyToWindow(nanos)
-}
-
-func (mgr *tManagerNoThreads) applyPropsAndCmdFromWindow() {
-	if Err == nil {
-		if mgr.props != mgr.wndBase.Props {
-			mgr.applyProps(mgr.wndBase.Props)
-		}
-		if mgr.cmd != mgr.wndBase.Cmd {
-			mgr.applyCmd(mgr.wndBase.Cmd)
-			if Err == nil && !mgr.cmd.CloseUnc && !mgr.autoUpdate && mgr.cmd.Update {
-				// TODO update
-			}
-		}
-	}
 }
 
 /*
 func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) {
-	mgr.updateProps()
-	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	props := mgr.propsFromWindow()<
+	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.keyDownToWindow(code, repeated, nanos)
 	setErr(err)
-	mgr.applyPropsAndCmdFromWindow()
+	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
 }
 */
 
@@ -425,6 +503,16 @@ func toError(errC unsafe.Pointer) error {
 			errStr = messageFailed
 		case 67:
 			errStr = messageFailed
+		case 68:
+			errStr = "set title failed"
+		case 69:
+			errStr = "set cursor position failed"
+		case 70:
+			errStr = "set fullscreen failed"
+		case 71:
+			errStr = "set window position failed"
+		case 72:
+			errStr = "move window failed"
 		case 100:
 			C.g2d_error_free(errC)
 			return Err

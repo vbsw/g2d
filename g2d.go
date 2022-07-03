@@ -41,6 +41,7 @@ type Parameters struct {
 }
 
 type Properties struct {
+	MouseX, MouseY                    int
 	ClientX, ClientY                  int
 	ClientWidth, ClientHeight         int
 	ClientWidthMin, ClientHeightMin   int
@@ -62,9 +63,10 @@ type Time struct {
 }
 
 type Window struct {
-	Props Properties
-	Cmd   Command
-	Time  Time
+	Props      Properties
+	Cmd        Command
+	Time       Time
+	destroying bool
 }
 
 type AbstractWindow interface {
@@ -77,8 +79,6 @@ type AbstractWindow interface {
 	Close() (bool, error)
 	Destroy()
 	baseStruct() *Window
-	updatePropsResetCmd(props Properties)
-	propsAndCmd() (Properties, Command)
 }
 
 type tManager interface {
@@ -119,6 +119,11 @@ type tManagerLogicGraphicThread struct {
 type tCallback struct {
 	mgrs   []tManager
 	unused []int
+}
+
+type tModification struct {
+	mouse, style, title bool
+	fsToggle, pos, size bool
 }
 
 func newParameters() *Parameters {
@@ -182,14 +187,24 @@ func (window *Window) baseStruct() *Window {
 	return window
 }
 
-func (window *Window) updatePropsResetCmd(props Properties) {
+func (window *Window) resetPropsAndCmd(props Properties) {
 	window.Props = props
 	window.Cmd.CloseReq = false
 	window.Cmd.CloseUnc = false
+	window.Cmd.Update = false
 }
 
-func (window *Window) propsAndCmd() (Properties, Command) {
-	return window.Props, window.Cmd
+func (window *Window) modified(props Properties) tModification {
+	var mod tModification
+	if window.Props != props {
+		mod.fsToggle = bool(window.Props.Fullscreen != props.Fullscreen)
+		mod.mouse = bool(window.Props.MouseX != props.MouseX || window.Props.MouseY != props.MouseY)
+		mod.title = bool(window.Props.Title != props.Title)
+		mod.pos = bool(window.Props.ClientX != props.ClientX || window.Props.ClientY != props.ClientY)
+		mod.size = bool(window.Props.ClientWidth != props.ClientWidth || window.Props.ClientHeight != props.ClientHeight)
+		mod.style = bool(window.Props.Borderless != props.Borderless || window.Props.Resizable != props.Resizable)
+	}
+	return mod
 }
 
 // Register returns a new id number for mgr. It will not be garbage collected until
