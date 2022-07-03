@@ -21,7 +21,8 @@ extern void *g2d_window_show(void *data);
 extern void *g2d_window_destroy(void *data, void **err);
 extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
 extern void g2d_window_props_apply(void *data, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l);
-extern void *g2d_message_post(void *data, int id);
+extern void *g2d_post_close(void *data);
+extern void *g2d_post_update(void *data);
 /*
 extern void g2d_free(void *data);
 extern void g2d_window_allocate(void **data, void **err);

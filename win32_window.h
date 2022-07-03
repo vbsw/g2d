@@ -106,6 +106,9 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 				if (wParam == MSG_SHOW) {
 					g2dShow(wnd_data[0].go_obj_id);
 					break;
+				} else if (MSG_UPDATE) {
+					g2dUpdate(wnd_data[0].go_obj_id);
+					break;
 				}
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);

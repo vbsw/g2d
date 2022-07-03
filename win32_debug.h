@@ -271,5 +271,5 @@ static LPCSTR message_to_string(const UINT message)
 
 static void print_message(const UINT message) {
 	LPCSTR const msg = message_to_string(message);
-	goDebugStr((g2d_ul_t)message, (g2d_lpcstr)msg);
+	goDebugMessage((g2d_ul_t)message, (g2d_lpcstr)msg);
 }

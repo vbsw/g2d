@@ -95,6 +95,7 @@ typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 #define CLASS_NAME TEXT("g2d")
 
 static const WPARAM const MSG_SHOW = (WPARAM)"message shown";
+static const WPARAM const MSG_UPDATE = (WPARAM)"message update";
 
 typedef struct {
 	int err_num;
@@ -277,13 +278,16 @@ void g2d_err_static_set(const int go_obj) {
 	err_static = error_new(100, (DWORD) go_obj, NULL);
 }
 
-void *g2d_message_post(void *data, const int id) {
-	window_data_t *const wnd_data = (window_data_t*)data;
-	void *err = NULL;
-	switch (id) {
-	case 0: if (!PostMessage(wnd_data[0].wnd.hndl, WM_CLOSE, 0, 0)) err = error_new(66, 0, NULL); break;
-	}
-	return err;
+void *g2d_post_close(void *const data) {
+	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_CLOSE, 0, 0))
+		return error_new(66, 0, NULL);
+	return NULL;
+}
+
+void *g2d_post_update(void *const data) {
+	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_UPDATE, 0))
+		return error_new(67, 0, NULL);
+	return NULL;
 }
 
 /* #if defined(G2D_WIN32) */

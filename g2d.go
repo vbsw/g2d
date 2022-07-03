@@ -17,7 +17,7 @@ import (
 const (
 	notInitialized    = "g2d not initialized"
 	alreadyProcessing = "already processing events"
-	messageFailed = "message post failed"
+	messageFailed     = "message post failed"
 )
 
 var (
@@ -35,7 +35,8 @@ type Parameters struct {
 	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
-	LogicThread, GraphicThread bool
+	LogicThread, GraphicThread        bool
+	AutoUpdate                        bool
 	Title                             string
 }
 
@@ -45,24 +46,25 @@ type Properties struct {
 	ClientWidthMin, ClientHeightMin   int
 	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
-	Resizable, Fullscreen   bool
-	Title   string
+	Resizable, Fullscreen             bool
+	Title                             string
 }
 
 type Command struct {
 	CloseReq bool
 	CloseUnc bool
+	Update   bool
 }
 
 type Time struct {
 	NanosUpdate int64
-	NanosEvent int64
+	NanosEvent  int64
 }
 
 type Window struct {
 	Props Properties
-	Cmd Command
-	Time Time
+	Cmd   Command
+	Time  Time
 }
 
 type AbstractWindow interface {
@@ -71,6 +73,7 @@ type AbstractWindow interface {
 	Show() error
 	KeyDown(key int, repeated uint) error
 	KeyUp(key int) error
+	Update() error
 	Close() (bool, error)
 	Destroy()
 	baseStruct() *Window
@@ -83,21 +86,23 @@ type tManager interface {
 	onShow(nanos int64)
 	onKeyDown(key int, repeated uint, nanos int64)
 	onKeyUp(key int, nanos int64)
+	onUpdate(nanos int64)
 	onClose(nanos int64)
 	onDestroy(nanos int64)
 	destroy()
 }
 
 type tManagerBase struct {
-	data    unsafe.Pointer
-	wndAbst AbstractWindow
-	wndBase *Window
-	props Properties
+	data       unsafe.Pointer
+	wndAbst    AbstractWindow
+	wndBase    *Window
+	props      Properties
+	autoUpdate bool
 }
 
 type tManagerNoThreads struct {
 	tManagerBase
-	cmd  Command
+	cmd Command
 }
 
 type tManagerLogicThread struct {
@@ -133,6 +138,7 @@ func newParameters() *Parameters {
 	params.Fullscreen = false
 	params.Centered = true
 	params.LogicThread = true
+	params.AutoUpdate = true
 	params.Title = "g2d - 0.1.0"
 	return params
 }
@@ -158,6 +164,10 @@ func (window *Window) KeyDown(key int, repeated uint) error {
 }
 
 func (window *Window) KeyUp(key int) error {
+	return nil
+}
+
+func (window *Window) Update() error {
 	return nil
 }
 
@@ -249,6 +259,7 @@ func (mgr *tManagerBase) initBase(window AbstractWindow, params *Parameters, dat
 	mgr.wndAbst = window
 	mgr.props.Title = params.Title
 	mgr.data = data
+	mgr.autoUpdate = params.AutoUpdate
 }
 
 func time() int64 {

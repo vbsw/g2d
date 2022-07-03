@@ -13,14 +13,10 @@ package g2d
 import "C"
 import (
 	"errors"
-	timepkg "time"
 	"fmt"
 	"strconv"
+	timepkg "time"
 	"unsafe"
-)
-
-const (
-	msgClose = 0
 )
 
 func Init(stub interface{}) {
@@ -153,7 +149,7 @@ func (mgr *tManagerBase) applyCmd(cmd Command) {
 	if cmd.CloseUnc {
 		mgr.destroy()
 	} else if cmd.CloseReq {
-		errC := C.g2d_message_post(mgr.data, msgClose)
+		errC := C.g2d_post_close(mgr.data)
 		setErr(toError(errC))
 	}
 }
@@ -164,9 +160,15 @@ func (mgr *tManagerBase) createToWindow(nanos int64) error {
 	return err
 }
 
+// showToWindow is same as updateToWindow
 func (mgr *tManagerBase) showToWindow(nanos int64) error {
 	mgr.wndBase.Time.NanosEvent = nanos
 	err := mgr.wndAbst.Show()
+	mgr.wndBase.Time.NanosUpdate = nanos
+	if err == nil && mgr.autoUpdate {
+		errC := C.g2d_post_update(mgr.data)
+		err = toError(errC)
+	}
 	return err
 }
 
@@ -182,7 +184,18 @@ func (mgr *tManagerBase) keyUpToWindow(code int, nanos int64) error {
 	return err
 }
 
-func (mgr *tManagerBase) closeToWindow(nanos int64) (bool,error) {
+func (mgr *tManagerBase) updateToWindow(nanos int64) error {
+	mgr.wndBase.Time.NanosEvent = nanos
+	err := mgr.wndAbst.Update()
+	mgr.wndBase.Time.NanosUpdate = nanos
+	if err == nil && mgr.autoUpdate {
+		errC := C.g2d_post_update(mgr.data)
+		err = toError(errC)
+	}
+	return err
+}
+
+func (mgr *tManagerBase) closeToWindow(nanos int64) (bool, error) {
 	mgr.wndBase.Time.NanosEvent = nanos
 	confirmed, err := mgr.wndAbst.Close()
 	return confirmed, err
@@ -206,7 +219,7 @@ func (mgr *tManagerNoThreads) onCreate(nanos int64) {
 	setErr(err)
 	// only properties - no commands, because window isn't even shown, yet
 	if Err == nil && mgr.props != mgr.wndBase.Props {
-		// TODO test functionality
+		// TODO test
 		mgr.applyProps(mgr.wndBase.Props)
 	}
 }
@@ -235,6 +248,14 @@ func (mgr *tManagerNoThreads) onKeyUp(code int, nanos int64) {
 	mgr.applyPropsAndCmdFromWindow()
 }
 
+func (mgr *tManagerNoThreads) onUpdate(nanos int64) {
+	mgr.updateProps()
+	mgr.wndAbst.updatePropsResetCmd(mgr.props)
+	err := mgr.updateToWindow(nanos)
+	setErr(err)
+	mgr.applyPropsAndCmdFromWindow()
+}
+
 func (mgr *tManagerNoThreads) onClose(nanos int64) {
 	mgr.updateProps()
 	mgr.wndAbst.updatePropsResetCmd(mgr.props)
@@ -259,6 +280,9 @@ func (mgr *tManagerNoThreads) applyPropsAndCmdFromWindow() {
 		}
 		if mgr.cmd != mgr.wndBase.Cmd {
 			mgr.applyCmd(mgr.wndBase.Cmd)
+			if Err == nil && !mgr.cmd.CloseUnc && !mgr.autoUpdate && mgr.cmd.Update {
+				// TODO update
+			}
 		}
 	}
 }
@@ -288,6 +312,11 @@ func g2dKeyUp(objIdC, code C.int) {
 	cb.mgrs[int(objIdC)].onKeyUp(int(code), time())
 }
 
+//export g2dUpdate
+func g2dUpdate(objIdC C.int) {
+	cb.mgrs[int(objIdC)].onUpdate(time())
+}
+
 //export g2dClose
 func g2dClose(objIdC C.int) {
 	cb.mgrs[int(objIdC)].onClose(time())
@@ -308,9 +337,9 @@ func goDebug(a, b C.int, c, d C.g2d_ul_t) {
 	fmt.Println(a, b, c, d)
 }
 
-//export goDebugStr
-func goDebugStr(code C.g2d_ul_t, strC C.g2d_lpcstr) {
-	fmt.Println(C.GoString(strC), code)
+//export goDebugMessage
+func goDebugMessage(code C.g2d_ul_t, strC C.g2d_lpcstr) {
+	fmt.Println("Msg:", C.GoString(strC), code)
 }
 
 func setErr(err error) {
@@ -393,6 +422,8 @@ func toError(errC unsafe.Pointer) error {
 			// on show
 			errStr = messageFailed
 		case 66:
+			errStr = messageFailed
+		case 67:
 			errStr = messageFailed
 		case 100:
 			C.g2d_error_free(errC)
