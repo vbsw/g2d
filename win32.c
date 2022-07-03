@@ -94,9 +94,6 @@ typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
 #define CLASS_NAME TEXT("g2d")
 
-static const WPARAM const MSG_SHOW = (WPARAM)"message shown";
-static const WPARAM const MSG_UPDATE = (WPARAM)"message update";
-
 typedef struct {
 	int err_num;
 	g2d_ul_t err_win32;
@@ -139,6 +136,11 @@ typedef struct {
 	int key_repeated[255];
 	int go_obj_id;
 } window_data_t;
+
+static const WPARAM const MSG_SHOW = (WPARAM)"shown";
+static const WPARAM const MSG_UPDATE = (WPARAM)"update";
+static const WPARAM const MSG_PROPS = (WPARAM)"props";
+static const WPARAM const MSG_ERROR = (WPARAM)"error";
 
 static error_t err_no_mem = {1, 0, NULL};
 static error_t *err_static = NULL;
@@ -266,7 +268,7 @@ void g2d_string_free(void *const str) {
 void *g2d_process_events() {
 	if (active_windows > 0) {
 		MSG msg;
-		while (GetMessage(&msg, NULL, 0, 0) > 0 && err_static == NULL) {
+		while (err_static == NULL && GetMessage(&msg, NULL, 0, 0) > 0) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
@@ -287,6 +289,18 @@ void *g2d_post_close(void *const data) {
 void *g2d_post_update(void *const data) {
 	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_UPDATE, 0))
 		return error_new(67, 0, NULL);
+	return NULL;
+}
+
+void *g2d_post_props(void *const data) {
+	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_PROPS, 0))
+		return error_new(68, 0, NULL);
+	return NULL;
+}
+
+void *g2d_post_err(void *const data) {
+	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_ERROR, 0))
+		return error_new(68, 0, NULL);
 	return NULL;
 }
 

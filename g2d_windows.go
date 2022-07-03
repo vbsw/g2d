@@ -93,9 +93,8 @@ func ProcessEvents() {
 		if Err == nil {
 			if !processing {
 				processing = true
-				errC := C.g2d_process_events()
-				if errC != nil {
-					Err = toError(errC)
+				pollEvents()
+				if Err != nil {
 					for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
 						cb.mgrs[i].destroy()
 					}
@@ -108,6 +107,11 @@ func ProcessEvents() {
 	} else {
 		panic(notInitialized)
 	}
+}
+
+func pollEvents() {
+	errC := C.g2d_process_events()
+	Err = toError(errC)
 }
 
 func (mgr *tManagerBase) propsFromWindow() Properties {
@@ -290,7 +294,7 @@ func (mgr *tManagerBase) destroy() {
 }
 
 func (mgr *tManagerNoThreads) applyCmdUpdate() {
-	if Err == nil && !mgr.cmd.CloseUnc && !mgr.autoUpdate && mgr.cmd.Update {
+	if Err == nil && !mgr.cmd.CloseUnc && !mgr.autoUpdate && mgr.wndBase.Cmd.Update {
 		errC := C.g2d_post_update(mgr.data)
 		setErr(toError(errC))
 	}
@@ -365,6 +369,12 @@ func (mgr *tManagerNoThreads) onDestroy(nanos int64) {
 	mgr.destroyToWindow(nanos)
 }
 
+func (mgr *tManagerNoThreads) onProps(nanos int64) {
+}
+
+func (mgr *tManagerNoThreads) onError(nanos int64) {
+}
+
 /*
 func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) {
 	props := mgr.propsFromWindow()<
@@ -408,6 +418,16 @@ func g2dDestroyBegin(objIdC C.int) {
 //export g2dDestroyEnd
 func g2dDestroyEnd(objIdC C.int) {
 	cb.Unregister(int(objIdC))
+}
+
+//export g2dProps
+func g2dProps(objIdC C.int) {
+	cb.mgrs[int(objIdC)].onProps(time())
+}
+
+//export g2dError
+func g2dError(objIdC C.int) {
+	cb.mgrs[int(objIdC)].onError(time())
 }
 
 //export goDebug

@@ -89,6 +89,8 @@ type tManager interface {
 	onUpdate(nanos int64)
 	onClose(nanos int64)
 	onDestroy(nanos int64)
+	onProps(nanos int64)
+	onError(nanos int64)
 	destroy()
 }
 

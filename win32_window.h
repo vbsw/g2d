@@ -87,7 +87,23 @@ static void client_update(window_data_t *const wnd_data) {
 	wnd_data[0].client.y = point.y;
 	wnd_data[0].client.width = (int)(rect.right - rect.left);
 	wnd_data[0].client.height = (int)(rect.bottom - rect.top);
-goDebug(wnd_data[0].client.width, wnd_data[0].client.height, 0, 0);
+}
+
+static BOOL dispatch_msg_go(WPARAM const wParam, const int go_obj_id) {
+	if (wParam == MSG_SHOW) {
+		g2dShow(go_obj_id);
+		return TRUE;
+	} else if (MSG_UPDATE) {
+		g2dUpdate(go_obj_id);
+		return TRUE;
+	} else if (MSG_PROPS) {
+		g2dProps(go_obj_id);
+		return TRUE;
+	} else if (MSG_ERROR) {
+		g2dError(go_obj_id);
+		return TRUE;
+	}
+	return FALSE;
 }
 
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -132,13 +148,8 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 				break;
 			case WM_APP:
-				if (wParam == MSG_SHOW) {
-					g2dShow(wnd_data[0].go_obj_id);
-					break;
-				} else if (MSG_UPDATE) {
-					g2dUpdate(wnd_data[0].go_obj_id);
-					break;
-				}
+				if (!dispatch_msg_go(wParam, wnd_data[0].go_obj_id))
+					result = DefWindowProc(hWnd, message, wParam, lParam);
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);
 			}
