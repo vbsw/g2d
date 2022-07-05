@@ -18,6 +18,7 @@ const (
 	notInitialized    = "g2d not initialized"
 	alreadyProcessing = "already processing events"
 	messageFailed     = "message post failed"
+	postToInactive    = "can't post event to inactive window"
 )
 
 var (
@@ -62,10 +63,15 @@ type Time struct {
 	NanosEvent  int64
 }
 
+type Queue struct {
+	events chan interface{}
+}
+
 type Window struct {
 	Props      Properties
 	Cmd        Command
 	Time       Time
+	Queue      Queue
 	destroying bool
 }
 
@@ -154,6 +160,23 @@ func (t *Time) NanosNow() int64 {
 	return time()
 }
 
+func (que *Queue) init() {
+}
+
+func (que *Queue) Post(event interface{}) {
+	if cap(que.events) > 0 {
+		que.events <- event
+	} else {
+		panic(postToInactive)
+	}
+}
+
+func (window *Window) init() {
+	window.Time.NanosEvent = time()
+	window.baseStruct().Time.NanosUpdate = window.baseStruct().Time.NanosEvent
+	window.Queue.events = make(chan interface{}, 1024 * 8)
+}
+
 func (window *Window) Config(params *Parameters) error {
 	return nil
 }
@@ -238,44 +261,44 @@ func (cb *tCallback) UnregisterAll() {
 	}
 }
 
-func newManager(window AbstractWindow, params *Parameters, data unsafe.Pointer) tManager {
+func newManager(data unsafe.Pointer, window AbstractWindow, params *Parameters) tManager {
 	var mgr tManager
 	if params.LogicThread {
 		if params.GraphicThread {
-			mgr = newManagerNoThreads(window, params, data)
+			mgr = newManagerNoThreads(data, window, params)
 		} else {
-			mgr = newManagerNoThreads(window, params, data)
-			//mgr = newManagerLogicThread(window, params, data)
+			mgr = newManagerNoThreads(data, window, params)
+			//mgr = newManagerLogicThread(data, window, params)
 		}
 	} else {
 		if params.GraphicThread {
-			mgr = newManagerNoThreads(window, params, data)
+			mgr = newManagerNoThreads(data, window, params)
 		} else {
-			mgr = newManagerNoThreads(window, params, data)
+			mgr = newManagerNoThreads(data, window, params)
 		}
 	}
 	return mgr
 }
 
-func newManagerNoThreads(window AbstractWindow, params *Parameters, data unsafe.Pointer) tManager {
+func newManagerNoThreads(data unsafe.Pointer, window AbstractWindow, params *Parameters) tManager {
 	mgr := new(tManagerNoThreads)
-	mgr.initBase(window, params, data)
+	mgr.initBase(data, window, params)
 	return mgr
 }
 
 /*
-func newManagerLogicThread(window AbstractWindow, params *Parameters, data unsafe.Pointer) tManager {
+func newManagerLogicThread(data unsafe.Pointer, window AbstractWindow, params *Parameters) tManager {
 	mgr := new(tManagerLogicThread)
-	mgr.initBase(window, params, data)
+	mgr.initBase(data, window, params)
 	return mgr
 }
 */
 
-func (mgr *tManagerBase) initBase(window AbstractWindow, params *Parameters, data unsafe.Pointer) {
+func (mgr *tManagerBase) initBase(data unsafe.Pointer, window AbstractWindow, params *Parameters) {
+	mgr.data = data
 	mgr.wndBase = window.baseStruct()
 	mgr.wndAbst = window
 	mgr.props.Title = params.Title
-	mgr.data = data
 	mgr.autoUpdate = params.AutoUpdate
 }
 

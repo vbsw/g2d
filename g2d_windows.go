@@ -30,62 +30,22 @@ func Init(stub interface{}) {
 
 func Show(window AbstractWindow) {
 	if initialized {
+		params := initWindow(window)
+		mgrId, data := createWindow(window, params)
 		if Err == nil {
-			params := newParameters()
-			window.baseStruct().Time.NanosEvent = time()
-			window.baseStruct().Time.NanosUpdate = window.baseStruct().Time.NanosEvent
-			Err = window.Config(params)
-			createWindow(window, params)
+			cb.mgrs[mgrId] = newManager(data, window, params)
+			cb.mgrs[mgrId].onCreate(time())
+			if Err == nil {
+				Err = toError(C.g2d_window_show(data))
+			}
+			if Err != nil {
+				// calls cb.Unregister
+				cb.mgrs[mgrId].destroy()
+			}
 		}
 	} else {
 		panic(notInitialized)
 	}
-}
-
-func createWindow(window AbstractWindow, params *Parameters) {
-	if Err == nil {
-		x := C.int(params.ClientX)
-		y := C.int(params.ClientY)
-		w := C.int(params.ClientWidth)
-		h := C.int(params.ClientHeight)
-		wn := C.int(params.ClientWidthMin)
-		hn := C.int(params.ClientHeightMin)
-		wx := C.int(params.ClientWidthMax)
-		hx := C.int(params.ClientHeightMax)
-		c := toCInt(params.Centered)
-		l := toCInt(params.MouseLocked)
-		b := toCInt(params.Borderless)
-		d := toCInt(params.Dragable)
-		r := toCInt(params.Resizable)
-		f := toCInt(params.Fullscreen)
-		t, errC := toTString(params.Title)
-		if errC == nil {
-			var data unsafe.Pointer
-			mgrId := cb.Register(nil)
-			errC = C.g2d_window_create(&data, C.int(mgrId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t)
-			if errC == nil {
-				cb.mgrs[mgrId] = newManager(window, params, data)
-				cb.mgrs[mgrId].onCreate(time())
-				if Err == nil {
-					errC = C.g2d_window_show(data)
-				} else {
-					cb.mgrs[mgrId].destroy()
-				}
-			} else {
-				cb.Unregister(mgrId)
-			}
-			C.g2d_string_free(t)
-		}
-		setErr(toError(errC))
-	}
-}
-
-func toTString(str string) (unsafe.Pointer, unsafe.Pointer) {
-	var strT unsafe.Pointer
-	strC := unsafe.Pointer(C.CString(str))
-	errC := C.g2d_string_new(&strT, strC)
-	C.g2d_string_free(strC)
-	return strT, errC
 }
 
 func ProcessEvents() {
@@ -109,12 +69,62 @@ func ProcessEvents() {
 	}
 }
 
+func initWindow(window AbstractWindow) *Parameters {
+	if Err == nil {
+		params := newParameters()
+		window.baseStruct().init()
+		Err = window.Config(params)
+		return params
+	}
+	return nil
+}
+
+func createWindow(window AbstractWindow, params *Parameters) (int, unsafe.Pointer) {
+	var mgrId int
+	var data unsafe.Pointer
+	if Err == nil {
+		x := C.int(params.ClientX)
+		y := C.int(params.ClientY)
+		w := C.int(params.ClientWidth)
+		h := C.int(params.ClientHeight)
+		wn := C.int(params.ClientWidthMin)
+		hn := C.int(params.ClientHeightMin)
+		wx := C.int(params.ClientWidthMax)
+		hx := C.int(params.ClientHeightMax)
+		c := toCInt(params.Centered)
+		l := toCInt(params.MouseLocked)
+		b := toCInt(params.Borderless)
+		d := toCInt(params.Dragable)
+		r := toCInt(params.Resizable)
+		f := toCInt(params.Fullscreen)
+		t, errC := toTString(params.Title)
+		if errC == nil {
+			mgrId = cb.Register(nil)
+			errC = C.g2d_window_create(&data, C.int(mgrId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t)
+			C.g2d_string_free(t)
+			if errC != nil {
+				cb.Unregister(mgrId)
+			}
+		}
+		Err = toError(errC)
+	}
+	return mgrId, data
+}
+
+func toTString(str string) (unsafe.Pointer, unsafe.Pointer) {
+	var strT unsafe.Pointer
+	strC := unsafe.Pointer(C.CString(str))
+	errC := C.g2d_string_new(&strT, strC)
+	C.g2d_string_free(strC)
+	return strT, errC
+}
+
 func pollEvents() {
 	errC := C.g2d_process_events()
 	Err = toError(errC)
 }
 
-func (mgr *tManagerBase) propsFromWindow() Properties {
+func (mgr *tManagerBase) newProps() Properties {
 	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
 	var props Properties
 	C.g2d_window_props(mgr.data, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
@@ -301,16 +311,16 @@ func (mgr *tManagerNoThreads) applyCmdUpdate() {
 }
 
 func (mgr *tManagerNoThreads) onCreate(nanos int64) {
-	props := mgr.propsFromWindow()
+	props := mgr.newProps()
 	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.createToWindow(nanos)
 	setErr(err)
-	// only properties - no commands, because window isn't even shown, yet
+	// ignore commands, when window not shown
 	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
 }
 
 func (mgr *tManagerNoThreads) onShow(nanos int64) {
-	props := mgr.propsFromWindow()
+	props := mgr.newProps()
 	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.showToWindow(nanos)
 	setErr(err)
@@ -320,7 +330,7 @@ func (mgr *tManagerNoThreads) onShow(nanos int64) {
 }
 
 func (mgr *tManagerNoThreads) onKeyDown(code int, repeated uint, nanos int64) {
-	props := mgr.propsFromWindow()
+	props := mgr.newProps()
 	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.keyDownToWindow(code, repeated, nanos)
 	setErr(err)
@@ -330,7 +340,7 @@ func (mgr *tManagerNoThreads) onKeyDown(code int, repeated uint, nanos int64) {
 }
 
 func (mgr *tManagerNoThreads) onKeyUp(code int, nanos int64) {
-	props := mgr.propsFromWindow()
+	props := mgr.newProps()
 	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.keyUpToWindow(code, nanos)
 	setErr(err)
@@ -340,7 +350,7 @@ func (mgr *tManagerNoThreads) onKeyUp(code int, nanos int64) {
 }
 
 func (mgr *tManagerNoThreads) onUpdate(nanos int64) {
-	props := mgr.propsFromWindow()
+	props := mgr.newProps()
 	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.updateToWindow(nanos)
 	setErr(err)
@@ -350,7 +360,7 @@ func (mgr *tManagerNoThreads) onUpdate(nanos int64) {
 }
 
 func (mgr *tManagerNoThreads) onClose(nanos int64) {
-	props := mgr.propsFromWindow()
+	props := mgr.newProps()
 	mgr.wndBase.resetPropsAndCmd(props)
 	confirmed, err := mgr.closeToWindow(nanos)
 	setErr(err)
@@ -364,7 +374,7 @@ func (mgr *tManagerNoThreads) onClose(nanos int64) {
 }
 
 func (mgr *tManagerNoThreads) onDestroy(nanos int64) {
-	props := mgr.propsFromWindow()
+	props := mgr.newProps()
 	mgr.wndBase.resetPropsAndCmd(props)
 	mgr.destroyToWindow(nanos)
 }
@@ -377,7 +387,7 @@ func (mgr *tManagerNoThreads) onError(nanos int64) {
 
 /*
 func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) {
-	props := mgr.propsFromWindow()<
+	props := mgr.newProps()<
 	mgr.wndBase.resetPropsAndCmd(props)
 	err := mgr.keyDownToWindow(code, repeated, nanos)
 	setErr(err)
