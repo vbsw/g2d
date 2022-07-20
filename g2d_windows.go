@@ -15,21 +15,31 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	timepkg "time"
+	"time"
 	"unsafe"
 )
 
 func Init(stub interface{}) {
 	if !initialized {
-		errC := C.g2d_init()
-		timeStart = timepkg.Now()
-		initialized = bool(errC == nil)
-		Err = toError(errC)
+		var errNumC C.int
+		var errWin32C C.g2d_ul_t
+		var errStrC *C.char
+		C.g2d_init(&errNumC, &errWin32C, &errStrC)
+		Err = toError(errNumC, errWin32C, errStrC)
+		if Err == nil {
+			startTime = time.Now()
+			initialized = true
+		}
 	}
 }
 
-func Show(window AbstractWindow) {
+func Show(window interface{}) {
 	if initialized {
+		if window != nil {
+			wnd, ok := window.(tWindow)
+			if ok {
+				wnd.OnCreate()
+/*
 		params := initWindow(window)
 		mgrId, data := createWindow(window, params)
 		if Err == nil {
@@ -43,11 +53,17 @@ func Show(window AbstractWindow) {
 				cb.mgrs[mgrId].destroy()
 			}
 		}
+*/
+			} else {
+				panic(notEmbedded)
+			}
+		}
 	} else {
 		panic(notInitialized)
 	}
 }
 
+/*
 func ProcessEvents() {
 	if initialized {
 		if Err == nil {
@@ -385,6 +401,8 @@ func (mgr *tManagerNoThreads) onProps(nanos int64) {
 func (mgr *tManagerNoThreads) onError(nanos int64) {
 }
 
+*/
+
 /*
 func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) {
 	props := mgr.newProps()<
@@ -395,6 +413,7 @@ func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) 
 }
 */
 
+/*
 //export g2dShow
 func g2dShow(objIdC C.int) {
 	cb.mgrs[int(objIdC)].onShow(time())
@@ -439,6 +458,120 @@ func g2dProps(objIdC C.int) {
 func g2dError(objIdC C.int) {
 	cb.mgrs[int(objIdC)].onError(time())
 }
+*/
+
+func setErr(err error) {
+	if err != nil && Err == nil {
+		Err = err
+	}
+}
+
+func toError(errNumC C.int, errWin32C C.g2d_ul_t, errStrC *C.char) error {
+	if errNumC != 0 {
+		var errStr string
+		if errNumC < 0 {
+			errStr = memoryAllocation
+			errNumC = -1 * errNumC
+		} else {
+			switch errNumC {
+			case 1:
+				errStr = "get module instance failed"
+			case 2:
+				errStr = memoryAllocation
+			case 10:
+				errStr = "register dummy class failed"
+			case 11:
+				errStr = "create dummy window failed"
+			case 12:
+				errStr = "get dummy device context failed"
+			case 13:
+				errStr = "choose dummy pixel format failed"
+			case 14:
+				errStr = "set dummy pixel format failed"
+			case 15:
+				errStr = "create dummy render context failed"
+			case 16:
+				errStr = "make dummy context current failed"
+			case 17:
+				errStr = "load OpenGL function failed"
+			case 18:
+				errStr = "release dummy context failed"
+			case 19:
+				errStr = "deleting dummy render context failed"
+			case 20:
+				errStr = "destroying dummy window failed"
+			case 21:
+				errStr = "unregister dummy class failed"
+			case 22:
+				errStr = "swap dummy buffer failed"
+			case 30:
+				errStr = "window functions not initialized"
+			case 50:
+				errStr = "register class failed"
+			case 51:
+				errStr = "create window failed"
+			case 52:
+				errStr = "get device context failed"
+			case 53:
+				errStr = "choose pixel format failed"
+			case 54:
+				errStr = "set pixel format failed"
+			case 55:
+				errStr = "create render context failed"
+			case 56:
+				errStr = "make context current failed"
+			case 57:
+				errStr = "release context failed"
+			case 58:
+				errStr = "deleting render context failed"
+			case 59:
+				errStr = "destroying window failed"
+			case 60:
+				errStr = "unregister class failed"
+			case 61:
+				errStr = "swap buffer failed"
+			case 62:
+				errStr = "set title failed"
+			case 63:
+				errStr = "wgl functions not initialized"
+			case 64:
+				errStr = notInitialized
+			case 65:
+				errStr = "set title failed"
+			case 66:
+				errStr = "set cursor position failed"
+			case 67:
+				errStr = "set fullscreen failed"
+			case 68:
+				errStr = "set window position failed"
+			case 69:
+				errStr = "move window failed"
+			case 80:
+				errStr = messageFailed
+			case 81:
+				errStr = messageFailed
+			case 82:
+				errStr = messageFailed
+			case 83:
+				errStr = messageFailed
+			default:
+				errStr = "unknown error"
+			}
+		}
+		errStr = errStr + " (" + strconv.FormatUint(uint64(errNumC), 10)
+		if errWin32C == 0 {
+			errStr = errStr + ")"
+		} else {
+			errStr = errStr + ", " + strconv.FormatUint(uint64(errWin32C), 10) + ")"
+		}
+		if errStrC != nil {
+			errStr = errStr + "; " + C.GoString(errStrC)
+			C.g2d_free(unsafe.Pointer(errStrC))
+		}
+		return errors.New(errStr)
+	}
+	return nil
+}
 
 //export goDebug
 func goDebug(a, b C.int, c, d C.g2d_ul_t) {
@@ -448,118 +581,4 @@ func goDebug(a, b C.int, c, d C.g2d_ul_t) {
 //export goDebugMessage
 func goDebugMessage(code C.g2d_ul_t, strC C.g2d_lpcstr) {
 	fmt.Println("Msg:", C.GoString(strC), code)
-}
-
-func setErr(err error) {
-	if err != nil && Err == nil {
-		Err = err
-		C.g2d_err_static_set(0)
-	}
-}
-
-// toError converts C struct to Go error.
-func toError(errC unsafe.Pointer) error {
-	if errC != nil {
-		var errStr string
-		var errNumC C.int
-		var errWin32 C.g2d_ul_t
-		var errStrC *C.char
-		C.g2d_error(errC, &errNumC, &errWin32, &errStrC)
-		switch errNumC {
-		case 1:
-			errStr = "memory allocation failed"
-		case 2:
-			errStr = "get module instance failed"
-		case 3:
-			errStr = "register dummy class failed"
-		case 4:
-			errStr = "create dummy window failed"
-		case 5:
-			errStr = "get dummy device context failed"
-		case 6:
-			errStr = "choose dummy pixel format failed"
-		case 7:
-			errStr = "set dummy pixel format failed"
-		case 8:
-			errStr = "create dummy render context failed"
-		case 9:
-			errStr = "make dummy context current failed"
-		case 10:
-			errStr = "release dummy context failed"
-		case 11:
-			errStr = "deleting dummy render context failed"
-		case 12:
-			errStr = "destroying dummy window failed"
-		case 13:
-			errStr = "unregister dummy class failed"
-		case 14:
-			errStr = "swap dummy buffer failed"
-		case 15:
-			errStr = "window functions not initialized"
-		case 50:
-			errStr = "register class failed"
-		case 51:
-			errStr = "create window failed"
-		case 52:
-			errStr = "get device context failed"
-		case 53:
-			errStr = "choose pixel format failed"
-		case 54:
-			errStr = "set pixel format failed"
-		case 55:
-			errStr = "create render context failed"
-		case 56:
-			errStr = "make context current failed"
-		case 57:
-			errStr = "release context failed"
-		case 58:
-			errStr = "deleting render context failed"
-		case 59:
-			errStr = "destroying window failed"
-		case 60:
-			errStr = "unregister class failed"
-		case 61:
-			errStr = "swap buffer failed"
-		case 62:
-			errStr = "set title failed"
-		case 63:
-			errStr = "wgl functions not initialized"
-		case 64:
-			errStr = notInitialized
-		case 65:
-			// on show
-			errStr = messageFailed
-		case 66:
-			errStr = messageFailed
-		case 67:
-			errStr = messageFailed
-		case 68:
-			errStr = "set title failed"
-		case 69:
-			errStr = "set cursor position failed"
-		case 70:
-			errStr = "set fullscreen failed"
-		case 71:
-			errStr = "set window position failed"
-		case 72:
-			errStr = "move window failed"
-		case 100:
-			C.g2d_error_free(errC)
-			return Err
-		default:
-			errStr = "unknown error"
-		}
-		errStr = errStr + " (" + strconv.FormatUint(uint64(errNumC), 10)
-		if errWin32 == 0 {
-			errStr = errStr + ")"
-		} else {
-			errStr = errStr + ", " + strconv.FormatUint(uint64(errWin32), 10) + ")"
-		}
-		if errStrC != nil {
-			errStr = errStr + "; " + C.GoString(errStrC)
-		}
-		C.g2d_error_free(errC)
-		return errors.New(errStr)
-	}
-	return nil
 }

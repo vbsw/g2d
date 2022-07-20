@@ -10,33 +10,33 @@ package g2d
 
 import "C"
 import (
-	timepkg "time"
-	"unsafe"
+	"time"
 )
 
 const (
 	notInitialized    = "g2d not initialized"
+	incativeWindow    = "inactive window"
 	alreadyProcessing = "already processing events"
-	messageFailed     = "message post failed"
-	postToInactive    = "can't post event to inactive window"
+	messageFailed     = "post message failed"
+	memoryAllocation  = "memory allocation failed"
+	notEmbedded       = "type Window is not embedded"
 )
 
 var (
-	Err         error
+	Err error
 	initialized bool
 	processing  bool
 	cb          tCallback
-	timeStart   timepkg.Time
+	startTime   time.Time
 )
 
-type Parameters struct {
+type Configuration struct {
 	ClientX, ClientY                  int
 	ClientWidth, ClientHeight         int
 	ClientWidthMin, ClientHeightMin   int
 	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
-	LogicThread, GraphicThread        bool
 	AutoUpdate                        bool
 	Title                             string
 }
@@ -49,42 +49,127 @@ type Properties struct {
 	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen             bool
+	EventTime, UpdateTime             int64
 	Title                             string
 }
 
+type Window struct {
+	Props Properties
+	active bool
+	events chan interface{}
+}
+
+type tWindow interface {
+	OnConfig(config *Configuration) error
+	OnCreate() error
+	OnShow() error
+	OnKeyDown(key int, repeated uint) error
+	OnKeyUp(key int) error
+	OnUpdate() error
+	OnClose() (bool, error)
+	OnDestroy()
+	baseStruct() *Window
+}
+
+// Time returns nanoseconds.
+func Time() int64 {
+	if initialized {
+		timeNow := time.Now()
+		d := timeNow.Sub(startTime)
+		return d.Nanoseconds()
+	}
+	panic(notInitialized)
+}
+
+type tCallback struct {
+	wnds []tWindow
+	unused []int
+}
+
+func (window *Window) init() {
+	window.Props.EventTime = Time()
+	window.Props.UpdateTime = window.Props.EventTime
+	window.events = make(chan interface{}, 1024 * 8)
+}
+
+func (window *Window) OnConfig(config *Configuration) error {
+	return nil
+}
+
+func (window *Window) OnCreate() error {
+	return nil
+}
+
+func (window *Window) OnShow() error {
+	return nil
+}
+
+func (window *Window) OnKeyDown(key int, repeated uint) error {
+	return nil
+}
+
+func (window *Window) OnKeyUp(key int) error {
+	return nil
+}
+
+func (window *Window) OnUpdate() error {
+	return nil
+}
+
+func (window *Window) OnClose() (bool, error) {
+	return true, nil
+}
+
+func (window *Window) OnDestroy() {
+}
+
+func (window *Window) Close() {
+}
+
+func (window *Window) Destroy() {
+}
+
+func (window *Window) PostEvent(event interface{}) {
+}
+
+func (window *Window) baseStruct() *Window {
+	return window
+}
+
+// Register returns a new id number for wnd. It will not be garbage collected until
+// Unregister is called with this id.
+func (cb *tCallback) Register(wnd tWindow) int {
+	if len(cb.unused) == 0 {
+		cb.wnds = append(cb.wnds, wnd)
+		return len(cb.wnds) - 1
+	}
+	indexLast := len(cb.unused) - 1
+	indexObj := cb.unused[indexLast]
+	cb.unused = cb.unused[:indexLast]
+	cb.wnds[indexObj] = wnd
+	return indexObj
+}
+
+// Unregister makes wnd no more identified by id.
+// This object may be garbage collected, now.
+func (cb *tCallback) Unregister(id int) {
+	cb.wnds[id] = nil
+	cb.unused = append(cb.unused, id)
+}
+
+// UnregisterAll makes all regiestered wnds no more identified by id.
+// These objects may be garbage collected, now.
+func (cb *tCallback) UnregisterAll() {
+	for i := 0; i < len(cb.wnds) && cb.wnds[i] != nil; i++ {
+		cb.Unregister(i)
+	}
+}
+
+/*
 type Command struct {
 	CloseReq bool
 	CloseUnc bool
 	Update   bool
-}
-
-type Time struct {
-	NanosUpdate int64
-	NanosEvent  int64
-}
-
-type Queue struct {
-	events chan interface{}
-}
-
-type Window struct {
-	Props      Properties
-	Cmd        Command
-	Time       Time
-	Queue      Queue
-	destroying bool
-}
-
-type AbstractWindow interface {
-	Config(params *Parameters) error
-	Create() error
-	Show() error
-	KeyDown(key int, repeated uint) error
-	KeyUp(key int) error
-	Update() error
-	Close() (bool, error)
-	Destroy()
-	baseStruct() *Window
 }
 
 type tManager interface {
@@ -121,12 +206,6 @@ type tManagerGraphicThread struct {
 }
 
 type tManagerLogicGraphicThread struct {
-}
-
-// tCallback holds objects identified by ids.
-type tCallback struct {
-	mgrs   []tManager
-	unused []int
 }
 
 type tModification struct {
@@ -171,47 +250,6 @@ func (que *Queue) Post(event interface{}) {
 	}
 }
 
-func (window *Window) init() {
-	window.Time.NanosEvent = time()
-	window.baseStruct().Time.NanosUpdate = window.baseStruct().Time.NanosEvent
-	window.Queue.events = make(chan interface{}, 1024 * 8)
-}
-
-func (window *Window) Config(params *Parameters) error {
-	return nil
-}
-
-func (window *Window) Create() error {
-	return nil
-}
-
-func (window *Window) Show() error {
-	return nil
-}
-
-func (window *Window) KeyDown(key int, repeated uint) error {
-	return nil
-}
-
-func (window *Window) KeyUp(key int) error {
-	return nil
-}
-
-func (window *Window) Update() error {
-	return nil
-}
-
-func (window *Window) Close() (bool, error) {
-	return true, nil
-}
-
-func (window *Window) Destroy() {
-}
-
-func (window *Window) baseStruct() *Window {
-	return window
-}
-
 func (window *Window) resetPropsAndCmd(props Properties) {
 	window.Props = props
 	window.Cmd.CloseReq = false
@@ -230,35 +268,6 @@ func (window *Window) modified(props Properties) tModification {
 		mod.style = bool(window.Props.Borderless != props.Borderless || window.Props.Resizable != props.Resizable)
 	}
 	return mod
-}
-
-// Register returns a new id number for mgr. It will not be garbage collected until
-// Unregister is called with this id.
-func (cb *tCallback) Register(mgr tManager) int {
-	if len(cb.unused) == 0 {
-		cb.mgrs = append(cb.mgrs, mgr)
-		return len(cb.mgrs) - 1
-	}
-	indexLast := len(cb.unused) - 1
-	indexObj := cb.unused[indexLast]
-	cb.unused = cb.unused[:indexLast]
-	cb.mgrs[indexObj] = mgr
-	return indexObj
-}
-
-// Unregister makes mgr no more identified by id.
-// This object may be garbage collected, now.
-func (cb *tCallback) Unregister(id int) {
-	cb.mgrs[id] = nil
-	cb.unused = append(cb.unused, id)
-}
-
-// UnregisterAll makes all regiestered mgrs no more identified by id.
-// These objects may be garbage collected, now.
-func (cb *tCallback) UnregisterAll() {
-	for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
-		cb.Unregister(i)
-	}
 }
 
 func newManager(data unsafe.Pointer, window AbstractWindow, params *Parameters) tManager {
@@ -286,13 +295,11 @@ func newManagerNoThreads(data unsafe.Pointer, window AbstractWindow, params *Par
 	return mgr
 }
 
-/*
 func newManagerLogicThread(data unsafe.Pointer, window AbstractWindow, params *Parameters) tManager {
 	mgr := new(tManagerLogicThread)
 	mgr.initBase(data, window, params)
 	return mgr
 }
-*/
 
 func (mgr *tManagerBase) initBase(data unsafe.Pointer, window AbstractWindow, params *Parameters) {
 	mgr.data = data
@@ -302,12 +309,6 @@ func (mgr *tManagerBase) initBase(data unsafe.Pointer, window AbstractWindow, pa
 	mgr.autoUpdate = params.AutoUpdate
 }
 
-func time() int64 {
-	timeNow := timepkg.Now()
-	d := timeNow.Sub(timeStart)
-	return d.Nanoseconds()
-}
-
 // toCInt converts bool value to C int value.
 func toCInt(b bool) C.int {
 	if b {
@@ -315,3 +316,4 @@ func toCInt(b bool) C.int {
 	}
 	return C.int(0)
 }
+*/

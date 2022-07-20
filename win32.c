@@ -94,11 +94,9 @@ typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
 #define CLASS_NAME TEXT("g2d")
 
-typedef struct {
-	int err_num;
-	g2d_ul_t err_win32;
-	char *err_str;
-} error_t;
+#define ERR_NEW1(a) err_num[0] = a;
+#define ERR_NEW2(a, b) { err_num[0] = a; err_win32[0] = (g2d_ul_t)b; }
+#define ERR_NEW3(a, b, c) { err_num[0] = a; err_win32[0] = (g2d_ul_t)b; err_str[0] = c; }
 
 typedef struct {
 	HDC dc;
@@ -142,17 +140,9 @@ static const WPARAM const MSG_UPDATE = (WPARAM)"update";
 static const WPARAM const MSG_PROPS = (WPARAM)"props";
 static const WPARAM const MSG_ERROR = (WPARAM)"error";
 
-static error_t err_no_mem = {1, 0, NULL};
-static error_t *err_static = NULL;
 static HINSTANCE instance = NULL;
 static BOOL initialized = FALSE;
 static int active_windows = 0;
-/*
-static struct {
-	int count;
-	BOOL force_destroy;
-} active_windows = {0, FALSE};
-*/
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
@@ -191,20 +181,18 @@ static PFNGLUNIFORMMATRIX2X3FVPROC       glUniformMatrix2x3fv       = NULL;
 static PFNGLGENERATEMIPMAPPROC           glGenerateMipmap           = NULL;
 static PFNGLACTIVETEXTUREPROC            glActiveTexture            = NULL;
 
-static void *error_new(const int err_num, const DWORD err_win32, char *const err_str) {
-	error_t *const err = (error_t*)malloc(sizeof(error_t));
-	if (err) {
-		err[0].err_num = err_num;
-		err[0].err_win32 = (g2d_ul_t)err_win32;
-		err[0].err_str = err_str;
-		return (void*)err;
+static LPSTR str_copy(LPCSTR const str) {
+	if (str) {
+		const size_t length0 = strlen(str) + 1;
+		char *const str_new = (char*)malloc(sizeof(char) * length0);
+		if (str_new)
+			memcpy(str_new, str, length0);
+		return str_new;
 	}
-	if (err_str)
-		free(err_str);
-	return (void*)&err_no_mem;
+	return NULL;
 }
 
-static BOOL is_class_registered() {
+static BOOL class_registered() {
 	WNDCLASSEX wcx;
 	if (GetClassInfoEx(instance, CLASS_NAME, &wcx))
 		return TRUE;
@@ -212,29 +200,15 @@ static BOOL is_class_registered() {
 }
 
 #include "win32_debug.h"
-#include "win32_keys.h"
+//#include "win32_keys.h"
 #include "win32_init.h"
-#include "win32_window.h"
+//#include "win32_window.h"
 
-void g2d_error(void *const err, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
-	error_t *const error = (error_t*)err;
-	err_num[0] = error->err_num;
-	err_win32[0] = error->err_win32;
-	err_str[0] = error->err_str;
+void g2d_free(void *const data) {
+	free(data);
 }
 
-void g2d_error_free(void *const err) {
-	error_t *const err_t = (error_t*)err;
-	if (err_t[0].err_str) {
-		free(err_t[0].err_str);
-		err_t[0].err_str = NULL;
-	}
-	if (err_t != &err_no_mem)
-		free(err);
-}
-
-void *g2d_string_new(void **const str, void *const go_cstr) {
-	void *err = NULL;
+void *g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
 	LPTSTR str_new = NULL;
 	size_t length;
 	if (go_cstr)
@@ -245,7 +219,7 @@ void *g2d_string_new(void **const str, void *const go_cstr) {
 	str_new = (LPTSTR)malloc(sizeof(WCHAR) * (length + 1));
 	if (str_new) {
 		if (length > 0)
-			MultiByteToWideChar(CP_UTF8, 0, (const char*)go_cstr, length, str_new, length);
+			MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char*)go_cstr, length, str_new, length);
 	#else
 	str_new = (LPTSTR)malloc(sizeof(char) * (length + 1));
 	if (str_new) {
@@ -255,53 +229,38 @@ void *g2d_string_new(void **const str, void *const go_cstr) {
 		str_new[length] = 0;
 	}
 	else
-		err = (void*)&err_no_mem;
-	str[0] = (void*)str_new;
-	return err;
+		ERR_NEW1(2);
+	return (void*)str_new;
 }
 
-void g2d_string_free(void *const str) {
-	if (str)
-		free(str);
-}
-
-void *g2d_process_events() {
+void g2d_process_events() {
 	if (active_windows > 0) {
 		MSG msg;
-		while (err_static == NULL && GetMessage(&msg, NULL, 0, 0) > 0) {
+		while (GetMessage(&msg, NULL, 0, 0) > 0) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
 	}
-	return (void*)err_static;
 }
 
-void g2d_err_static_set(const int go_obj) {
-	err_static = error_new(100, (DWORD) go_obj, NULL);
-}
-
-void *g2d_post_close(void *const data) {
+void g2d_post_close(void *const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
 	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_CLOSE, 0, 0))
-		return error_new(66, 0, NULL);
-	return NULL;
+		ERR_NEW1(80)
 }
 
-void *g2d_post_update(void *const data) {
+void g2d_post_update(void *const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
 	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_UPDATE, 0))
-		return error_new(67, 0, NULL);
-	return NULL;
+		ERR_NEW1(81)
 }
 
-void *g2d_post_props(void *const data) {
+void g2d_post_props(void *const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
 	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_PROPS, 0))
-		return error_new(68, 0, NULL);
-	return NULL;
+		ERR_NEW1(82)
 }
 
-void *g2d_post_err(void *const data) {
-	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_ERROR, 0))
-		return error_new(68, 0, NULL);
-	return NULL;
+void g2d_post_err(void *const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+	if (!PostMessage(NULL, WM_APP, MSG_ERROR, 0))
+		ERR_NEW1(83)
 }
 
 /* #if defined(G2D_WIN32) */
