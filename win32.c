@@ -92,8 +92,6 @@ typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei co
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
-#define CLASS_NAME TEXT("g2d")
-
 #define ERR_NEW1(a) err_num[0] = a;
 #define ERR_NEW2(a, b) { err_num[0] = a; err_win32[0] = (g2d_ul_t)b; }
 #define ERR_NEW3(a, b, c) { err_num[0] = a; err_win32[0] = (g2d_ul_t)b; err_str[0] = c; }
@@ -104,7 +102,6 @@ typedef struct {
 } context_t;
 
 typedef struct {
-	WNDCLASSEX cls;
 	HWND hndl;
 	context_t ctx;
 } window_t;
@@ -139,6 +136,9 @@ static const WPARAM const MSG_SHOW = (WPARAM)"shown";
 static const WPARAM const MSG_UPDATE = (WPARAM)"update";
 static const WPARAM const MSG_PROPS = (WPARAM)"props";
 static const WPARAM const MSG_ERROR = (WPARAM)"error";
+
+static LPCTSTR const class_name = TEXT("g2d");
+static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
 
 static HINSTANCE instance = NULL;
 static BOOL initialized = FALSE;
@@ -194,21 +194,21 @@ static LPSTR str_copy(LPCSTR const str) {
 
 static BOOL class_registered() {
 	WNDCLASSEX wcx;
-	if (GetClassInfoEx(instance, CLASS_NAME, &wcx))
+	if (GetClassInfoEx(instance, class_name, &wcx))
 		return TRUE;
 	return FALSE;
 }
 
 #include "win32_debug.h"
-//#include "win32_keys.h"
+#include "win32_keys.h"
 #include "win32_init.h"
-//#include "win32_window.h"
+#include "win32_window.h"
 
 void g2d_free(void *const data) {
 	free(data);
 }
 
-void *g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+void g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num) {
 	LPTSTR str_new = NULL;
 	size_t length;
 	if (go_cstr)
@@ -230,7 +230,7 @@ void *g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num, g2d
 	}
 	else
 		ERR_NEW1(2);
-	return (void*)str_new;
+	str[0] = (void*)str_new;
 }
 
 void g2d_process_events() {

@@ -23,7 +23,7 @@ static PROC get_proc(LPCSTR const func_name, int *const err_num, g2d_ul_t *const
 	return proc;
 }
 
-static void module_init(int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+static void module_init(int *const err_num, g2d_ul_t *const err_win32) {
 	if (err_num[0] == 0) {
 		instance = GetModuleHandle(NULL);
 		if (!instance)
@@ -31,36 +31,32 @@ static void module_init(int *const err_num, g2d_ul_t *const err_win32, char **co
 	}
 }
 
-static void dummy_class_init(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+static BOOL class_register_dummy(int *const err_num, g2d_ul_t *const err_win32) {
 	if (err_num[0] == 0) {
-		dummy[0].cls.cbSize = sizeof(WNDCLASSEX);
-		dummy[0].cls.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
-		dummy[0].cls.lpfnWndProc = DefWindowProc;
-		dummy[0].cls.cbClsExtra = 0;
-		dummy[0].cls.cbWndExtra = 0;
-		dummy[0].cls.hInstance = instance;
-		dummy[0].cls.hIcon = NULL;
-		dummy[0].cls.hCursor = NULL;
-		dummy[0].cls.hbrBackground = NULL;
-		dummy[0].cls.lpszMenuName = NULL;
-		dummy[0].cls.lpszClassName = TEXT("g2d_dummy");
-		dummy[0].cls.hIconSm = NULL;
-		if (RegisterClassEx(&dummy[0].cls) == INVALID_ATOM) {
-			dummy[0].cls.lpszClassName = NULL;
+		WNDCLASSEX cls;
+		ZeroMemory(&cls, sizeof(WNDCLASSEX));
+		cls.cbSize = sizeof(WNDCLASSEX);
+		cls.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
+		cls.lpfnWndProc = DefWindowProc;
+		cls.hInstance = instance;
+		cls.lpszClassName = class_name_dummy;
+		if (RegisterClassEx(&cls) == INVALID_ATOM)
 			ERR_NEW2(10, GetLastError())
-		}
+		else
+			return TRUE;
 	}
+	return FALSE;
 }
 
-static void dummy_window_create(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+static void window_create_dummy(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32) {
 	if (err_num[0] == 0) {
-		dummy[0].hndl = CreateWindow(dummy[0].cls.lpszClassName, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, dummy[0].cls.hInstance, NULL);
+		dummy[0].hndl = CreateWindow(class_name_dummy, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, instance, NULL);
 		if (!dummy[0].hndl)
 			ERR_NEW2(11, GetLastError())
 	}
 }
 
-static void dummy_context_init(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+static void context_init_dummy(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32) {
 	if (err_num[0] == 0) {
 		dummy[0].ctx.dc = GetDC(dummy[0].hndl);
 		if (dummy[0].ctx.dc) {
@@ -92,7 +88,7 @@ static void dummy_context_init(window_t *const dummy, int *const err_num, g2d_ul
 	}
 }
 
-static void dummy_context_make_current(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+static void context_make_current_dummy(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32) {
 	if (err_num[0] == 0)
 		if (!wglMakeCurrent(dummy[0].ctx.dc, dummy[0].ctx.rc))
 			ERR_NEW2(16, GetLastError())
@@ -139,7 +135,7 @@ static void ogl_functions_init(int *const err_num, g2d_ul_t *const err_win32, ch
 	glActiveTexture           = (PFNGLACTIVETEXTUREPROC)           get_proc("glActiveTexture",           err_num, err_win32, err_str);
 }
 
-static void dummy_destroy(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
+static void window_destroy_dummy(window_t *const dummy, int *const err_num, g2d_ul_t *const err_win32) {
 	if (dummy[0].ctx.rc) {
 		if (dummy[0].ctx.rc == wglGetCurrentContext() && !wglMakeCurrent(NULL, NULL) && err_num[0] == 0)
 			ERR_NEW2(18, GetLastError())
@@ -154,24 +150,27 @@ static void dummy_destroy(window_t *const dummy, int *const err_num, g2d_ul_t *c
 		if (!DestroyWindow(dummy[0].hndl) && err_num[0] == 0)
 			ERR_NEW2(20, GetLastError())
 	}
-	if (dummy[0].cls.lpszClassName) {
-		if (!UnregisterClass(dummy[0].cls.lpszClassName, dummy[0].cls.hInstance) && err_num[0] == 0)
-			ERR_NEW2(21, GetLastError())
-	}
+}
+
+static void class_unregister_dummy(int *const err_num, g2d_ul_t *const err_win32) {
+	if (!UnregisterClass(class_name_dummy, instance) && err_num[0] == 0)
+		ERR_NEW2(21, GetLastError())
 }
 
 void g2d_init(int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
 	if (!initialized) {
 		window_t dummy;
 		ZeroMemory((void*)&dummy, sizeof(window_t));
-		module_init(err_num, err_win32, err_str);
-		dummy_class_init(&dummy, err_num, err_win32, err_str);
-		dummy_window_create(&dummy, err_num, err_win32, err_str);
-		dummy_context_init(&dummy, err_num, err_win32, err_str);
-		dummy_context_make_current(&dummy, err_num, err_win32, err_str);
+		module_init(err_num, err_win32);
+		const BOOL registered = class_register_dummy(err_num, err_win32);
+		window_create_dummy(&dummy, err_num, err_win32);
+		context_init_dummy(&dummy, err_num, err_win32);
+		context_make_current_dummy(&dummy, err_num, err_win32);
 		wgl_functions_init(err_num, err_win32, err_str);
 		ogl_functions_init(err_num, err_win32, err_str);
-		dummy_destroy(&dummy, err_num, err_win32, err_str);
+		window_destroy_dummy(&dummy, err_num, err_win32);
+		if (registered)
+			class_unregister_dummy(err_num, err_win32);
 		initialized = (BOOL)(err_num[0] == 0);
 	}
 }

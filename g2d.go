@@ -11,6 +11,7 @@ package g2d
 import "C"
 import (
 	"time"
+	"unsafe"
 )
 
 const (
@@ -55,6 +56,8 @@ type Properties struct {
 
 type Window struct {
 	Props Properties
+	abst tWindow
+	dataC unsafe.Pointer
 	active bool
 	events chan interface{}
 }
@@ -68,7 +71,11 @@ type tWindow interface {
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy()
-	baseStruct() *Window
+	config(window tWindow) *Configuration
+	create(*Configuration)
+	show()
+	onCreate()
+	onShow()
 }
 
 // Time returns nanoseconds.
@@ -84,12 +91,6 @@ func Time() int64 {
 type tCallback struct {
 	wnds []tWindow
 	unused []int
-}
-
-func (window *Window) init() {
-	window.Props.EventTime = Time()
-	window.Props.UpdateTime = window.Props.EventTime
-	window.events = make(chan interface{}, 1024 * 8)
 }
 
 func (window *Window) OnConfig(config *Configuration) error {
@@ -132,8 +133,16 @@ func (window *Window) Destroy() {
 func (window *Window) PostEvent(event interface{}) {
 }
 
-func (window *Window) baseStruct() *Window {
-	return window
+func (window *Window) config(abst tWindow) *Configuration {
+	config := newConfiguration()
+	window.Props.EventTime = Time()
+	window.Props.UpdateTime = window.Props.EventTime
+	window.events = make(chan interface{}, 1024 * 8)
+	Err = abst.OnConfig(config)
+	if Err == nil {
+		window.abst = abst
+	}
+	return config
 }
 
 // Register returns a new id number for wnd. It will not be garbage collected until
@@ -163,6 +172,35 @@ func (cb *tCallback) UnregisterAll() {
 	for i := 0; i < len(cb.wnds) && cb.wnds[i] != nil; i++ {
 		cb.Unregister(i)
 	}
+}
+
+func newConfiguration() *Configuration {
+	config := new(Configuration)
+	config.ClientX = 50
+	config.ClientY = 50
+	config.ClientWidth = 640
+	config.ClientHeight = 480
+	config.ClientWidthMin = 0
+	config.ClientHeightMin = 0
+	config.ClientWidthMax = 99999
+	config.ClientHeightMax = 99999
+	config.MouseLocked = false
+	config.Borderless = false
+	config.Dragable = false
+	config.Resizable = true
+	config.Fullscreen = false
+	config.Centered = true
+	config.AutoUpdate = true
+	config.Title = "g2d - 0.1.0"
+	return config
+}
+
+// toCInt converts bool value to C int value.
+func toCInt(b bool) C.int {
+	if b {
+		return C.int(1)
+	}
+	return C.int(0)
 }
 
 /*
@@ -211,28 +249,6 @@ type tManagerLogicGraphicThread struct {
 type tModification struct {
 	mouse, style, title bool
 	fsToggle, pos, size bool
-}
-
-func newParameters() *Parameters {
-	params := new(Parameters)
-	params.ClientX = 50
-	params.ClientY = 50
-	params.ClientWidth = 640
-	params.ClientHeight = 480
-	params.ClientWidthMin = 0
-	params.ClientHeightMin = 0
-	params.ClientWidthMax = 99999
-	params.ClientHeightMax = 99999
-	params.MouseLocked = false
-	params.Borderless = false
-	params.Dragable = false
-	params.Resizable = true
-	params.Fullscreen = false
-	params.Centered = true
-	params.LogicThread = true
-	params.AutoUpdate = true
-	params.Title = "g2d - 0.1.0"
-	return params
 }
 
 func (t *Time) NanosNow() int64 {
@@ -307,13 +323,5 @@ func (mgr *tManagerBase) initBase(data unsafe.Pointer, window AbstractWindow, pa
 	mgr.wndAbst = window
 	mgr.props.Title = params.Title
 	mgr.autoUpdate = params.AutoUpdate
-}
-
-// toCInt converts bool value to C int value.
-func toCInt(b bool) C.int {
-	if b {
-		return C.int(1)
-	}
-	return C.int(0)
 }
 */

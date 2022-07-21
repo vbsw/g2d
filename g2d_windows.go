@@ -34,33 +34,89 @@ func Init(stub interface{}) {
 }
 
 func Show(window interface{}) {
-	if initialized {
-		if window != nil {
-			wnd, ok := window.(tWindow)
-			if ok {
-				wnd.OnCreate()
-/*
-		params := initWindow(window)
-		mgrId, data := createWindow(window, params)
-		if Err == nil {
-			cb.mgrs[mgrId] = newManager(data, window, params)
-			cb.mgrs[mgrId].onCreate(time())
-			if Err == nil {
-				Err = toError(C.g2d_window_show(data))
+	if Err == nil {
+		if initialized {
+			if window != nil {
+				wnd, ok := window.(tWindow)
+				if ok {
+					config := wnd.config(wnd)
+					wnd.create(config)
+					wnd.show()
+				} else {
+					panic(notEmbedded)
+				}
 			}
-			if Err != nil {
-				// calls cb.Unregister
-				cb.mgrs[mgrId].destroy()
-			}
+		} else {
+			panic(notInitialized)
 		}
-*/
-			} else {
-				panic(notEmbedded)
-			}
-		}
-	} else {
-		panic(notInitialized)
 	}
+}
+
+func (window *Window) create(config *Configuration) {
+	if Err == nil {
+		x := C.int(config.ClientX)
+		y := C.int(config.ClientY)
+		w := C.int(config.ClientWidth)
+		h := C.int(config.ClientHeight)
+		wn := C.int(config.ClientWidthMin)
+		hn := C.int(config.ClientHeightMin)
+		wx := C.int(config.ClientWidthMax)
+		hx := C.int(config.ClientHeightMax)
+		c := toCInt(config.Centered)
+		l := toCInt(config.MouseLocked)
+		b := toCInt(config.Borderless)
+		d := toCInt(config.Dragable)
+		r := toCInt(config.Resizable)
+		f := toCInt(config.Fullscreen)
+		t, errNumC := toTString(config.Title)
+		if errNumC == 0 {
+			var dataC unsafe.Pointer
+			var errWin32C C.g2d_ul_t
+			cbId := cb.Register(window.abst)
+			C.g2d_window_create(&dataC, C.int(cbId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t, &errNumC, &errWin32C)
+			C.g2d_free(t)
+			if errNumC == 0 {
+				window.dataC = dataC
+				window.onCreate()
+			} else {
+				Err = toError(errNumC, 0, nil)
+			}
+		} else {
+			Err = toError(-18, 0, nil)
+		}
+	}
+}
+
+func (window *Window) show() {
+	if Err == nil {
+		var errNumC C.int
+		var errWin32C C.g2d_ul_t
+		C.g2d_window_show(window.dataC, &errNumC, &errWin32C)
+		if errNumC == 0 {
+			window.onShow()
+		} else {
+			Err = toError(errNumC, errWin32C, nil)
+		}
+	}
+}
+
+func toTString(str string) (unsafe.Pointer, C.int) {
+	var strT unsafe.Pointer
+	var errNumC C.int
+	strC := unsafe.Pointer(C.CString(str))
+	if strC != nil {
+		C.g2d_to_tstr(&strT, strC, &errNumC)
+		C.g2d_free(strC)
+	} else {
+		errNumC = 2
+	}
+	return strT, errNumC
+}
+
+func (window *Window) onCreate() {
+}
+
+func (window *Window) onShow() {
 }
 
 /*
@@ -83,56 +139,6 @@ func ProcessEvents() {
 	} else {
 		panic(notInitialized)
 	}
-}
-
-func initWindow(window AbstractWindow) *Parameters {
-	if Err == nil {
-		params := newParameters()
-		window.baseStruct().init()
-		Err = window.Config(params)
-		return params
-	}
-	return nil
-}
-
-func createWindow(window AbstractWindow, params *Parameters) (int, unsafe.Pointer) {
-	var mgrId int
-	var data unsafe.Pointer
-	if Err == nil {
-		x := C.int(params.ClientX)
-		y := C.int(params.ClientY)
-		w := C.int(params.ClientWidth)
-		h := C.int(params.ClientHeight)
-		wn := C.int(params.ClientWidthMin)
-		hn := C.int(params.ClientHeightMin)
-		wx := C.int(params.ClientWidthMax)
-		hx := C.int(params.ClientHeightMax)
-		c := toCInt(params.Centered)
-		l := toCInt(params.MouseLocked)
-		b := toCInt(params.Borderless)
-		d := toCInt(params.Dragable)
-		r := toCInt(params.Resizable)
-		f := toCInt(params.Fullscreen)
-		t, errC := toTString(params.Title)
-		if errC == nil {
-			mgrId = cb.Register(nil)
-			errC = C.g2d_window_create(&data, C.int(mgrId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t)
-			C.g2d_string_free(t)
-			if errC != nil {
-				cb.Unregister(mgrId)
-			}
-		}
-		Err = toError(errC)
-	}
-	return mgrId, data
-}
-
-func toTString(str string) (unsafe.Pointer, unsafe.Pointer) {
-	var strT unsafe.Pointer
-	strC := unsafe.Pointer(C.CString(str))
-	errC := C.g2d_string_new(&strT, strC)
-	C.g2d_string_free(strC)
-	return strT, errC
 }
 
 func pollEvents() {
@@ -413,35 +419,34 @@ func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) 
 }
 */
 
-/*
 //export g2dShow
 func g2dShow(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onShow(time())
+	//cb.wnds[int(objIdC)].onShow()
 }
 
 //export g2dKeyDown
 func g2dKeyDown(objIdC, code C.int, repeated C.g2d_ui_t) {
-	cb.mgrs[int(objIdC)].onKeyDown(int(code), uint(repeated), time())
+	//cb.wnds[int(objIdC)].onKeyDown(int(code), uint(repeated))
 }
 
 //export g2dKeyUp
 func g2dKeyUp(objIdC, code C.int) {
-	cb.mgrs[int(objIdC)].onKeyUp(int(code), time())
+	//cb.wnds[int(objIdC)].onKeyUp(int(code), time())
 }
 
 //export g2dUpdate
 func g2dUpdate(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onUpdate(time())
+	//cb.wnds[int(objIdC)].onUpdate()
 }
 
 //export g2dClose
 func g2dClose(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onClose(time())
+	//cb.wnds[int(objIdC)].onClose()
 }
 
 //export g2dDestroyBegin
 func g2dDestroyBegin(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onDestroy(time())
+	//cb.wnds[int(objIdC)].onDestroy()
 }
 
 //export g2dDestroyEnd
@@ -451,14 +456,13 @@ func g2dDestroyEnd(objIdC C.int) {
 
 //export g2dProps
 func g2dProps(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onProps(time())
+	//cb.wnds[int(objIdC)].onProps(time())
 }
 
 //export g2dError
 func g2dError(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onError(time())
+	//cb.wnds[int(objIdC)].onError(time())
 }
-*/
 
 func setErr(err error) {
 	if err != nil && Err == nil {

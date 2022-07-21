@@ -42,18 +42,18 @@ static LPCTSTR ensure_title(void *const title) {
 	return TEXT("OpenGL");
 }
 
-static window_data_t *window_allocate(void **const err) {
+static window_data_t *window_allocate(int *const err_num) {
 	window_data_t *const wnd_data = (window_data_t*)malloc(sizeof(window_data_t));
 	if (wnd_data)
 		ZeroMemory(wnd_data, sizeof(window_data_t));
 	else
-		err[0] = (void*)&err_no_mem;
+		ERR_NEW1(-19)
 	return wnd_data;
 }
 
-static void window_config(window_data_t *const wnd_data, const int x, const int y, const int w, const int h, const int wn, const int hn,
-	const int wx, const int hx, const int b, const int d, const int r, const int f, const int l, const int c, void **const err) {
-	if (err[0] == NULL) {
+static void window_config(window_data_t *const wnd_data, const int x, const int y, const int w, const int h, const int wn, const int hn, const int wx, const int hx,
+	const int b, const int d, const int r, const int f, const int l, const int c, int *const err_num) {
+	if (err_num[0] == 0) {
 		wnd_data[0].client.x = x;
 		wnd_data[0].client.y = y;
 		wnd_data[0].client.width = w;
@@ -363,64 +363,39 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 */
 }
 
-static void window_destroy(window_data_t *wnd_data) {
-	if (wnd_data) {
-		g2dDestroyBegin(wnd_data[0].go_obj_id);
-		if (wnd_data[0].wnd.ctx.rc) {
-			wglDeleteContext(wnd_data[0].wnd.ctx.rc);
-			wnd_data[0].wnd.ctx.rc = NULL;
-		}
-		if (wnd_data[0].wnd.ctx.dc) {
-			ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.ctx.dc);
-			wnd_data[0].wnd.ctx.dc = NULL;
-		}
-		if (wnd_data[0].wnd.hndl) {
-			DestroyWindow(wnd_data[0].wnd.hndl);
-			wnd_data[0].wnd.hndl = NULL;
-		}
-		if (wnd_data[0].wnd.cls.lpszClassName) {
-			UnregisterClass(wnd_data[0].wnd.cls.lpszClassName, wnd_data[0].wnd.cls.hInstance);
-			wnd_data[0].wnd.cls.lpszClassName = NULL;
-		}
-		g2dDestroyEnd(wnd_data[0].go_obj_id);
-		free(wnd_data);
-		active_windows--;
+static void class_unregister(int *const err_num, g2d_ul_t *const err_win32) {
+	if (active_windows < 2 && class_registered() && !UnregisterClass(class_name, instance) && err_num[0] == 0)
+		ERR_NEW2(60, GetLastError())
+}
+
+static void class_register(int *const err_num, g2d_ul_t *const err_win32) {
+	if (err_num[0] == 0 && active_windows == 0) {
+		WNDCLASSEX cls;
+		ZeroMemory(&cls, sizeof(WNDCLASSEX));
+		cls.cbSize = sizeof(WNDCLASSEX);
+		cls.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+		cls.lpfnWndProc = windowProc;
+		cls.hInstance = instance;
+		cls.hIcon = LoadIcon(NULL, IDI_WINLOGO);
+		cls.hCursor = LoadCursor(NULL, IDC_ARROW);
+		cls.lpszClassName = class_name;
+		if (RegisterClassEx(&cls) == INVALID_ATOM)
+			ERR_NEW2(50, GetLastError())
 	}
 }
 
-static void class_register(window_data_t *const wnd_data, void **const err) {
-	if (err[0] == NULL) {
-		wnd_data[0].wnd.cls.cbSize = sizeof(WNDCLASSEX);
-		wnd_data[0].wnd.cls.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
-		wnd_data[0].wnd.cls.lpfnWndProc = windowProc;
-		wnd_data[0].wnd.cls.cbClsExtra = 0;
-		wnd_data[0].wnd.cls.cbWndExtra = 0;
-		wnd_data[0].wnd.cls.hInstance = instance;
-		wnd_data[0].wnd.cls.hIcon = LoadIcon(NULL, IDI_WINLOGO);
-		wnd_data[0].wnd.cls.hCursor = LoadCursor(NULL, IDC_ARROW);
-		wnd_data[0].wnd.cls.hbrBackground = NULL;
-		wnd_data[0].wnd.cls.lpszMenuName = NULL;
-		wnd_data[0].wnd.cls.lpszClassName = CLASS_NAME;
-		wnd_data[0].wnd.cls.hIconSm = NULL;
-		if (!is_class_registered() && RegisterClassEx(&wnd_data[0].wnd.cls) == INVALID_ATOM) {
-			err[0] = error_new(50, GetLastError(), NULL);
-			wnd_data[0].wnd.cls.lpszClassName = NULL;
-		}
-	}
-}
-
-static void window_create(window_data_t *const wnd_data, LPCTSTR const title, void **const err) {
-	if (err[0] == NULL) {
+static void window_create(window_data_t *const wnd_data, LPCTSTR const title, int *const err_num, g2d_ul_t *const err_win32) {
+	if (err_num[0] == 0) {
 		int x, y, w, h; window_metrics(wnd_data, &x, &y, &w, &h);
 		const DWORD style = wnd_data[0].config.style;
-		wnd_data[0].wnd.hndl = CreateWindow(wnd_data[0].wnd.cls.lpszClassName, title, style, x, y, w, h, NULL, NULL, wnd_data[0].wnd.cls.hInstance, (LPVOID)wnd_data);
+		wnd_data[0].wnd.hndl = CreateWindow(class_name, title, style, x, y, w, h, NULL, NULL, instance, (LPVOID)wnd_data);
 		if (!wnd_data[0].wnd.hndl)
-			err[0] = error_new(51, GetLastError(), NULL);
+			ERR_NEW2(51, GetLastError())
 	}
 }
 
-static void context_create(window_data_t *const wnd_data, void **const err) {
-	if (err[0] == NULL) {
+static void context_create(window_data_t *const wnd_data, int *const err_num, g2d_ul_t *const err_win32) {
+	if (err_num[0] == 0) {
 		wnd_data[0].wnd.ctx.dc = GetDC(wnd_data[0].wnd.hndl);
 		if (wnd_data[0].wnd.ctx.dc) {
 			int pixelFormat;
@@ -454,17 +429,41 @@ static void context_create(window_data_t *const wnd_data, void **const err) {
 				if (SetPixelFormat(wnd_data[0].wnd.ctx.dc, pixelFormat, &pfd)) {
 					wnd_data[0].wnd.ctx.rc = wglCreateContextAttribsARB(wnd_data[0].wnd.ctx.dc, 0, contextAttributes);
 					if (!wnd_data[0].wnd.ctx.rc)
-						err[0] = error_new(55, GetLastError(), NULL);
+						ERR_NEW2(55, GetLastError())
 				} else {
-					err[0] = error_new(54, GetLastError(), NULL);
+					ERR_NEW2(54, GetLastError())
 				}
 			} else {
-				err[0] = error_new(53, GetLastError(), NULL);
+				ERR_NEW2(53, GetLastError())
 			}
 		} else {
-			err[0] = error_new(52, 0, NULL);
+			ERR_NEW1(52)
 		}
 	}
+}
+
+static void window_destroy(window_data_t *const wnd_data, int *const err_num, g2d_ul_t *const err_win32) {
+	g2dDestroyBegin(wnd_data[0].go_obj_id);
+	if (wnd_data[0].wnd.ctx.rc) {
+		if (wnd_data[0].wnd.ctx.rc == wglGetCurrentContext() && !wglMakeCurrent(NULL, NULL) && err_num[0] == 0)
+			ERR_NEW2(57, GetLastError())
+		if (!wglDeleteContext(wnd_data[0].wnd.ctx.rc) && err_num[0] == 0) {
+			ERR_NEW2(58, GetLastError())
+		}
+		wnd_data[0].wnd.ctx.rc = NULL;
+	}
+	if (wnd_data[0].wnd.ctx.dc) {
+		ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.ctx.dc);
+		wnd_data[0].wnd.ctx.dc = NULL;
+	}
+	if (wnd_data[0].wnd.hndl) {
+		if (!DestroyWindow(wnd_data[0].wnd.hndl) && err_num[0] == 0)
+			ERR_NEW2(59, GetLastError())
+		wnd_data[0].wnd.hndl = NULL;
+	}
+	class_unregister(err_num, err_win32);
+	g2dDestroyEnd(wnd_data[0].go_obj_id);
+	free(wnd_data);
 }
 
 static void client_props_update(window_data_t *const wnd_data) {
@@ -486,82 +485,48 @@ static void cursor_clip_update(window_data_t *const wnd_data) {
 	}
 }
 
-static void window_show(window_data_t *const wnd_data, void **const err) {
-	if (err[0] == NULL) {
+void g2d_window_create(void **const data, const int go_obj, const int x, const int y, const int w, const int h, const int wn, const int hn, const int wx, const int hx,
+	const int b, const int d, const int r, const int f, const int l, const int c, void *t, int *const err_num, g2d_ul_t *const err_win32) {
+	if (initialized) {
+		window_data_t *const wnd_data = window_allocate(err_num);
+		window_config(wnd_data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, err_num);
+		class_register(err_num, err_win32);
+		window_create(wnd_data, ensure_title(t), err_num, err_win32);
+		context_create(wnd_data, err_num, err_win32);
+		if (err_num[0] == 0)
+			data[0] = (void*)wnd_data;
+		else if (wnd_data)
+			window_destroy(wnd_data, err_num, err_win32);
+	} else {
+		ERR_NEW1(64)
+	}
+}
+
+void g2d_window_show(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+	if (initialized) {
+		window_data_t *const wnd_data = (window_data_t*)data;
 		ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
 		if (wnd_data[0].config.fullscreen)
-			err[0] = g2d_window_fullscreen_set(wnd_data);
-		client_props_update(wnd_data);
-		cursor_clip_update(wnd_data);
-	}
-}
-
-void *g2d_window_create(void **const data, const int go_obj, const int x, const int y, const int w, const int h, const int wn, const int hn,
-	const int wx, const int hx, const int b, const int d, const int r, const int f, const int l, const int c, void *t) {
-	void *err = NULL;
-	if (initialized) {
-		window_data_t *const wnd_data = window_allocate(&err);
-		window_config(wnd_data, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, &err);
-		class_register(wnd_data, &err);
-		window_create(wnd_data, ensure_title(t), &err);
-		context_create(wnd_data, &err);
-		if (err == NULL)
-			data[0] = (void*)wnd_data;
-		else
-			window_destroy(wnd_data);
+			g2d_window_fullscreen_set(wnd_data, err_num, err_win32);
+		if (err_num[0] == 0) {
+			client_props_update(wnd_data);
+			cursor_clip_update(wnd_data);
+			if (PostMessage(wnd_data[0].wnd.hndl, WM_APP, MSG_SHOW, 0))
+				active_windows++;
+			else
+				ERR_NEW1(65)
+		}
 	} else {
-		err = error_new(64, GetLastError(), NULL);
+		ERR_NEW1(64)
 	}
-	return err;
 }
 
-void *g2d_window_show(void *const data) {
-	void *err = NULL;
-	window_data_t *const wnd_data = (window_data_t*)data;
-	window_show(wnd_data, &err);
-	if (err == NULL) {
-		if (PostMessage(wnd_data[0].wnd.hndl, WM_APP, MSG_SHOW, 0))
-			active_windows++;
-		else
-			err = error_new(65, 0, NULL);
+void g2d_window_destroy(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+	if (data) {
+		window_data_t *const wnd_data = (window_data_t*)data;
+		window_destroy(wnd_data, err_num, err_win32);
+		active_windows--;
 	}
-	return err;
-}
-
-void *g2d_window_destroy(void *data, void **const err) {
-	window_data_t *const wnd_data = (window_data_t*)data;
-	g2dDestroyBegin(wnd_data[0].go_obj_id);
-	if (wnd_data[0].wnd.ctx.rc) {
-		if (!wglDeleteContext(wnd_data[0].wnd.ctx.rc) && err[0] == NULL) {
-			err[0] = error_new(58, GetLastError(), NULL);
-		}
-		wnd_data[0].wnd.ctx.rc = NULL;
-	}
-	if (wnd_data[0].wnd.ctx.dc) {
-		ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.ctx.dc);
-		wnd_data[0].wnd.ctx.dc = NULL;
-	}
-	if (wnd_data[0].wnd.hndl) {
-		if (!DestroyWindow(wnd_data[0].wnd.hndl) && err[0] == NULL) {
-			err[0] = error_new(59, GetLastError(), NULL);
-		}
-		wnd_data[0].wnd.hndl = NULL;
-	}
-	if (wnd_data[0].wnd.cls.lpszClassName) {
-		if (!UnregisterClass(wnd_data[0].wnd.cls.lpszClassName, wnd_data[0].wnd.cls.hInstance) && err[0] == NULL) {
-			const DWORD err_win32 = GetLastError();
-			if (err_win32 != ERROR_CLASS_HAS_WINDOWS)
-				err[0] = error_new(60, err_win32, NULL);
-		}
-		wnd_data[0].wnd.cls.lpszClassName = NULL;
-		/* stop event queue thread */
-		if (!is_class_registered())
-			PostQuitMessage(0);
-	}
-	g2dDestroyEnd(wnd_data[0].go_obj_id);
-	free(data);
-	active_windows--;
-	return err[0];
 }
 
 void g2d_window_props(void *const data, int *const x, int *const y, int *const w, int *const h, int *const wn, int *const hn,
@@ -582,16 +547,15 @@ void g2d_window_props(void *const data, int *const x, int *const y, int *const w
 	*l = wnd_data[0].config.locked;
 }
 
-void *g2d_window_fullscreen_set(void *const data) {
+void g2d_window_fullscreen_set(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	int mx, my, mw, mh; monitor_metrics(MonitorFromWindow(wnd_data[0].wnd.hndl, MONITOR_DEFAULTTONEAREST), &mx, &my, &mw, &mh);
 	wnd_data[0].client_bak = wnd_data[0].client;
 	const LONG_PTR style = SetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE, 0);
-	if (style && SetWindowPos(wnd_data[0].wnd.hndl, HWND_TOP, mx, my, mw, mh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
+	if (style && SetWindowPos(wnd_data[0].wnd.hndl, HWND_TOP, mx, my, mw, mh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW))
 		wnd_data[0].config.fullscreen = 1;
-		return NULL;
-	}
-	return error_new(70, GetLastError(), NULL);
+	else
+		ERR_NEW2(70, GetLastError())
 }
 
 void g2d_client_pos_set(void *const data, const int x, const int y) {
@@ -621,6 +585,7 @@ void g2d_client_restore_bak(void *const data) {
 	wnd_data[0].client = wnd_data[0].client_bak;
 }
 
+/*
 void *g2d_client_pos_apply(void *const data) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	int wx, wy, ww, wh; window_metrics(wnd_data, &wx, &wy, &ww, &wh);
@@ -642,6 +607,7 @@ void *g2d_client_move(void *const data) {
 		return NULL;
 	return error_new(72, GetLastError(), NULL);
 }
+*/
 
 void g2d_window_style_set(void *const data, const int wn, const int hn, const int wx, const int hx, const int b, const int d, const int r, const int l) {
 	window_data_t *const wnd_data = (window_data_t*)data;
@@ -654,6 +620,7 @@ void g2d_window_style_set(void *const data, const int wn, const int hn, const in
 	wnd_data[0].config.resizable = r;
 }
 
+/*
 void *g2d_window_title_set(void *const data, void *const title) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (!SetWindowText(wnd_data[0].wnd.hndl, (LPCTSTR)title))
@@ -669,3 +636,4 @@ void *g2d_mouse_pos_set(void *const data, const int x, const int y) {
 		return error_new(69, 0, NULL);
 	return NULL;
 }
+*/
