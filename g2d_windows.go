@@ -52,6 +52,29 @@ func Show(window interface{}) {
 	}
 }
 
+func ProcessEvents() {
+	if initialized {
+		if Err == nil {
+			if !processing {
+				var errNumC C.int
+				processing = true
+				C.g2d_process_events(&errNumC)
+				if errNumC != 0 {
+					Err = toError(errNumC, 0, nil)
+				}
+				for i := 0; i < len(cb.wnds) && cb.wnds[i] != nil; i++ {
+					cb.wnds[i].destroy()
+				}
+				processing = false
+			} else {
+				panic(alreadyProcessing)
+			}
+		}
+	} else {
+		panic(notInitialized)
+	}
+}
+
 func (window *Window) create(config *Configuration) {
 	if Err == nil {
 		x := C.int(config.ClientX)
@@ -120,32 +143,6 @@ func (window *Window) onShow() {
 }
 
 /*
-func ProcessEvents() {
-	if initialized {
-		if Err == nil {
-			if !processing {
-				processing = true
-				pollEvents()
-				if Err != nil {
-					for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
-						cb.mgrs[i].destroy()
-					}
-				}
-				processing = false
-			} else {
-				panic(alreadyProcessing)
-			}
-		}
-	} else {
-		panic(notInitialized)
-	}
-}
-
-func pollEvents() {
-	errC := C.g2d_process_events()
-	Err = toError(errC)
-}
-
 func (mgr *tManagerBase) newProps() Properties {
 	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
 	var props Properties

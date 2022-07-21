@@ -14,6 +14,8 @@ extern void g2d_init(int *err_num, g2d_ul_t *err_win32, char **err_str);
 extern void g2d_window_create(void **data, int go_obj, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_window_show(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_window_destroy(void *data, int *err_num, g2d_ul_t *err_win32);
+extern void g2d_process_events(int *err_num);
+
 extern void g2d_window_fullscreen_set(void *data, int *err_num, g2d_ul_t *err_win32);
 
 extern void g2d_to_tstr(void **str, void *go_cstr, int *err_num);
@@ -30,7 +32,6 @@ extern void g2d_error_free(void *err);
 extern void g2d_string_free(void *str);
 
 
-extern void g2d_process_events();
 extern void g2d_err_static_set(int go_obj);
 extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
 extern void g2d_client_pos_set(void *data, int x, int y);

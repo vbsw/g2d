@@ -74,6 +74,7 @@ type tWindow interface {
 	config(window tWindow) *Configuration
 	create(*Configuration)
 	show()
+	destroy()
 	onCreate()
 	onShow()
 }
@@ -131,6 +132,9 @@ func (window *Window) Destroy() {
 }
 
 func (window *Window) PostEvent(event interface{}) {
+}
+
+func (window *Window) destroy() {
 }
 
 func (window *Window) config(abst tWindow) *Configuration {

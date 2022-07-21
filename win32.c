@@ -233,7 +233,7 @@ void g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num) {
 	str[0] = (void*)str_new;
 }
 
-void g2d_process_events() {
+void g2d_process_events(int *const err_num) {
 	if (active_windows > 0) {
 		MSG msg;
 		while (GetMessage(&msg, NULL, 0, 0) > 0) {
