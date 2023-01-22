@@ -20,38 +20,244 @@ import (
 )
 
 const (
-	postMessageErrStr  = "post message failed"
-	mallocErrStr   = "memory allocation failed"
-	getProcAddrErrStr = "load %s function failed"
+	errStrPostMessage = "post message failed"
+	errStrMalloc      = "memory allocation failed"
+	errStrGetProcAddr = "load %s function failed"
 )
-
-type ErrorGenerator interface {
-	ToError(g2dErrNum, win32ErrNum uint64, info string) error
-}
-
-type ErrorLogger interface {
-	LogError(err error)
-}
-
-type tErrorHandler struct {
-}
 
 func Init(params ...interface{}) {
 	if !initialized {
 		var errNumC C.int
 		var errWin32C C.g2d_ul_t
+		clearErrors()
 		initCustParams(params)
 		initDefaultParams()
 		C.g2d_init(&errNumC, &errWin32C)
 		if errNumC == 0 {
 			startTime = time.Now()
 			initialized = true
+			initFailed = false
 		} else {
+			initFailed = true
 			appendError(toError(errNumC, errWin32C, nil))
 		}
 	} else {
 		panic("g2d is already initialized")
 	}
+}
+
+func Show(window Window) {
+	if !initFailed && window != nil {
+		if initialized {
+			wnd := newWindow(window)
+			wnd.loopId = mainLoop.register(wnd)
+			mainLoop.postMessage(&tConfigWindowRequest{window: wnd}, 1000)
+			mainLoop.run()
+		} else {
+			panic("g2d is not initialized")
+		}
+	}
+}
+
+func (window *tWindow) logicThread() {
+	for {
+		msg := window.nextLMessage()
+		window.wgt.CurrEventNanos = msg.nanos
+		switch msg.typeId {
+		case configType:
+			window.onConfig()
+		case createType:
+			window.onCreate()
+		case quitType:
+			window.onQuit()
+		case leaveType:
+			mainLoop.postMessage(&tDestroyWindowRequest{window: window}, 1000)
+			break
+		}
+	}
+}
+
+func (window *tWindow) onConfig() {
+	config := newConfiguration()
+	err := window.abst.OnConfig(config)
+	window.autoUpdate = config.AutoUpdate
+	if err == nil {
+		mainLoop.postMessage(&tCreateWindowRequest{window: window, config: config}, 1000)
+	} else {
+		window.onError(err)
+	}
+}
+
+func (window *tWindow) onCreate() {
+	err := window.abst.OnCreate(window.wgt)
+	if err == nil {
+		mainLoop.postMessage(&tShowWindowRequest{window: window}, 1000)
+	} else {
+		window.onError(err)
+	}
+}
+
+func (window *tWindow) onQuit() {
+	window.abst.OnDestroy()
+	if window.state == 0 {
+		window.state = 10
+		window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
+	}
+}
+
+func (window *tWindow) onError(err error) {
+	appendError(err)
+	window.onQuit()
+}
+
+func (window *tWindow) nextLMessage() *tLMessage {
+	var message *tLMessage
+	if window.autoUpdate {
+		select {
+		case msg := <-window.wgt.msgs:
+			message = msg
+		default:
+			message = &tLMessage{typeId: updateType, nanos: deltaNanos()}
+		}
+	} else {
+		message = <-window.wgt.msgs
+	}
+	if window.state == 10 && message.typeId != leaveType {
+		message = nil
+	}
+	return message
+}
+
+func (loop *tMainLoop) register(window *tWindow) int {
+	loop.mutex.Lock()
+	defer loop.mutex.Unlock()
+	if len(loop.wndsUnused) == 0 {
+		loop.wndsUsed = append(loop.wndsUsed, window)
+		return len(loop.wndsUsed) - 1
+	}
+	lastIndex := len(loop.wndsUnused) - 1
+	index := loop.wndsUnused[lastIndex]
+	loop.wndsUnused = loop.wndsUnused[:lastIndex]
+	loop.wndsUsed[index] = window
+	return index
+}
+
+func (loop *tMainLoop) unregister(loopId int) int {
+	loop.mutex.Lock()
+	defer loop.mutex.Unlock()
+	loop.wndsUsed[loopId] = nil
+	loop.wndsUnused = append(loop.wndsUnused, loopId)
+	return len(loop.wndsUsed) - len(loop.wndsUnused)
+}
+
+func (loop *tMainLoop) postMessage(msg interface{}, errNumC C.int) {
+	var errNumOrigC C.int
+	var errWin32C C.g2d_ul_t
+	loop.mutex.Lock()
+	defer loop.mutex.Unlock()
+	C.g2d_post_message(&errNumOrigC, &errWin32C)
+	if errNumOrigC == 0 {
+		loop.msgs.Put(msg)
+	} else {
+		C.g2d_quit_message_queue()
+		appendError(toError(errNumC, errWin32C, nil))
+	}
+}
+
+func (loop *tMainLoop) run() {
+	loop.mutex.Lock()
+	if !mainLoop.running {
+		mainLoop.running = true
+		mainLoop.mutex.Unlock()
+		C.g2d_process_messages()
+		loop.mutex.Lock()
+		mainLoop.running = false
+		mainLoop.mutex.Unlock()
+	} else {
+		mainLoop.mutex.Unlock()
+	}
+}
+
+//export g2dProcessMessage
+func g2dProcessMessage() {
+	message := mainLoop.nextMessage()
+	if message != nil {
+		switch msg := message.(type) {
+		case *tConfigWindowRequest:
+			configWindow(msg.window)
+		case *tCreateWindowRequest:
+			createWindow(msg.window, msg.config)
+		case *tShowWindowRequest:
+			showWindow(msg.window)
+		case *tDestroyWindowRequest:
+			destroyWindow(msg.window)
+		}
+	}
+}
+
+func configWindow(window *tWindow) {
+	window.wgt.msgs <- (&tLMessage{typeId: configType, nanos: deltaNanos()})
+}
+
+func createWindow(window *tWindow, config *Configuration) {
+	x := C.int(config.ClientX)
+	y := C.int(config.ClientY)
+	w := C.int(config.ClientWidth)
+	h := C.int(config.ClientHeight)
+	wn := C.int(config.ClientWidthMin)
+	hn := C.int(config.ClientHeightMin)
+	wx := C.int(config.ClientWidthMax)
+	hx := C.int(config.ClientHeightMax)
+	c := toCInt(config.Centered)
+	l := toCInt(config.MouseLocked)
+	b := toCInt(config.Borderless)
+	d := toCInt(config.Dragable)
+	r := toCInt(config.Resizable)
+	f := toCInt(config.Fullscreen)
+	t, errNumC := toTString(config.Title)
+	if errNumC == 0 {
+		var errWin32C C.g2d_ul_t
+		window.cbId = cb.register(window)
+		C.g2d_window_create(&window.dataC, C.int(window.cbId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t, &errNumC, &errWin32C)
+		C.g2d_free(t)
+		if errNumC == 0 {
+			msg := &tLMessage{typeId: createType, nanos: deltaNanos()}
+			msg.props.update(window.dataC)
+			window.wgt.msgs <- msg
+		} else {
+			appendError(toError(errNumC, 0, nil))
+			window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
+		}
+	} else {
+		appendError(toError(errNumC+100, 0, nil))
+		window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
+	}
+}
+
+func showWindow(window *tWindow) {
+	// TODO show window
+}
+
+func destroyWindow(window *tWindow) {
+	if window.cbId >= 0 {
+		// TODO destroy window
+		cb.unregister(window.cbId)
+		window.cbId = -1
+	}
+	registered := mainLoop.unregister(window.loopId)
+	if registered <= 0 {
+		C.g2d_quit_message_queue()
+	}
+}
+
+func newWindow(abst Window) *tWindow {
+	window := new(tWindow)
+	window.cbId = -1
+	window.abst = abst
+	window.wgt = new(Widget)
+	window.wgt.msgs = make(chan *tLMessage, 1024)
+	go window.logicThread()
+	return window
 }
 
 func initCustParams(params []interface{}) {
@@ -74,6 +280,24 @@ func initDefaultParams() {
 	if errLog == nil {
 		errLog = &errHandler
 	}
+}
+
+func (props *Properties) update(dataC unsafe.Pointer) {
+	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
+	C.g2d_window_props(dataC, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
+	props.ClientX = int(x)
+	props.ClientY = int(y)
+	props.ClientWidth = int(w)
+	props.ClientHeight = int(h)
+	props.ClientWidthMin = int(wn)
+	props.ClientHeightMin = int(hn)
+	props.ClientWidthMax = int(wx)
+	props.ClientHeightMax = int(hx)
+	props.Borderless = bool(b != 0)
+	props.Dragable = bool(d != 0)
+	props.Resizable = bool(r != 0)
+	props.Fullscreen = bool(f != 0)
+	props.MouseLocked = bool(l != 0)
 }
 
 func toError(errNumC C.int, errWin32C C.g2d_ul_t, errStrC *C.char) error {
@@ -155,13 +379,13 @@ func (_ *tErrorHandler) ToError(g2dErrNum, win32ErrNum uint64, info string) erro
 	case 69:
 		errStr = "move window failed"
 	case 80:
-		errStr = postMessageErrStr
+		errStr = errStrPostMessage
 	case 81:
-		errStr = postMessageErrStr
+		errStr = errStrPostMessage
 	case 82:
-		errStr = postMessageErrStr
+		errStr = errStrPostMessage
 	case 83:
-		errStr = postMessageErrStr
+		errStr = errStrPostMessage
 
 	case 100:
 		errStr = "not initialized"
@@ -170,80 +394,80 @@ func (_ *tErrorHandler) ToError(g2dErrNum, win32ErrNum uint64, info string) erro
 	case 102:
 		errStr = "not initialized"
 	case 120:
-		errStr = mallocErrStr
+		errStr = errStrMalloc
 	case 121:
-		errStr = mallocErrStr
+		errStr = errStrMalloc
 
 	case 200:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "wglChoosePixelFormatARB")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "wglChoosePixelFormatARB")
 	case 201:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "wglCreateContextAttribsARB")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "wglCreateContextAttribsARB")
 	case 202:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "wglSwapIntervalEXT")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "wglSwapIntervalEXT")
 	case 203:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "wglGetSwapIntervalEXT")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "wglGetSwapIntervalEXT")
 	case 204:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glCreateShader")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glCreateShader")
 	case 205:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glShaderSource")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glShaderSource")
 	case 206:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glCompileShader")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glCompileShader")
 	case 207:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGetShaderiv")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGetShaderiv")
 	case 208:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGetShaderInfoLog")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGetShaderInfoLog")
 	case 209:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glCreateProgram")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glCreateProgram")
 	case 210:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glAttachShader")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glAttachShader")
 	case 211:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glLinkProgram")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glLinkProgram")
 	case 212:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glValidateProgram")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glValidateProgram")
 	case 213:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGetProgramiv")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGetProgramiv")
 	case 214:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGetProgramInfoLog")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGetProgramInfoLog")
 	case 215:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGenBuffers")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGenBuffers")
 	case 216:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGenVertexArrays")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGenVertexArrays")
 	case 217:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGetAttribLocation")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGetAttribLocation")
 	case 218:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glBindVertexArray")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glBindVertexArray")
 	case 219:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glEnableVertexAttribArray")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glEnableVertexAttribArray")
 	case 220:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glVertexAttribPointer")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glVertexAttribPointer")
 	case 221:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glBindBuffer")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glBindBuffer")
 	case 222:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glBufferData")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glBufferData")
 	case 223:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGetVertexAttribPointerv")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGetVertexAttribPointerv")
 	case 224:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glUseProgram")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glUseProgram")
 	case 225:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glDeleteVertexArrays")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glDeleteVertexArrays")
 	case 226:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glDeleteBuffers")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glDeleteBuffers")
 	case 227:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glDeleteProgram")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glDeleteProgram")
 	case 228:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glDeleteShader")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glDeleteShader")
 	case 229:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGetUniformLocation")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGetUniformLocation")
 	case 230:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glUniformMatrix3fv")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniformMatrix3fv")
 	case 231:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glUniformMatrix4fv")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniformMatrix4fv")
 	case 232:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glUniformMatrix2x3fv")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniformMatrix2x3fv")
 	case 233:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glGenerateMipmap")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGenerateMipmap")
 	case 234:
-		errStr = fmt.Sprintf(getProcAddrErrStr, "glActiveTexture")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glActiveTexture")
 	default:
 		errStr = "unknown error"
 	}
@@ -260,4 +484,17 @@ func (_ *tErrorHandler) ToError(g2dErrNum, win32ErrNum uint64, info string) erro
 }
 
 func (_ *tErrorHandler) LogError(err error) {
+}
+
+func toTString(str string) (unsafe.Pointer, C.int) {
+	var strT unsafe.Pointer
+	var errNumC C.int
+	strC := unsafe.Pointer(C.CString(str))
+	if strC != nil {
+		C.g2d_to_tstr(&strT, strC, &errNumC)
+		C.g2d_free(strC)
+	} else {
+		errNumC = 100
+	}
+	return strT, errNumC
 }

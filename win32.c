@@ -12,6 +12,15 @@
 #include <gl/GL.h>
 #include "g2d.h"
 
+/* Go functions can not be passed to c directly.            */
+/* They can only be called from c.                          */
+/* This code is an indirection to call Go callbacks.        */
+/* _cgo_export.h is generated automatically by cgo.         */
+#include "_cgo_export.h"
+
+/* Exported functions from Go are:                          */
+/* g2dProcessMessage                                        */
+
 /* wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions). */
 #define LOAD_FUNC(t, n, e) if (err_num[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_error = GetLastError(); if (last_error == 0) n = (t) proc; else { err_num[0] = e; err_win32[0] = (g2d_ul_t)last_error; }}
 
@@ -56,11 +65,52 @@ typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei co
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
+typedef struct {
+	HDC dc;
+	HGLRC rc;
+} context_t;
+
+typedef struct {
+	HWND hndl;
+	context_t ctx;
+} window_t;
+
+typedef struct {
+	int x, y, width, height;
+} client_t;
+
+typedef struct {
+	int width_min, height_min, width_max, height_max;
+	int borderless, dragable, fullscreen, resizable, locked;
+	DWORD style;
+} config_t;
+
+typedef struct {
+	int dragging, dragging_cust, locked;
+	int minimized, maximized, resizing;
+	int focus, shown;
+} state_t;
+
+typedef struct {
+	window_t wnd;
+	client_t client;
+	client_t client_bak;
+	config_t config;
+	state_t state;
+	int key_repeated[255];
+	int go_obj_id;
+} window_data_t;
+
+static const WPARAM const g2d_EVENT = (WPARAM)"g2d";
 static LPCTSTR const class_name = TEXT("g2d");
 static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
 
 static HINSTANCE instance = NULL;
+static DWORD thread_id;
+static BOOL thread_id_set = FALSE;
 static BOOL initialized = FALSE;
+static int registered_windows = 0;
+static int shown_windows = 0;
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
@@ -102,6 +152,33 @@ static PFNGLACTIVETEXTUREPROC            glActiveTexture            = NULL;
 void g2d_free(void *const data) {
 	free(data);
 }
+
+void g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num) {
+	LPTSTR str_new = NULL;
+	size_t length;
+	if (go_cstr)
+		length = strlen(go_cstr);
+	else
+		length = 0;
+	#ifdef UNICODE
+	str_new = (LPTSTR)malloc(sizeof(WCHAR) * (length + 1));
+	if (str_new) {
+		if (length > 0)
+			MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char*)go_cstr, length, str_new, length);
+	#else
+	str_new = (LPTSTR)malloc(sizeof(char) * (length + 1));
+	if (str_new) {
+		if (length > 0)
+			memcpy(str_new, go_cstr, length);
+	#endif
+		str_new[length] = 0;
+	}
+	else
+		err_num[0] = 120;
+	str[0] = (void*)str_new;
+}
+
+#include "win32_window.h"
 
 void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {
 	if (!initialized) {
@@ -243,6 +320,37 @@ void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {
 			err_win32[0] = (g2d_ul_t)GetLastError();
 		}
 	}
+}
+
+void g2d_process_messages() {
+	MSG msg; BOOL ret_code;
+	thread_id = GetCurrentThreadId();
+	thread_id_set = TRUE;
+	while ((ret_code = GetMessage(&msg, NULL, 0, 0)) > 0) {
+		if (msg.message == WM_APP && msg.wParam == g2d_EVENT) {
+			g2dProcessMessage();
+		} else {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+	thread_id_set = FALSE;
+}
+
+void g2d_post_message(int *const err_num, g2d_ul_t *const err_win32) {
+	if (thread_id_set) {
+		if (!PostThreadMessage(thread_id, WM_APP, g2d_EVENT, 0)) {
+			err_num[0] = 82; err_win32[0] = (g2d_ul_t)GetLastError();
+		}
+	} else {
+		if (!PostMessage(NULL, WM_APP, g2d_EVENT, 0)) {
+			err_num[0] = 82; err_win32[0] = (g2d_ul_t)GetLastError();
+		}
+	}
+}
+
+void g2d_quit_message_queue() {
+	PostQuitMessage(0);
 }
 
 /* #if defined(G2D_WIN32) */
