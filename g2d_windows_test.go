@@ -37,8 +37,8 @@ func TestConfigWindow(t *testing.T) {
 	if !initialized {
 		Init()
 	}
-	clearErrors()
-	if len(errs) == 0 {
+	if !initFailed {
+		clearErrors()
 		window := new(tTestConfigWindow)
 		Show(window)
 		errs = Errors()
@@ -51,6 +51,8 @@ func TestConfigWindow(t *testing.T) {
 		} else if errs[0].Error() != "test" {
 			t.Error(errs[0].Error())
 		}
+	} else {
+		t.Error(errs[0].Error())
 	}
 }
 
@@ -58,9 +60,9 @@ func TestCreateWindow(t *testing.T) {
 	if !initialized {
 		Init()
 	}
-	clearErrors()
-	if len(errs) == 0 {
+	if !initFailed {
 		window := new(tTestCreateWindow)
+		clearErrors()
 		Show(window)
 		errs = Errors()
 		if !window.configCalled {
@@ -74,6 +76,8 @@ func TestCreateWindow(t *testing.T) {
 		} else if errs[0].Error() != "test" {
 			t.Error(errs[0].Error())
 		}
+	} else {
+		t.Error(errs[0].Error())
 	}
 }
 
