@@ -1,5 +1,5 @@
 /*
- *          Copyright 2022, Vitali Baumtrok.
+ *          Copyright 2023, Vitali Baumtrok.
  * Distributed under the Boost Software License, Version 1.0.
  *     (See accompanying file LICENSE or copy at
  *        http://www.boost.org/LICENSE_1_0.txt)
@@ -12,44 +12,8 @@
 #include <gl/GL.h>
 #include "g2d.h"
 
-/* Go functions can not be passed to c directly.            */
-/* They can only be called from c.                          */
-/* This code is an indirection to call Go callbacks.        */
-/* _cgo_export.h is generated automatically by cgo.         */
-#include "_cgo_export.h"
-
-/* Exported functions from Go are:                          */
-/* g2dClose                                                 */
-/* g2dDestroyBegin                                          */
-/* g2dDestroyEnd                                            */
-
-// from wgl.h
-#define WGL_SAMPLE_BUFFERS_ARB            0x2041
-#define WGL_SAMPLES_ARB                   0x2042
-#define WGL_DRAW_TO_WINDOW_ARB            0x2001
-#define WGL_SWAP_METHOD_ARB               0x2007
-#define WGL_SUPPORT_OPENGL_ARB            0x2010
-#define WGL_DOUBLE_BUFFER_ARB             0x2011
-#define WGL_PIXEL_TYPE_ARB                0x2013
-#define WGL_TYPE_RGBA_ARB                 0x202B
-#define WGL_ACCELERATION_ARB              0x2003
-#define WGL_FULL_ACCELERATION_ARB         0x2027
-#define WGL_SWAP_EXCHANGE_ARB             0x2028
-#define WGL_SWAP_COPY_ARB                 0x2029
-#define WGL_SWAP_UNDEFINED_ARB            0x202A
-#define WGL_COLOR_BITS_ARB                0x2014
-#define WGL_ALPHA_BITS_ARB                0x201B
-#define WGL_DEPTH_BITS_ARB                0x2022
-#define WGL_STENCIL_BITS_ARB              0x2023
-#define WGL_CONTEXT_MAJOR_VERSION_ARB     0x2091
-#define WGL_CONTEXT_MINOR_VERSION_ARB     0x2092
-#define WGL_CONTEXT_PROFILE_MASK_ARB      0x9126
-#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB  0x00000001
-
-#define WGL_SWAP_METHOD_EXT               0x2007
-#define WGL_SWAP_EXCHANGE_EXT             0x2028
-#define WGL_SWAP_COPY_EXT                 0x2029
-#define WGL_SWAP_UNDEFINED_EXT            0x202A
+/* wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions). */
+#define LOAD_FUNC(t, n, e) if (err_num[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_error = GetLastError(); if (last_error == 0) n = (t) proc; else { err_num[0] = e; err_win32[0] = (g2d_ul_t)last_error; }}
 
 /* from wglext.h */
 typedef BOOL(WINAPI * PFNWGLCHOOSEPIXELFORMATARBPROC) (HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
@@ -92,57 +56,11 @@ typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei co
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
-#define ERR_NEW1(a) err_num[0] = a;
-#define ERR_NEW2(a, b) { err_num[0] = a; err_win32[0] = (g2d_ul_t)b; }
-#define ERR_NEW3(a, b, c) { err_num[0] = a; err_win32[0] = (g2d_ul_t)b; err_str[0] = c; }
-
-typedef struct {
-	HDC dc;
-	HGLRC rc;
-} context_t;
-
-typedef struct {
-	HWND hndl;
-	context_t ctx;
-} window_t;
-
-typedef struct {
-	int x, y, width, height;
-} client_t;
-
-typedef struct {
-	int width_min, height_min, width_max, height_max;
-	int borderless, dragable, fullscreen, resizable, locked;
-	DWORD style;
-} config_t;
-
-typedef struct {
-	int dragging, dragging_cust, locked;
-	int minimized, maximized, resizing;
-	int focus;
-} state_t;
-
-typedef struct {
-	window_t wnd;
-	client_t client;
-	client_t client_bak;
-	config_t config;
-	state_t state;
-	int key_repeated[255];
-	int go_obj_id;
-} window_data_t;
-
-static const WPARAM const MSG_SHOW = (WPARAM)"shown";
-static const WPARAM const MSG_UPDATE = (WPARAM)"update";
-static const WPARAM const MSG_PROPS = (WPARAM)"props";
-static const WPARAM const MSG_ERROR = (WPARAM)"error";
-
 static LPCTSTR const class_name = TEXT("g2d");
 static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
 
 static HINSTANCE instance = NULL;
 static BOOL initialized = FALSE;
-static int active_windows = 0;
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
@@ -181,86 +99,150 @@ static PFNGLUNIFORMMATRIX2X3FVPROC       glUniformMatrix2x3fv       = NULL;
 static PFNGLGENERATEMIPMAPPROC           glGenerateMipmap           = NULL;
 static PFNGLACTIVETEXTUREPROC            glActiveTexture            = NULL;
 
-static LPSTR str_copy(LPCSTR const str) {
-	if (str) {
-		const size_t length0 = strlen(str) + 1;
-		char *const str_new = (char*)malloc(sizeof(char) * length0);
-		if (str_new)
-			memcpy(str_new, str, length0);
-		return str_new;
-	}
-	return NULL;
-}
-
-static BOOL class_registered() {
-	WNDCLASSEX wcx;
-	if (GetClassInfoEx(instance, class_name, &wcx))
-		return TRUE;
-	return FALSE;
-}
-
-#include "win32_debug.h"
-#include "win32_keys.h"
-#include "win32_init.h"
-#include "win32_window.h"
-
 void g2d_free(void *const data) {
 	free(data);
 }
 
-void g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num) {
-	LPTSTR str_new = NULL;
-	size_t length;
-	if (go_cstr)
-		length = strlen(go_cstr);
-	else
-		length = 0;
-	#ifdef UNICODE
-	str_new = (LPTSTR)malloc(sizeof(WCHAR) * (length + 1));
-	if (str_new) {
-		if (length > 0)
-			MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char*)go_cstr, length, str_new, length);
-	#else
-	str_new = (LPTSTR)malloc(sizeof(char) * (length + 1));
-	if (str_new) {
-		if (length > 0)
-			memcpy(str_new, go_cstr, length);
-	#endif
-		str_new[length] = 0;
-	}
-	else
-		ERR_NEW1(2);
-	str[0] = (void*)str_new;
-}
-
-void g2d_process_events(int *const err_num) {
-	if (active_windows > 0) {
-		MSG msg;
-		while (GetMessage(&msg, NULL, 0, 0) > 0) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {
+	if (!initialized) {
+		/* module */
+		instance = GetModuleHandle(NULL);
+		if (instance) {
+			/* dummy class */
+			WNDCLASSEX cls;
+			ZeroMemory(&cls, sizeof(WNDCLASSEX));
+			cls.cbSize = sizeof(WNDCLASSEX);
+			cls.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
+			cls.lpfnWndProc = DefWindowProc;
+			cls.hInstance = instance;
+			cls.lpszClassName = class_name_dummy;
+			if (RegisterClassEx(&cls) != INVALID_ATOM) {
+				/* dummy window */
+				HWND const dummy_hndl = CreateWindow(class_name_dummy, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, instance, NULL);
+				if (dummy_hndl) {
+					/* dummy context */
+					HDC const dummy_dc = GetDC(dummy_hndl);
+					if (dummy_dc) {
+						int pixelFormat;
+						PIXELFORMATDESCRIPTOR pixelFormatDesc;
+						ZeroMemory(&pixelFormatDesc, sizeof(PIXELFORMATDESCRIPTOR));
+						pixelFormatDesc.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+						pixelFormatDesc.nVersion = 1;
+						pixelFormatDesc.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
+						pixelFormatDesc.iPixelType = PFD_TYPE_RGBA;
+						pixelFormatDesc.cColorBits = 32;
+						pixelFormatDesc.cAlphaBits = 8;
+						pixelFormatDesc.cDepthBits = 24;
+						pixelFormat = ChoosePixelFormat(dummy_dc, &pixelFormatDesc);
+						if (pixelFormat) {
+							if (SetPixelFormat(dummy_dc, pixelFormat, &pixelFormatDesc)) {
+								HGLRC const dummy_rc = wglCreateContext(dummy_dc);
+								if (dummy_rc) {
+									if (wglMakeCurrent(dummy_dc, dummy_rc)) {
+										/* wgl functions */
+										LOAD_FUNC(PFNWGLCHOOSEPIXELFORMATARBPROC, wglChoosePixelFormatARB, 200)
+										LOAD_FUNC(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB, 201)
+										LOAD_FUNC(PFNWGLSWAPINTERVALEXTPROC, wglSwapIntervalEXT, 202)
+										LOAD_FUNC(PFNWGLGETSWAPINTERVALEXTPROC, wglGetSwapIntervalEXT, 203)
+										/* ogl functions */
+										LOAD_FUNC(PFNGLCREATESHADERPROC, glCreateShader, 204)
+										LOAD_FUNC(PFNGLSHADERSOURCEPROC, glShaderSource, 205)
+										LOAD_FUNC(PFNGLCOMPILESHADERPROC, glCompileShader, 206)
+										LOAD_FUNC(PFNGLGETSHADERIVPROC, glGetShaderiv, 207)
+										LOAD_FUNC(PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog, 208)
+										LOAD_FUNC(PFNGLCREATEPROGRAMPROC, glCreateProgram, 209)
+										LOAD_FUNC(PFNGLATTACHSHADERPROC, glAttachShader, 210)
+										LOAD_FUNC(PFNGLLINKPROGRAMPROC, glLinkProgram, 211)
+										LOAD_FUNC(PFNGLVALIDATEPROGRAMPROC, glValidateProgram, 212)
+										LOAD_FUNC(PFNGLGETPROGRAMIVPROC, glGetProgramiv, 213)
+										LOAD_FUNC(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog, 214)
+										LOAD_FUNC(PFNGLGENBUFFERSPROC, glGenBuffers, 215)
+										LOAD_FUNC(PFNGLGENVERTEXARRAYSPROC, glGenVertexArrays, 216)
+										LOAD_FUNC(PFNGLGETATTRIBLOCATIONPROC, glGetAttribLocation, 217)
+										LOAD_FUNC(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray, 218)
+										LOAD_FUNC(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray, 219)
+										LOAD_FUNC(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer, 220)
+										LOAD_FUNC(PFNGLBINDBUFFERPROC, glBindBuffer, 221)
+										LOAD_FUNC(PFNGLBUFFERDATAPROC, glBufferData, 222)
+										LOAD_FUNC(PFNGLGETVERTEXATTRIBPOINTERVPROC, glGetVertexAttribPointerv, 223)
+										LOAD_FUNC(PFNGLUSEPROGRAMPROC, glUseProgram, 224)
+										LOAD_FUNC(PFNGLDELETEVERTEXARRAYSPROC, glDeleteVertexArrays, 225)
+										LOAD_FUNC(PFNGLDELETEBUFFERSPROC, glDeleteBuffers, 226)
+										LOAD_FUNC(PFNGLDELETEPROGRAMPROC, glDeleteProgram, 227)
+										LOAD_FUNC(PFNGLDELETESHADERPROC, glDeleteShader, 228)
+										LOAD_FUNC(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation, 229)
+										LOAD_FUNC(PFNGLUNIFORMMATRIX3FVPROC, glUniformMatrix3fv, 230)
+										LOAD_FUNC(PFNGLUNIFORMMATRIX4FVPROC, glUniformMatrix4fv, 231)
+										LOAD_FUNC(PFNGLUNIFORMMATRIX2X3FVPROC, glUniformMatrix2x3fv, 232)
+										LOAD_FUNC(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap, 233)
+										LOAD_FUNC(PFNGLACTIVETEXTUREPROC, glActiveTexture, 234)
+										/* destroy dummy */
+										if (!wglMakeCurrent(NULL, NULL) && err_num[0] == 0) {
+											err_num[0] = 9;
+											err_win32[0] = (g2d_ul_t)GetLastError();
+										}
+										if (!wglDeleteContext(dummy_rc) && err_num[0] == 0) {
+											err_num[0] = 10;
+											err_win32[0] = (g2d_ul_t)GetLastError();
+										}
+										ReleaseDC(dummy_hndl, dummy_dc);
+										if (!DestroyWindow(dummy_hndl) && err_num[0] == 0) {
+											err_num[0] = 11;
+											err_win32[0] = (g2d_ul_t)GetLastError();
+										}
+										if (!UnregisterClass(class_name_dummy, instance) && err_num[0] == 0) {
+											err_num[0] = 12;
+											err_win32[0] = (g2d_ul_t)GetLastError();
+										}
+										initialized = (BOOL)(err_num[0] == 0);
+									} else {
+										err_num[0] = 8;
+										err_win32[0] = (g2d_ul_t)GetLastError();
+										wglDeleteContext(dummy_rc);
+										ReleaseDC(dummy_hndl, dummy_dc);
+										DestroyWindow(dummy_hndl);
+										UnregisterClass(class_name_dummy, instance);
+									}
+								} else {
+									err_num[0] = 7;
+									err_win32[0] = (g2d_ul_t)GetLastError();
+									ReleaseDC(dummy_hndl, dummy_dc);
+									DestroyWindow(dummy_hndl);
+									UnregisterClass(class_name_dummy, instance);
+								}
+							} else {
+								err_num[0] = 6;
+								err_win32[0] = (g2d_ul_t)GetLastError();
+								ReleaseDC(dummy_hndl, dummy_dc);
+								DestroyWindow(dummy_hndl);
+								UnregisterClass(class_name_dummy, instance);
+							}
+						} else {
+							err_num[0] = 5;
+							err_win32[0] = (g2d_ul_t)GetLastError();
+							ReleaseDC(dummy_hndl, dummy_dc);
+							DestroyWindow(dummy_hndl);
+							UnregisterClass(class_name_dummy, instance);
+						}
+					} else {
+						err_num[0] = 4;
+						DestroyWindow(dummy_hndl);
+						UnregisterClass(class_name_dummy, instance);
+					}
+				} else {
+					err_num[0] = 3;
+					err_win32[0] = (g2d_ul_t)GetLastError();
+					UnregisterClass(class_name_dummy, instance);
+				}
+			} else {
+				err_num[0] = 2;
+				err_win32[0] = (g2d_ul_t)GetLastError();
+			}
+		} else {
+			err_num[0] = 1;
+			err_win32[0] = (g2d_ul_t)GetLastError();
 		}
 	}
-}
-
-void g2d_post_close(void *const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
-	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_CLOSE, 0, 0))
-		ERR_NEW1(80)
-}
-
-void g2d_post_update(void *const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
-	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_UPDATE, 0))
-		ERR_NEW1(81)
-}
-
-void g2d_post_props(void *const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
-	if (!PostMessage(((window_data_t*)data)[0].wnd.hndl, WM_APP, MSG_PROPS, 0))
-		ERR_NEW1(82)
-}
-
-void g2d_post_err(void *const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
-	if (!PostMessage(NULL, WM_APP, MSG_ERROR, 0))
-		ERR_NEW1(83)
 }
 
 /* #if defined(G2D_WIN32) */
