@@ -225,7 +225,7 @@ func createWindow(window *tWindow, config *Configuration) {
 			msg.props.update(window.dataC)
 			window.wgt.msgs <- msg
 		} else {
-			appendError(toError(errNumC, 0, nil))
+			appendError(toError(errNumC, errWin32C, nil))
 			window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
 		}
 	} else {
@@ -240,9 +240,14 @@ func showWindow(window *tWindow) {
 
 func destroyWindow(window *tWindow) {
 	if window.cbId >= 0 {
-		// TODO destroy window
+		var errNumC C.int
+		var errWin32C C.g2d_ul_t
+		C.g2d_window_destroy(window.dataC, &errNumC, &errWin32C)
 		cb.unregister(window.cbId)
 		window.cbId = -1
+		if errNumC != 0 {
+			appendError(toError(errNumC, errWin32C, nil))
+		}
 	}
 	registered := mainLoop.unregister(window.loopId)
 	if registered <= 0 {

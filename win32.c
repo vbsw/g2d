@@ -21,6 +21,34 @@
 /* Exported functions from Go are:                          */
 /* g2dProcessMessage                                        */
 
+// from wgl.h
+#define WGL_SAMPLE_BUFFERS_ARB            0x2041
+#define WGL_SAMPLES_ARB                   0x2042
+#define WGL_DRAW_TO_WINDOW_ARB            0x2001
+#define WGL_SWAP_METHOD_ARB               0x2007
+#define WGL_SUPPORT_OPENGL_ARB            0x2010
+#define WGL_DOUBLE_BUFFER_ARB             0x2011
+#define WGL_PIXEL_TYPE_ARB                0x2013
+#define WGL_TYPE_RGBA_ARB                 0x202B
+#define WGL_ACCELERATION_ARB              0x2003
+#define WGL_FULL_ACCELERATION_ARB         0x2027
+#define WGL_SWAP_EXCHANGE_ARB             0x2028
+#define WGL_SWAP_COPY_ARB                 0x2029
+#define WGL_SWAP_UNDEFINED_ARB            0x202A
+#define WGL_COLOR_BITS_ARB                0x2014
+#define WGL_ALPHA_BITS_ARB                0x201B
+#define WGL_DEPTH_BITS_ARB                0x2022
+#define WGL_STENCIL_BITS_ARB              0x2023
+#define WGL_CONTEXT_MAJOR_VERSION_ARB     0x2091
+#define WGL_CONTEXT_MINOR_VERSION_ARB     0x2092
+#define WGL_CONTEXT_PROFILE_MASK_ARB      0x9126
+#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB  0x00000001
+
+#define WGL_SWAP_METHOD_EXT               0x2007
+#define WGL_SWAP_EXCHANGE_EXT             0x2028
+#define WGL_SWAP_COPY_EXT                 0x2029
+#define WGL_SWAP_UNDEFINED_EXT            0x202A
+
 /* wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions). */
 #define LOAD_FUNC(t, n, e) if (err_num[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_error = GetLastError(); if (last_error == 0) n = (t) proc; else { err_num[0] = e; err_win32[0] = (g2d_ul_t)last_error; }}
 
@@ -109,8 +137,7 @@ static HINSTANCE instance = NULL;
 static DWORD thread_id;
 static BOOL thread_id_set = FALSE;
 static BOOL initialized = FALSE;
-static int registered_windows = 0;
-static int shown_windows = 0;
+static int windows_count = 0;
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
@@ -255,77 +282,56 @@ void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {
 										LOAD_FUNC(PFNGLACTIVETEXTUREPROC, glActiveTexture, 234)
 										/* destroy dummy */
 										if (!wglMakeCurrent(NULL, NULL) && err_num[0] == 0) {
-											err_num[0] = 9;
-											err_win32[0] = (g2d_ul_t)GetLastError();
+											err_num[0] = 9; err_win32[0] = (g2d_ul_t)GetLastError();
 										}
 										if (!wglDeleteContext(dummy_rc) && err_num[0] == 0) {
-											err_num[0] = 10;
-											err_win32[0] = (g2d_ul_t)GetLastError();
+											err_num[0] = 10; err_win32[0] = (g2d_ul_t)GetLastError();
 										}
 										ReleaseDC(dummy_hndl, dummy_dc);
 										if (!DestroyWindow(dummy_hndl) && err_num[0] == 0) {
-											err_num[0] = 11;
-											err_win32[0] = (g2d_ul_t)GetLastError();
+											err_num[0] = 11; err_win32[0] = (g2d_ul_t)GetLastError();
 										}
 										if (!UnregisterClass(class_name_dummy, instance) && err_num[0] == 0) {
-											err_num[0] = 12;
-											err_win32[0] = (g2d_ul_t)GetLastError();
+											err_num[0] = 12; err_win32[0] = (g2d_ul_t)GetLastError();
 										}
 										initialized = (BOOL)(err_num[0] == 0);
 									} else {
-										err_num[0] = 8;
-										err_win32[0] = (g2d_ul_t)GetLastError();
-										wglDeleteContext(dummy_rc);
-										ReleaseDC(dummy_hndl, dummy_dc);
-										DestroyWindow(dummy_hndl);
-										UnregisterClass(class_name_dummy, instance);
+										err_num[0] = 8; err_win32[0] = (g2d_ul_t)GetLastError();
+										wglDeleteContext(dummy_rc); ReleaseDC(dummy_hndl, dummy_dc);
+										DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 									}
 								} else {
-									err_num[0] = 7;
-									err_win32[0] = (g2d_ul_t)GetLastError();
-									ReleaseDC(dummy_hndl, dummy_dc);
-									DestroyWindow(dummy_hndl);
-									UnregisterClass(class_name_dummy, instance);
+									err_num[0] = 7; err_win32[0] = (g2d_ul_t)GetLastError();
+									ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 								}
 							} else {
-								err_num[0] = 6;
-								err_win32[0] = (g2d_ul_t)GetLastError();
-								ReleaseDC(dummy_hndl, dummy_dc);
-								DestroyWindow(dummy_hndl);
-								UnregisterClass(class_name_dummy, instance);
+								err_num[0] = 6; err_win32[0] = (g2d_ul_t)GetLastError();
+								ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 							}
 						} else {
-							err_num[0] = 5;
-							err_win32[0] = (g2d_ul_t)GetLastError();
-							ReleaseDC(dummy_hndl, dummy_dc);
-							DestroyWindow(dummy_hndl);
-							UnregisterClass(class_name_dummy, instance);
+							err_num[0] = 5; err_win32[0] = (g2d_ul_t)GetLastError();
+							ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 						}
 					} else {
 						err_num[0] = 4;
-						DestroyWindow(dummy_hndl);
-						UnregisterClass(class_name_dummy, instance);
+						DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 					}
 				} else {
-					err_num[0] = 3;
-					err_win32[0] = (g2d_ul_t)GetLastError();
+					err_num[0] = 3; err_win32[0] = (g2d_ul_t)GetLastError();
 					UnregisterClass(class_name_dummy, instance);
 				}
 			} else {
-				err_num[0] = 2;
-				err_win32[0] = (g2d_ul_t)GetLastError();
+				err_num[0] = 2; err_win32[0] = (g2d_ul_t)GetLastError();
 			}
 		} else {
-			err_num[0] = 1;
-			err_win32[0] = (g2d_ul_t)GetLastError();
+			err_num[0] = 1; err_win32[0] = (g2d_ul_t)GetLastError();
 		}
 	}
 }
 
 void g2d_process_messages() {
 	MSG msg; BOOL ret_code;
-	thread_id = GetCurrentThreadId();
-	thread_id_set = TRUE;
+	thread_id = GetCurrentThreadId(); thread_id_set = TRUE;
 	while ((ret_code = GetMessage(&msg, NULL, 0, 0)) > 0) {
 		if (msg.message == WM_APP && msg.wParam == g2d_EVENT) {
 			g2dProcessMessage();
