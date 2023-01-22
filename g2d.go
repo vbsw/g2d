@@ -19,7 +19,9 @@ import (
 const (
 	configType = iota
 	createType
+	showType
 	updateType
+	quitReqType
 	quitType
 	leaveType
 )
@@ -70,6 +72,8 @@ type Properties struct {
 type Window interface {
 	OnConfig(config *Configuration) error
 	OnCreate(widget *Widget) error
+	OnShow() error
+	OnClose() (bool, error)
 	OnDestroy()
 }
 
@@ -200,6 +204,14 @@ func (_ *DefaultWindow) OnConfig(config *Configuration) error {
 }
 
 func (_ *DefaultWindow) OnCreate(widget *Widget) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnClose() (bool, error) {
+	return true, nil
+}
+
+func (_ *DefaultWindow) OnShow() error {
 	return nil
 }
 

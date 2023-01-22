@@ -45,6 +45,9 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 		window_data_t *const wnd_data = (window_data_t*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 		if (wnd_data) {
 			switch (message) {
+			case WM_CLOSE:
+				g2dClose(wnd_data[0].go_obj_id);
+				break;
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);
 			}
@@ -165,6 +168,11 @@ void g2d_window_create(void **const data, const int go_obj, const int x, const i
 	} else {
 		err_num[0] = 121;
 	}
+}
+
+void g2d_window_show(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
 }
 
 void g2d_window_destroy(void *const data, int *const err_num, g2d_ul_t *const err_win32) {

@@ -62,17 +62,23 @@ func Show(window Window) {
 func (window *tWindow) logicThread() {
 	for {
 		msg := window.nextLMessage()
-		window.wgt.CurrEventNanos = msg.nanos
-		switch msg.typeId {
-		case configType:
-			window.onConfig()
-		case createType:
-			window.onCreate()
-		case quitType:
-			window.onQuit()
-		case leaveType:
-			mainLoop.postMessage(&tDestroyWindowRequest{window: window}, 1000)
-			break
+		if msg != nil {
+			window.wgt.CurrEventNanos = msg.nanos
+			switch msg.typeId {
+			case configType:
+				window.onConfig()
+			case createType:
+				window.onCreate()
+			case showType:
+				window.onShow()
+			case quitReqType:
+				window.onQuitReq()
+			case quitType:
+				window.onQuit()
+			case leaveType:
+				mainLoop.postMessage(&tDestroyWindowRequest{window: window}, 1000)
+				break
+			}
 		}
 	}
 }
@@ -92,6 +98,24 @@ func (window *tWindow) onCreate() {
 	err := window.abst.OnCreate(window.wgt)
 	if err == nil {
 		mainLoop.postMessage(&tShowWindowRequest{window: window}, 1000)
+	} else {
+		window.onError(err)
+	}
+}
+
+func (window *tWindow) onShow() {
+	err := window.abst.OnShow()
+	if err != nil {
+		window.onError(err)
+	}
+}
+
+func (window *tWindow) onQuitReq() {
+	closeOk, err := window.abst.OnClose()
+	if err == nil {
+		if closeOk {
+			window.onQuit()
+		}
 	} else {
 		window.onError(err)
 	}
@@ -195,6 +219,14 @@ func g2dProcessMessage() {
 	}
 }
 
+//export g2dClose
+func g2dClose(cbIdC C.int) {
+	window := cb.wnds[int(cbIdC)]
+	msg := &tLMessage{typeId: quitReqType, nanos: deltaNanos()}
+	msg.props.update(window.dataC)
+	window.wgt.msgs <- msg
+}
+
 func configWindow(window *tWindow) {
 	window.wgt.msgs <- (&tLMessage{typeId: configType, nanos: deltaNanos()})
 }
@@ -235,7 +267,15 @@ func createWindow(window *tWindow, config *Configuration) {
 }
 
 func showWindow(window *tWindow) {
-	// TODO show window
+	var errNumC C.int
+	var errWin32C C.g2d_ul_t
+	C.g2d_window_show(window.dataC, &errNumC, &errWin32C)
+	if errNumC == 0 {
+		window.wgt.msgs <- (&tLMessage{typeId: showType, nanos: deltaNanos()})
+	} else {
+		appendError(toError(errNumC, errWin32C, nil))
+		window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
+	}
 }
 
 func destroyWindow(window *tWindow) {
