@@ -14,6 +14,8 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"runtime"
 	"strconv"
 	"time"
 	"unsafe"
@@ -35,6 +37,7 @@ func Init(params ...interface{}) {
 		C.g2d_init(&errNumC, &errWin32C)
 		if errNumC == 0 {
 			startTime = time.Now()
+			poolStates = [56]int{0, 1, 2, 0, 10, 2, 2, 1, 3, 1, 2, 0, 3, 4, 1, 0, 6, 5, 1, 2, 0, 4, 1, 0, 6, 7, 0, 2, 13, 8, 0, 1, 9, 7, 0, 2, 9, 5, 1, 2, 10, 11, 0, 1, 9, 12, 0, 2, 13, 11, 0, 1, 13, 2, 2, 1}
 			initialized = true
 			initFailed = false
 		} else {
@@ -60,6 +63,7 @@ func Show(window Window) {
 }
 
 func (window *tWindow) logicThread() {
+	runtime.LockOSThread()
 	for {
 		msg := window.nextLMessage()
 		if msg != nil {
@@ -81,6 +85,53 @@ func (window *tWindow) logicThread() {
 			}
 		}
 	}
+	window.wgt.Gfx.rPool = nil
+	window.wgt.Gfx.wPool = nil
+	window.wgt = nil
+}
+
+func (window *tWindow) graphicThread() {
+	var errNumC C.int
+	var errWin32C C.g2d_ul_t
+	runtime.LockOSThread()
+	C.g2d_context_make_current(window.dataC, &errNumC, &errWin32C)
+	if errNumC == 0 {
+		for {
+			msg := window.nextGMessage()
+			if msg != nil {
+				switch msg.typeId {
+				case vsyncType:
+					C.g2d_gfx_set_swap_interval(C.int(msg.val))
+				case refreshType:
+					window.drawGraphics()
+				case quitType:
+					C.g2d_context_release(window.dataC, &errNumC, &errWin32C)
+					if errNumC != 0 {
+						appendError(toError(errNumC, errWin32C, nil))
+					}
+					window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
+					break
+				}
+			}
+		}
+	} else {
+		appendError(toError(errNumC, errWin32C, nil))
+		window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
+	}
+}
+
+func (window *tWindow) drawGraphics() {
+	var errNumC C.int
+	var errWin32C C.g2d_ul_t
+	window.wgt.Gfx.updateRPool()
+	pool := window.wgt.Gfx.rPool
+	C.g2d_gfx_clear_bg(pool.bgR, pool.bgG, pool.bgB)
+	C.g2d_gfx_swap_buffers(window.dataC, &errNumC, &errWin32C)
+	if errNumC != 0 {
+		window.state = 2
+		appendError(toError(errNumC, errWin32C, nil))
+		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+	}
 }
 
 func (window *tWindow) onConfig() {
@@ -97,6 +148,9 @@ func (window *tWindow) onConfig() {
 func (window *tWindow) onCreate() {
 	err := window.abst.OnCreate(window.wgt)
 	if err == nil {
+		window.state = 1
+		window.wgt.Gfx.switchWPool()
+		go window.graphicThread()
 		mainLoop.postMessage(&tShowWindowRequest{window: window}, 1000)
 	} else {
 		window.onError(err)
@@ -105,6 +159,7 @@ func (window *tWindow) onCreate() {
 
 func (window *tWindow) onShow() {
 	err := window.abst.OnShow()
+	window.wgt.Gfx.switchWPool()
 	if err != nil {
 		window.onError(err)
 	}
@@ -126,6 +181,8 @@ func (window *tWindow) onQuit() {
 	if window.state == 0 {
 		window.state = 10
 		window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
+	} else {
+		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
 	}
 }
 
@@ -147,6 +204,15 @@ func (window *tWindow) nextLMessage() *tLMessage {
 		message = <-window.wgt.msgs
 	}
 	if window.state == 10 && message.typeId != leaveType {
+		message = nil
+	}
+	return message
+}
+
+func (window *tWindow) nextGMessage() *tGMessage {
+	var message *tGMessage
+	message = <-window.wgt.Gfx.msgs
+	if window.state == 2 && message.typeId != quitType {
 		message = nil
 	}
 	return message
@@ -301,6 +367,8 @@ func newWindow(abst Window) *tWindow {
 	window.abst = abst
 	window.wgt = new(Widget)
 	window.wgt.msgs = make(chan *tLMessage, 1024)
+	window.wgt.Gfx.msgs = make(chan *tGMessage, 1024)
+	window.wgt.Gfx.wPool = &window.wgt.Gfx.pools[0]
 	go window.logicThread()
 	return window
 }
@@ -308,9 +376,9 @@ func newWindow(abst Window) *tWindow {
 func initCustParams(params []interface{}) {
 	for i, param := range params {
 		var ok, used bool
-		errGen, ok = param.(ErrorGenerator)
+		errGen, ok = param.(tErrorGenerator)
 		used = used || ok
-		errLog, ok = param.(ErrorLogger)
+		errLog, ok = param.(tErrorLogger)
 		used = used || ok
 		if !used {
 			panic(fmt.Sprintf("parameter %d is not used", i))
@@ -542,4 +610,12 @@ func toTString(str string) (unsafe.Pointer, C.int) {
 		errNumC = 100
 	}
 	return strT, errNumC
+}
+
+func getType(myvar interface{}) string {
+	if t := reflect.TypeOf(myvar); t.Kind() == reflect.Ptr {
+		return "*" + t.Elem().Name()
+	} else {
+		return t.Name()
+	}
 }

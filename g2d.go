@@ -24,26 +24,29 @@ const (
 	quitReqType
 	quitType
 	leaveType
+	refreshType
+	vsyncType
 )
 
 var (
 	errs        []error
 	mutex       sync.Mutex
-	errGen      ErrorGenerator
-	errLog      ErrorLogger
+	errGen      tErrorGenerator
+	errLog      tErrorLogger
 	errHandler  tErrorHandler
 	mainLoop    tMainLoop
 	initialized bool
 	initFailed  bool
 	startTime   time.Time
 	cb          tCallback
+	poolStates  [56]int
 )
 
-type ErrorGenerator interface {
+type tErrorGenerator interface {
 	ToError(g2dErrNum, win32ErrNum uint64, info string) error
 }
 
-type ErrorLogger interface {
+type tErrorLogger interface {
 	LogError(err error)
 }
 
@@ -86,7 +89,63 @@ type Widget struct {
 	MouseX, MouseY            int
 	PrevUpdateNanos           int64
 	CurrEventNanos            int64
+	Gfx                       Graphics
 	msgs                      chan *tLMessage
+}
+
+type Graphics struct {
+	rPool *tPool
+	wPool *tPool
+	msgs  chan *tGMessage
+	pools [3]tPool
+	mutex sync.Mutex
+	state int
+	vsync bool
+}
+
+type tPool struct {
+	bgR, bgG, bgB C.float
+}
+
+func (gfx *Graphics) Refresh() {
+	gfx.msgs <- &tGMessage{typeId: refreshType}
+}
+
+func (gfx *Graphics) SetBGColor(r, g, b float32) {
+	gfx.wPool.bgR, gfx.wPool.bgG, gfx.wPool.bgB = C.float(r), C.float(g), C.float(b)
+}
+
+func (gfx *Graphics) SetVSync(vsync bool) {
+	gfx.vsync = vsync
+	if vsync {
+		gfx.msgs <- &tGMessage{typeId: vsyncType, val: 1}
+	} else {
+		gfx.msgs <- &tGMessage{typeId: vsyncType, val: 0}
+	}
+}
+
+func (gfx *Graphics) updateRPool() {
+	gfx.mutex.Lock()
+	indexCurr := gfx.state * 4
+	gfx.state = poolStates[indexCurr]
+	indexNext := gfx.state * 4
+	gfx.rPool = &gfx.pools[poolStates[indexNext+2]]
+	gfx.mutex.Unlock()
+}
+
+func (gfx *Graphics) switchWPool() {
+	gfx.mutex.Lock()
+	indexCurr := gfx.state * 4
+	gfx.state = poolStates[indexCurr+1]
+	indexNext := gfx.state * 4
+	poolPrev := &gfx.pools[poolStates[indexCurr+3]]
+	gfx.wPool = &gfx.pools[poolStates[indexNext+3]]
+	gfx.wPool.set(poolPrev)
+	gfx.mutex.Unlock()
+}
+
+func (pool *tPool) set(other *tPool) {
+	pool.bgR, pool.bgG, pool.bgB = other.bgR, other.bgG, other.bgB
 }
 
 type tErrorHandler struct {
@@ -119,7 +178,12 @@ type tLMessage struct {
 	typeId int
 	nanos  int64
 	props  Properties
-	cust   interface{}
+	obj    interface{}
+}
+
+type tGMessage struct {
+	typeId int
+	val    int
 }
 
 type tConfigWindowRequest struct {

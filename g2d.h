@@ -19,6 +19,11 @@ extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn
 extern void g2d_process_messages();
 extern void g2d_post_message(int *err_num, g2d_ul_t *err_win32);
 extern void g2d_quit_message_queue();
+extern void g2d_context_make_current(void *data, int *err_num, g2d_ul_t *err_win32);
+extern void g2d_context_release(void *data, int *err_num, g2d_ul_t *err_win32);
+extern void g2d_gfx_clear_bg(float r, float g, float b);
+extern void g2d_gfx_swap_buffers(void *data, int *err_num, g2d_ul_t *err_win32);
+extern void g2d_gfx_set_swap_interval(int interval);
 
 #elif defined(G2D_LINUX)
 #endif

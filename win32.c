@@ -359,5 +359,39 @@ void g2d_quit_message_queue() {
 	PostQuitMessage(0);
 }
 
+void g2d_context_make_current(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	if (wglMakeCurrent(wnd_data[0].wnd.ctx.dc, wnd_data[0].wnd.ctx.rc)) {
+		glClearColor(0.0, 0.0, 1.0, 1.0);
+		glClear(GL_COLOR_BUFFER_BIT);
+		wglSwapIntervalEXT(1);
+	} else {
+		err_num[0] = 56; err_win32[0] = (g2d_ul_t)GetLastError();
+	}
+}
+
+void g2d_context_release(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	if (!wglMakeCurrent(NULL, NULL)) {
+		err_num[0] = 19; err_win32[0] = (g2d_ul_t)GetLastError();
+	}
+}
+
+void g2d_gfx_clear_bg(const float r, const float g, const float b) {
+	glClearColor((GLclampf)r, (GLclampf)g, (GLclampf)b, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void g2d_gfx_swap_buffers(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+	glFinish();
+	if (!SwapBuffers(((window_data_t*)data)[0].wnd.ctx.dc)) {
+		err_num[0] = 61; err_win32[0] = (g2d_ul_t)GetLastError();
+	}
+}
+
+void g2d_gfx_set_swap_interval(const int interval) {
+	wglSwapIntervalEXT(interval);
+}
+
 /* #if defined(G2D_WIN32) */
 #endif
