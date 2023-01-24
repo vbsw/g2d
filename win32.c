@@ -126,7 +126,7 @@ typedef struct {
 	config_t config;
 	state_t state;
 	int key_repeated[255];
-	int go_obj_id;
+	int cb_id;
 } window_data_t;
 
 static const WPARAM const g2d_EVENT = (WPARAM)"g2d";

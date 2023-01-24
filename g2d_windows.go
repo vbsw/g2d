@@ -90,7 +90,7 @@ func (window *tWindow) logicThread() {
 	window.wgt = nil
 }
 
-func (window *tWindow) graphicThread() {
+func (window *tWindow) graphicsThread() {
 	var errNumC C.int
 	var errWin32C C.g2d_ul_t
 	runtime.LockOSThread()
@@ -120,20 +120,6 @@ func (window *tWindow) graphicThread() {
 	}
 }
 
-func (window *tWindow) drawGraphics() {
-	var errNumC C.int
-	var errWin32C C.g2d_ul_t
-	window.wgt.Gfx.updateRPool()
-	pool := window.wgt.Gfx.rPool
-	C.g2d_gfx_clear_bg(pool.bgR, pool.bgG, pool.bgB)
-	C.g2d_gfx_swap_buffers(window.dataC, &errNumC, &errWin32C)
-	if errNumC != 0 {
-		window.state = 2
-		appendError(toError(errNumC, errWin32C, nil))
-		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
-	}
-}
-
 func (window *tWindow) onConfig() {
 	config := newConfiguration()
 	err := window.abst.OnConfig(config)
@@ -150,7 +136,7 @@ func (window *tWindow) onCreate() {
 	if err == nil {
 		window.state = 1
 		window.wgt.Gfx.switchWPool()
-		go window.graphicThread()
+		go window.graphicsThread()
 		mainLoop.postMessage(&tShowWindowRequest{window: window}, 1000)
 	} else {
 		window.onError(err)
@@ -189,6 +175,20 @@ func (window *tWindow) onQuit() {
 func (window *tWindow) onError(err error) {
 	appendError(err)
 	window.onQuit()
+}
+
+func (window *tWindow) drawGraphics() {
+	var errNumC C.int
+	var errWin32C C.g2d_ul_t
+	window.wgt.Gfx.updateRPool()
+	pool := window.wgt.Gfx.rPool
+	C.g2d_gfx_clear_bg(pool.bgR, pool.bgG, pool.bgB)
+	C.g2d_gfx_swap_buffers(window.dataC, &errNumC, &errWin32C)
+	if errNumC != 0 {
+		window.state = 2
+		appendError(toError(errNumC, errWin32C, nil))
+		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+	}
 }
 
 func (window *tWindow) nextLMessage() *tLMessage {

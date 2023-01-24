@@ -46,7 +46,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 		if (wnd_data) {
 			switch (message) {
 			case WM_CLOSE:
-				g2dClose(wnd_data[0].go_obj_id);
+				g2dClose(wnd_data[0].cb_id);
 				break;
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);
@@ -58,11 +58,12 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 	return result;
 }
 
-void g2d_window_create(void **const data, const int go_obj, const int x, const int y, const int w, const int h, const int wn, const int hn, const int wx, const int hx,
+void g2d_window_create(void **const data, const int cb_id, const int x, const int y, const int w, const int h, const int wn, const int hn, const int wx, const int hx,
 	const int b, const int d, const int r, const int f, const int l, const int c, void *t, int *const err_num, g2d_ul_t *const err_win32) {
 	window_data_t *const wnd_data = (window_data_t*)malloc(sizeof(window_data_t));
 	if (wnd_data) {
 		ZeroMemory(wnd_data, sizeof(window_data_t));
+		wnd_data[0].cb_id = cb_id;
 		wnd_data[0].client.x = x;
 		wnd_data[0].client.y = y;
 		wnd_data[0].client.width = w;

@@ -42,12 +42,10 @@ var (
 	poolStates  [56]int
 )
 
-type tErrorGenerator interface {
-	ToError(g2dErrNum, win32ErrNum uint64, info string) error
-}
-
-type tErrorLogger interface {
-	LogError(err error)
+func Errors() []error {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return errs
 }
 
 type Configuration struct {
@@ -83,6 +81,25 @@ type Window interface {
 type DefaultWindow struct {
 }
 
+func (_ *DefaultWindow) OnConfig(config *Configuration) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnCreate(widget *Widget) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnClose() (bool, error) {
+	return true, nil
+}
+
+func (_ *DefaultWindow) OnShow() error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnDestroy() {
+}
+
 type Widget struct {
 	ClientX, ClientY          int
 	ClientWidth, ClientHeight int
@@ -101,10 +118,6 @@ type Graphics struct {
 	mutex sync.Mutex
 	state int
 	vsync bool
-}
-
-type tPool struct {
-	bgR, bgG, bgB C.float
 }
 
 func (gfx *Graphics) Refresh() {
@@ -144,11 +157,23 @@ func (gfx *Graphics) switchWPool() {
 	gfx.mutex.Unlock()
 }
 
-func (pool *tPool) set(other *tPool) {
-	pool.bgR, pool.bgG, pool.bgB = other.bgR, other.bgG, other.bgB
+type tErrorGenerator interface {
+	ToError(g2dErrNum, win32ErrNum uint64, info string) error
+}
+
+type tErrorLogger interface {
+	LogError(err error)
 }
 
 type tErrorHandler struct {
+}
+
+type tPool struct {
+	bgR, bgG, bgB C.float
+}
+
+func (pool *tPool) set(other *tPool) {
+	pool.bgR, pool.bgG, pool.bgB = other.bgR, other.bgG, other.bgB
 }
 
 type tMainLoop struct {
@@ -157,6 +182,12 @@ type tMainLoop struct {
 	running    bool
 	wndsUsed   []*tWindow
 	wndsUnused []int
+}
+
+func (loop *tMainLoop) nextMessage() interface{} {
+	loop.mutex.Lock()
+	defer loop.mutex.Unlock()
+	return loop.msgs.First()
 }
 
 type tWindow struct {
@@ -172,6 +203,37 @@ type tWindow struct {
 type tCallback struct {
 	wnds   []*tWindow
 	unused []int
+}
+
+// register returns a new id number for wnd. It will not be garbage collected until
+// unregister is called with this id.
+func (cb *tCallback) register(wnd *tWindow) int {
+	var index int
+	if len(cb.unused) == 0 {
+		cb.wnds = append(cb.wnds, wnd)
+		index = len(cb.wnds) - 1
+	} else {
+		lastIndex := len(cb.unused) - 1
+		index = cb.unused[lastIndex]
+		cb.unused = cb.unused[:lastIndex]
+		cb.wnds[index] = wnd
+	}
+	return index
+}
+
+// unregister makes wnd no more identified by id.
+// This object may be garbage collected, now.
+func (cb *tCallback) unregister(id int) {
+	cb.wnds[id] = nil
+	cb.unused = append(cb.unused, id)
+}
+
+// unregisterAll makes all regiestered wnds no more identified by id.
+// These objects may be garbage collected, now.
+func (cb *tCallback) unregisterAll() {
+	for i := 0; i < len(cb.wnds) && cb.wnds[i] != nil; i++ {
+		cb.unregister(i)
+	}
 }
 
 type tLMessage struct {
@@ -209,18 +271,6 @@ type tWindowError struct {
 }
 
 type tStopMainLoop struct {
-}
-
-func Errors() []error {
-	mutex.Lock()
-	defer mutex.Unlock()
-	return errs
-}
-
-func (loop *tMainLoop) nextMessage() interface{} {
-	loop.mutex.Lock()
-	defer loop.mutex.Unlock()
-	return loop.msgs.First()
 }
 
 func newConfiguration() *Configuration {
@@ -261,56 +311,6 @@ func deltaNanos() int64 {
 	timeNow := time.Now()
 	d := timeNow.Sub(startTime)
 	return d.Nanoseconds()
-}
-
-func (_ *DefaultWindow) OnConfig(config *Configuration) error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnCreate(widget *Widget) error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnClose() (bool, error) {
-	return true, nil
-}
-
-func (_ *DefaultWindow) OnShow() error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnDestroy() {
-}
-
-// register returns a new id number for wnd. It will not be garbage collected until
-// unregister is called with this id.
-func (cb *tCallback) register(wnd *tWindow) int {
-	var index int
-	if len(cb.unused) == 0 {
-		cb.wnds = append(cb.wnds, wnd)
-		index = len(cb.wnds) - 1
-	} else {
-		lastIndex := len(cb.unused) - 1
-		index = cb.unused[lastIndex]
-		cb.unused = cb.unused[:lastIndex]
-		cb.wnds[index] = wnd
-	}
-	return index
-}
-
-// unregister makes wnd no more identified by id.
-// This object may be garbage collected, now.
-func (cb *tCallback) unregister(id int) {
-	cb.wnds[id] = nil
-	cb.unused = append(cb.unused, id)
-}
-
-// unregisterAll makes all regiestered wnds no more identified by id.
-// These objects may be garbage collected, now.
-func (cb *tCallback) unregisterAll() {
-	for i := 0; i < len(cb.wnds) && cb.wnds[i] != nil; i++ {
-		cb.unregister(i)
-	}
 }
 
 // toCInt converts bool value to C int value.
