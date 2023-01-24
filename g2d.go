@@ -143,7 +143,7 @@ func (gfx *Graphics) SetVSync(vsync bool) {
 
 func (gfx *Graphics) NewRectLayer(size int) int {
 	layerId := len(gfx.wPool.layers)
-	gfx.wPool.layers = append(gfx.wPool.layers, newLayerRects(layerId, size))
+	gfx.wPool.layers = append(gfx.wPool.layers, newRectLayer(layerId, size))
 	return layerId
 }
 
@@ -421,7 +421,7 @@ func (layer *tLayerRects) set(other tLayer) {
 	}
 }
 
-func newLayerRects(id, size int) *tLayerRects {
+func newRectLayer(id, size int) *tLayerRects {
 	layer := new(tLayerRects)
 	layer.rects = make([][]Rect, 1)
 	layer.rects[0] = make([]Rect, size)

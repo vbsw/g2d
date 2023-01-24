@@ -103,7 +103,7 @@ func TestCreateWindow(t *testing.T) {
 }
 
 func TestLayerA(t *testing.T) {
-	layer := newLayerRects(0, 2)
+	layer := newRectLayer(0, 2)
 	rectA := layer.newRect()
 	rectB := layer.newRect()
 	if rectA.layer != 0 || rectB.layer != 0 {
@@ -129,7 +129,7 @@ func TestLayerA(t *testing.T) {
 }
 
 func TestLayerB(t *testing.T) {
-	layer := newLayerRects(0, 2)
+	layer := newRectLayer(0, 2)
 	layer.newRect()
 	rectB := layer.newRect()
 	layer.newRect()
