@@ -111,8 +111,14 @@ type Widget struct {
 	MouseX, MouseY            int
 	PrevUpdateNanos           int64
 	CurrEventNanos            int64
+	update                    bool
 	Gfx                       Graphics
 	msgs                      chan *tLMessage
+}
+
+func (wgt *Widget) Update() {
+	wgt.update = true
+	wgt.msgs <- nil
 }
 
 type Graphics struct {

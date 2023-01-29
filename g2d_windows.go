@@ -197,11 +197,12 @@ func (window *tWindow) drawGraphics() {
 
 func (window *tWindow) nextLMessage() *tLMessage {
 	var message *tLMessage
-	if window.autoUpdate {
+	if window.autoUpdate || window.wgt.update {
 		select {
 		case msg := <-window.wgt.msgs:
 			message = msg
 		default:
+			window.wgt.update = false
 			message = &tLMessage{typeId: updateType, nanos: deltaNanos()}
 		}
 	} else {
