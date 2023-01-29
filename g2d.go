@@ -25,6 +25,8 @@ const (
 	configType = iota
 	createType
 	showType
+	keyDownType
+	keyUpType
 	updateType
 	quitReqType
 	quitType
@@ -79,6 +81,8 @@ type Window interface {
 	OnConfig(config *Configuration) error
 	OnCreate(widget *Widget) error
 	OnShow() error
+	OnKeyDown(keyCode int, repeated uint) error
+	OnKeyUp(keyCode int) error
 	OnClose() (bool, error)
 	OnDestroy()
 }
@@ -102,6 +106,14 @@ func (_ *DefaultWindow) OnShow() error {
 	return nil
 }
 
+func (_ *DefaultWindow) OnKeyDown(keyCode int, repeated uint) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnKeyUp(keyCode int) error {
+	return nil
+}
+
 func (_ *DefaultWindow) OnDestroy() {
 }
 
@@ -119,6 +131,15 @@ type Widget struct {
 func (wgt *Widget) Update() {
 	wgt.update = true
 	wgt.msgs <- nil
+}
+
+func (wgt *Widget) RequestClose() {
+	msg := &tLMessage{typeId: quitReqType, nanos: deltaNanos()}
+	wgt.msgs <- msg
+}
+
+func (wgt *Widget) Close() {
+	wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
 }
 
 type Graphics struct {
@@ -338,10 +359,12 @@ func (cb *tCallback) unregisterAll() {
 }
 
 type tLMessage struct {
-	typeId int
-	nanos  int64
-	props  Properties
-	obj    interface{}
+	typeId   int
+	keyCode  int
+	repeated uint
+	nanos    int64
+	props    Properties
+	obj      interface{}
 }
 
 type tGMessage struct {

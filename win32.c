@@ -209,6 +209,7 @@ void g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num) {
 	str[0] = (void*)str_new;
 }
 
+#include "win32_keys.h"
 #include "win32_window.h"
 
 void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {

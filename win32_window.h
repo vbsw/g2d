@@ -48,6 +48,14 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			case WM_CLOSE:
 				g2dClose(wnd_data[0].cb_id);
 				break;
+			case WM_KEYDOWN:
+				if (!key_down_process(wnd_data, message, wParam, lParam))
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+				break;
+			case WM_KEYUP:
+				if (!key_up_process(wnd_data, message, wParam, lParam))
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+				break;
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);
 			}

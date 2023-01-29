@@ -75,6 +75,10 @@ func (window *tWindow) logicThread() {
 				window.onCreate()
 			case showType:
 				window.onShow()
+			case keyDownType:
+				window.onKeyDown(msg.keyCode, msg.repeated)
+			case keyUpType:
+				window.onKeyUp(msg.keyCode)
 			case quitReqType:
 				window.onQuitReq()
 			case quitType:
@@ -150,6 +154,20 @@ func (window *tWindow) onCreate() {
 func (window *tWindow) onShow() {
 	err := window.abst.OnShow()
 	window.wgt.Gfx.switchWBuffer()
+	if err != nil {
+		window.onError(err)
+	}
+}
+
+func (window *tWindow) onKeyDown(keyCode int, repeated uint) {
+	err := window.abst.OnKeyDown(keyCode, repeated)
+	if err != nil {
+		window.onError(err)
+	}
+}
+
+func (window *tWindow) onKeyUp(keyCode int) {
+	err := window.abst.OnKeyUp(keyCode)
 	if err != nil {
 		window.onError(err)
 	}
@@ -293,7 +311,21 @@ func g2dProcessMessage() {
 //export g2dClose
 func g2dClose(cbIdC C.int) {
 	window := cb.wnds[int(cbIdC)]
-	msg := &tLMessage{typeId: quitReqType, nanos: deltaNanos()}
+	window.wgt.RequestClose()
+}
+
+//export g2dKeyDown
+func g2dKeyDown(cbIdC, code C.int, repeated C.g2d_ui_t) {
+	window := cb.wnds[int(cbIdC)]
+	msg := &tLMessage{typeId: keyDownType, keyCode: int(code), repeated: uint(repeated), nanos: deltaNanos()}
+	msg.props.update(window.dataC)
+	window.wgt.msgs <- msg
+}
+
+//export g2dKeyUp
+func g2dKeyUp(cbIdC, code C.int) {
+	window := cb.wnds[int(cbIdC)]
+	msg := &tLMessage{typeId: keyUpType, keyCode: int(code), nanos: deltaNanos()}
 	msg.props.update(window.dataC)
 	window.wgt.msgs <- msg
 }
