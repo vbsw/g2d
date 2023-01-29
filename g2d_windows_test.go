@@ -102,41 +102,57 @@ func TestCreateWindow(t *testing.T) {
 	}
 }
 
+func TestRectIndex(t *testing.T) {
+	layer := newRectLayer(2)
+	indexA := layer.newRectIndex()
+	indexB := layer.newRectIndex()
+	if indexA != 0 || indexB != 1 {
+		t.Error(indexA, indexB)
+	} else {
+		layer.release(indexA)
+		indexA = layer.newRectIndex()
+		indexB = layer.newRectIndex()
+		if layer.totalActive != 3 {
+			t.Error(layer.totalActive)
+		} else if indexA != 0 || indexB != 2 {
+			t.Error(indexA, indexB)
+		}
+	}
+}
+
 func TestLayerA(t *testing.T) {
-	layer := newRectLayer(0, 2)
-	rectA := layer.newRect()
-	rectB := layer.newRect()
-	if rectA.layer != 0 || rectB.layer != 0 {
-		t.Error(rectA.layer, rectB.layer)
-	} else if rectA.chunk != 0 || rectB.chunk != 0 {
+	layer := newRectEntitiesLayer(2)
+	rectA := layer.newRectEntity(nil, 0, 0)
+	rectB := layer.newRectEntity(nil, 0, 1)
+	if rectA.chunk != 0 || rectB.chunk != 0 {
 		t.Error(rectA.chunk, rectB.chunk)
 	} else if rectA.index != 0 || rectB.index != 1 {
 		t.Error(rectA.index, rectB.index)
 	} else {
-		layer.release(rectA.chunk, rectA.index)
-		rectA = layer.newRect()
-		rectB = layer.newRect()
-		if layer.totalActive != 3 || layer.size != 4 {
-			t.Error(layer.totalActive, layer.size)
+		layer.release(rectA.chunk, rectA.entityIndex)
+		rectA = layer.newRectEntity(nil, 0, 0)
+		rectB = layer.newRectEntity(nil, 0, 2)
+		if layer.size != 2 {
+			t.Error(layer.size)
 		} else if rectA.layer != 0 || rectB.layer != 0 {
 			t.Error(rectA.layer, rectB.layer)
 		} else if rectA.chunk != 0 || rectB.chunk != 1 {
 			t.Error(rectA.chunk, rectB.chunk)
-		} else if rectA.index != 0 || rectB.index != 0 {
+		} else if rectA.index != 0 || rectB.index != 2 {
 			t.Error(rectA.index, rectB.index)
 		}
 	}
 }
 
 func TestLayerB(t *testing.T) {
-	layer := newRectLayer(0, 2)
-	layer.newRect()
-	rectB := layer.newRect()
-	layer.newRect()
-	rectD := *rectB
-	layer.release(rectB.chunk, rectB.index)
-	rectB = rectB
-	if rectD != *rectB {
-		t.Error(rectD.layer, rectD.chunk, rectD.index, rectB.layer, rectB.chunk, rectB.index)
+	layer := newRectEntitiesLayer(2)
+	layer.newRectEntity(nil, 0, 0)
+	rectB := layer.newRectEntity(nil, 0, 1)
+	layer.newRectEntity(nil, 0, 2)
+	rectD := rectB
+	layer.release(rectB.chunk, rectB.entityIndex)
+	rectB = layer.newRectEntity(nil, 0, 3)
+	if rectD != rectB {
+		t.Error(rectD.layer, rectD.chunk, rectD.entityIndex, rectB.layer, rectB.chunk, rectB.entityIndex)
 	}
 }

@@ -37,7 +37,7 @@ func Init(params ...interface{}) {
 		C.g2d_init(&errNumC, &errWin32C)
 		if errNumC == 0 {
 			startTime = time.Now()
-			poolStates = [56]int{0, 1, 2, 0, 10, 2, 2, 1, 3, 1, 2, 0, 3, 4, 1, 0, 6, 5, 1, 2, 0, 4, 1, 0, 6, 7, 0, 2, 13, 8, 0, 1, 9, 7, 0, 2, 9, 5, 1, 2, 10, 11, 0, 1, 9, 12, 0, 2, 13, 11, 0, 1, 13, 2, 2, 1}
+			fsm = [56]int{0, 1, 2, 0, 10, 2, 2, 1, 3, 1, 2, 0, 3, 4, 1, 0, 6, 5, 1, 2, 0, 4, 1, 0, 6, 7, 0, 2, 13, 8, 0, 1, 9, 7, 0, 2, 9, 5, 1, 2, 10, 11, 0, 1, 9, 12, 0, 2, 13, 11, 0, 1, 13, 2, 2, 1}
 			initialized = true
 			initFailed = false
 		} else {
@@ -85,8 +85,12 @@ func (window *tWindow) logicThread() {
 			}
 		}
 	}
-	window.wgt.Gfx.rPool = nil
-	window.wgt.Gfx.wPool = nil
+	window.wgt.Gfx.rBuffer = nil
+	window.wgt.Gfx.wBuffer = nil
+	window.wgt.Gfx.buffers[0].layers = nil
+	window.wgt.Gfx.buffers[1].layers = nil
+	window.wgt.Gfx.buffers[2].layers = nil
+	window.wgt.Gfx.entitiesLayers = nil
 	window.wgt = nil
 }
 
@@ -135,7 +139,7 @@ func (window *tWindow) onCreate() {
 	err := window.abst.OnCreate(window.wgt)
 	if err == nil {
 		window.state = 1
-		window.wgt.Gfx.switchWPool()
+		window.wgt.Gfx.switchWBuffer()
 		go window.graphicsThread()
 		mainLoop.postMessage(&tShowWindowRequest{window: window}, 1000)
 	} else {
@@ -145,7 +149,7 @@ func (window *tWindow) onCreate() {
 
 func (window *tWindow) onShow() {
 	err := window.abst.OnShow()
-	window.wgt.Gfx.switchWPool()
+	window.wgt.Gfx.switchWBuffer()
 	if err != nil {
 		window.onError(err)
 	}
@@ -180,9 +184,9 @@ func (window *tWindow) onError(err error) {
 func (window *tWindow) drawGraphics() {
 	var errNumC C.int
 	var errWin32C C.g2d_ul_t
-	window.wgt.Gfx.updateRPool()
-	pool := window.wgt.Gfx.rPool
-	C.g2d_gfx_clear_bg(pool.bgR, pool.bgG, pool.bgB)
+	window.wgt.Gfx.switchRBuffer()
+	buffer := window.wgt.Gfx.rBuffer
+	C.g2d_gfx_clear_bg(buffer.bgR, buffer.bgG, buffer.bgB)
 	C.g2d_gfx_swap_buffers(window.dataC, &errNumC, &errWin32C)
 	if errNumC != 0 {
 		window.state = 2
@@ -368,7 +372,8 @@ func newWindow(abst Window) *tWindow {
 	window.wgt = new(Widget)
 	window.wgt.msgs = make(chan *tLMessage, 1024)
 	window.wgt.Gfx.msgs = make(chan *tGMessage, 1024)
-	window.wgt.Gfx.wPool = &window.wgt.Gfx.pools[0]
+	window.wgt.Gfx.rBuffer = &window.wgt.Gfx.buffers[0]
+	window.wgt.Gfx.wBuffer = &window.wgt.Gfx.buffers[0]
 	go window.logicThread()
 	return window
 }
@@ -618,4 +623,9 @@ func getType(myvar interface{}) string {
 	} else {
 		return t.Name()
 	}
+}
+
+//export goDebug
+func goDebug(a, b C.int, c, d C.g2d_ul_t) {
+	fmt.Println(a, b, c, d)
 }

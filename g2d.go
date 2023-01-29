@@ -8,6 +8,7 @@
 // Package g2d is a framework to create 2D graphic applications.
 package g2d
 
+// typedef struct { float x, y, w, h, r, g, b, a; } g2d_rect_t;
 import "C"
 import (
 	"github.com/vbsw/golib/queue"
@@ -43,7 +44,7 @@ var (
 	initFailed  bool
 	startTime   time.Time
 	cb          tCallback
-	poolStates  [56]int
+	fsm         [56]int
 )
 
 func Errors() []error {
@@ -115,13 +116,14 @@ type Widget struct {
 }
 
 type Graphics struct {
-	rPool *tPool
-	wPool *tPool
-	msgs  chan *tGMessage
-	pools [3]tPool
-	mutex sync.Mutex
-	state int
-	vsync bool
+	rBuffer        *tBuffer
+	wBuffer        *tBuffer
+	msgs           chan *tGMessage
+	buffers        [3]tBuffer
+	entitiesLayers []tEntitiesLayer
+	mutex          sync.Mutex
+	state          int
+	vsync          bool
 }
 
 func (gfx *Graphics) Refresh() {
@@ -129,7 +131,7 @@ func (gfx *Graphics) Refresh() {
 }
 
 func (gfx *Graphics) SetBGColor(r, g, b float32) {
-	gfx.wPool.bgR, gfx.wPool.bgG, gfx.wPool.bgB = C.float(r), C.float(g), C.float(b)
+	gfx.wBuffer.bgR, gfx.wBuffer.bgG, gfx.wBuffer.bgB = C.float(r), C.float(g), C.float(b)
 }
 
 func (gfx *Graphics) SetVSync(vsync bool) {
@@ -142,39 +144,120 @@ func (gfx *Graphics) SetVSync(vsync bool) {
 }
 
 func (gfx *Graphics) NewRectLayer(size int) int {
-	layerId := len(gfx.wPool.layers)
-	gfx.wPool.layers = append(gfx.wPool.layers, newRectLayer(layerId, size))
+	layerId := len(gfx.wBuffer.layers)
+	gfx.wBuffer.layers = append(gfx.wBuffer.layers, newRectLayer(size))
+	gfx.entitiesLayers = append(gfx.entitiesLayers, newRectEntitiesLayer(size))
 	return layerId
 }
 
-func (gfx *Graphics) ReleaseRect(rect *Rect) {
-	gfx.wPool.layers[rect.layer].release(rect.chunk, rect.index)
+func (gfx *Graphics) NewRect(layer int) *Rect {
+	index := gfx.wBuffer.layers[layer].newRectIndex()
+	rect := gfx.entitiesLayers[layer].newRectEntity(&gfx.wBuffer, layer, index)
+	return rect
 }
 
-func (gfx *Graphics) updateRPool() {
+func (gfx *Graphics) switchRBuffer() {
 	gfx.mutex.Lock()
 	indexCurr := gfx.state * 4
-	gfx.state = poolStates[indexCurr]
+	gfx.state = fsm[indexCurr]
 	indexNext := gfx.state * 4
-	gfx.rPool = &gfx.pools[poolStates[indexNext+2]]
+	gfx.rBuffer = &gfx.buffers[fsm[indexNext+2]]
 	gfx.mutex.Unlock()
 }
 
-func (gfx *Graphics) switchWPool() {
+func (gfx *Graphics) switchWBuffer() {
 	gfx.mutex.Lock()
 	indexCurr := gfx.state * 4
-	gfx.state = poolStates[indexCurr+1]
+	gfx.state = fsm[indexCurr+1]
 	indexNext := gfx.state * 4
-	poolPrev := &gfx.pools[poolStates[indexCurr+3]]
-	gfx.wPool = &gfx.pools[poolStates[indexNext+3]]
-	gfx.wPool.set(poolPrev)
+	gfx.wBuffer = &gfx.buffers[fsm[indexNext+3]]
 	gfx.mutex.Unlock()
+	gfx.wBuffer.set(&gfx.buffers[fsm[indexCurr+3]])
 }
 
 type Rect struct {
-	layer, chunk, index int
-	X, Y, W, H          int
-	R, G, B, A          float32
+	buffer             **tBuffer
+	entitylayer        tEntitiesLayer
+	chunk, entityIndex int
+	layer, index       int
+}
+
+func (rect *Rect) init(buffer **tBuffer, layer, index, chunk, entityIndex int, entitylayer tEntitiesLayer) *Rect {
+	rect.buffer = buffer
+	rect.layer, rect.index = layer, index
+	rect.chunk, rect.entityIndex = chunk, entityIndex
+	rect.entitylayer = entitylayer
+	return rect
+}
+
+func (rect *Rect) XY() (float32, float32) {
+	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
+	return float32(rectC.x), float32(rectC.y)
+}
+
+func (rect *Rect) WH() (float32, float32) {
+	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
+	return float32(rectC.w), float32(rectC.h)
+}
+
+func (rect *Rect) XYWH() (float32, float32, float32, float32) {
+	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
+	return float32(rectC.x), float32(rectC.y), float32(rectC.w), float32(rectC.h)
+}
+
+func (rect *Rect) RGBA() (float32, float32, float32, float32) {
+	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
+	return float32(rectC.r), float32(rectC.g), float32(rectC.b), float32(rectC.a)
+}
+
+func (rect *Rect) SetXY(x, y float32) {
+	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
+	rectC.x, rectC.y = C.float(x), C.float(y)
+}
+
+func (rect *Rect) SetWH(w, h float32) {
+	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
+	rectC.w, rectC.h = C.float(w), C.float(h)
+}
+
+func (rect *Rect) SetXYWH(x, y, w, h float32) {
+	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
+	rectC.x, rectC.y, rectC.w, rectC.h = C.float(x), C.float(y), C.float(w), C.float(h)
+}
+
+func (rect *Rect) SetRGBA(r, g, b, a float32) {
+	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
+	rectC.r, rectC.g, rectC.b, rectC.a = C.float(r), C.float(g), C.float(b), C.float(a)
+}
+
+func (rect *Rect) SetEnabled(enabled bool) {
+	if enabled {
+		(*rect.buffer).layers[rect.layer].enable(rect.index)
+	} else {
+		(*rect.buffer).layers[rect.layer].disable(rect.index)
+	}
+}
+
+func (rect *Rect) Release() {
+	(*rect.buffer).layers[rect.layer].release(rect.index)
+	rect.entitylayer.release(rect.chunk, rect.entityIndex)
+	rect.buffer = nil
+	rect.entitylayer = nil
+}
+
+type tBuffer struct {
+	bgR, bgG, bgB C.float
+	layers        []tLayer
+}
+
+func (buffer *tBuffer) set(other *tBuffer) {
+	buffer.bgR, buffer.bgG, buffer.bgB = other.bgR, other.bgG, other.bgB
+	for i, layer := range buffer.layers {
+		layer.set(other.layers[i])
+	}
+	for _, otherLayer := range buffer.layers[len(buffer.layers):] {
+		buffer.layers = append(buffer.layers, otherLayer.clone())
+	}
 }
 
 type tErrorGenerator interface {
@@ -186,21 +269,6 @@ type tErrorLogger interface {
 }
 
 type tErrorHandler struct {
-}
-
-type tPool struct {
-	bgR, bgG, bgB C.float
-	layers        []tLayer
-}
-
-func (pool *tPool) set(other *tPool) {
-	pool.bgR, pool.bgG, pool.bgB = other.bgR, other.bgG, other.bgB
-	for i, layer := range pool.layers {
-		layer.set(other.layers[i])
-	}
-	for _, otherLayer := range pool.layers[len(pool.layers):] {
-		pool.layers = append(pool.layers, otherLayer.clone())
-	}
 }
 
 type tMainLoop struct {
@@ -292,141 +360,177 @@ type tDestroyWindowRequest struct {
 	window *tWindow
 }
 
-type tWindowError struct {
-	window *tWindow
-	err    error
-}
-
-type tStopMainLoop struct {
-}
-
 type tLayer interface {
-	newRect() *Rect
-	set(other tLayer)
-	release(chunk, index int)
+	newRectIndex() int
+	rect(index int) *C.g2d_rect_t
+	enable(index int)
+	disable(index int)
 	clone() tLayer
+	set(other tLayer)
+	release(index int)
 }
 
-type tLayerBase struct {
-	id, size    int
+type tBaseLayer struct {
+	enabled     []C.char
+	unused      []int
 	totalActive int
-	active      [][]bool
-	usage       [][]int
 }
 
-func (layer *tLayerBase) initBase(id, size int) {
-	layer.id = id
-	layer.size = size
-	layer.active = make([][]bool, 1)
-	layer.usage = make([][]int, 1)
-	layer.active[0] = make([]bool, size)
-	layer.usage[0] = make([]int, 1, size+1)
+func (layer *tBaseLayer) initBase(size int) {
+	layer.enabled = make([]C.char, 0, size)
+	layer.unused = make([]int, 0, size)
 }
 
-func (layer *tLayerBase) nextIndex() (int, int) {
-	layer.totalActive++
-	for chunk, usage := range layer.usage {
-		if len(usage) == 1 {
-			nextIndex := usage[0]
-			if nextIndex+1 < cap(usage) {
-				usage[0]++
-				layer.active[chunk][nextIndex] = true
-				return chunk, nextIndex
-			}
-		} else {
-			newLength := len(usage) - 1
-			nextIndex := usage[newLength]
-			usage[0]++
-			layer.usage[chunk] = usage[:newLength]
-			return chunk, nextIndex
-		}
-	}
-	layer.size *= 2
-	layer.usage = append(layer.usage, make([]int, 1, layer.size+1))
-	return len(layer.usage) - 1, 0
+func (layer *tBaseLayer) usedIndex() int {
+	lengthNew := len(layer.unused) - 1
+	indexNew := layer.unused[lengthNew]
+	layer.enabled[indexNew] = 1
+	layer.unused = layer.unused[:lengthNew]
+	return indexNew
 }
 
-func (layer *tLayerBase) release(chunk, index int) {
+func (layer *tBaseLayer) release(index int) {
+	layer.enabled[index] = 0
+	layer.unused = append(layer.unused, index)
 	layer.totalActive--
-	layer.active[chunk][index] = false
-	layer.usage[chunk][0]--
-	layer.usage[chunk] = append(layer.usage[chunk], index)
 }
 
-func (layer *tLayerBase) cloneBase(other *tLayerBase) {
-	layer.id = other.id
-	layer.size = other.size
-	layer.totalActive = other.totalActive
-	layer.active = make([][]bool, len(other.active), cap(other.active))
-	layer.usage = make([][]int, len(other.usage), cap(other.usage))
-	for i, otherActive := range other.active {
-		layer.active[i] = make([]bool, len(otherActive), cap(otherActive))
-		copy(layer.active[i], otherActive)
-	}
-	for i, otherUsage := range other.usage {
-		layer.usage[i] = make([]int, len(otherUsage), cap(otherUsage))
-		copy(layer.usage[i], otherUsage)
-	}
+func (layer *tBaseLayer) enable(index int) {
+	layer.enabled[index] = 1
 }
 
-func (layer *tLayerBase) setBase(other *tLayerBase) {
-	layer.size = other.size
-	layer.totalActive = other.totalActive
-	for i, otherActive := range other.active {
-		layer.active[i] = layer.active[i][:len(otherActive)]
-		copy(layer.active[i], otherActive)
-	}
-	for i, otherUsage := range other.usage {
-		layer.usage[i] = layer.usage[i][:len(otherUsage)]
-		copy(layer.usage[i], otherUsage)
-	}
+func (layer *tBaseLayer) disable(index int) {
+	layer.enabled[index] = 0
 }
 
-type tLayerRects struct {
-	tLayerBase
-	rects [][]Rect
+func (layer *tBaseLayer) set(enabled []C.char, unused []int, totalActive int) {
+	if cap(layer.enabled) <= len(enabled) {
+		layer.enabled = layer.enabled[:len(enabled)]
+	} else {
+		layer.enabled = make([]C.char, len(enabled), cap(enabled))
+	}
+	if cap(layer.unused) <= len(unused) {
+		layer.unused = layer.unused[:len(unused)]
+	} else {
+		layer.unused = make([]int, len(unused), cap(unused))
+	}
+	copy(layer.enabled, enabled)
+	copy(layer.unused, unused)
+	layer.totalActive = totalActive
 }
 
-func (layer *tLayerRects) newRect() *Rect {
-	chunk, index := layer.nextIndex()
-	if chunk == len(layer.rects) {
-		layer.rects = append(layer.rects, make([]Rect, layer.size))
-	}
-	rect := &layer.rects[chunk][index]
-	rect.layer, rect.chunk, rect.index = layer.id, chunk, index
-	return rect
+type tRectLayer struct {
+	tBaseLayer
+	rects []C.g2d_rect_t
 }
 
-func (layer *tLayerRects) clone() tLayer {
-	other := new(tLayerRects)
-	other.cloneBase(&layer.tLayerBase)
-	other.rects = make([][]Rect, len(layer.rects), cap(layer.rects))
-	for i, rects := range layer.rects {
-		other.rects[i] = make([]Rect, len(rects), cap(rects))
-		copy(other.rects[i], rects)
+func newRectLayer(size int) *tRectLayer {
+	layer := new(tRectLayer)
+	layer.rects = make([]C.g2d_rect_t, 0, size)
+	layer.initBase(size)
+	return layer
+}
+
+func (layer *tRectLayer) rect(index int) *C.g2d_rect_t {
+	return &layer.rects[index]
+}
+
+func (layer *tRectLayer) newRectIndex() int {
+	layer.totalActive++
+	if len(layer.unused) == 0 {
+		layer.enabled = append(layer.enabled, 1)
+		layer.rects = append(layer.rects, C.g2d_rect_t{})
+		return len(layer.enabled) - 1
 	}
+	return layer.usedIndex()
+}
+
+func (layer *tRectLayer) clone() tLayer {
+	other := new(tRectLayer)
+	other.rects = make([]C.g2d_rect_t, len(layer.rects), cap(layer.rects))
+	copy(other.rects, layer.rects)
+	other.tBaseLayer.set(layer.enabled, layer.unused, layer.totalActive)
 	return other
 }
 
-func (layer *tLayerRects) set(other tLayer) {
-	otherLayer, ok := other.(*tLayerRects)
+func (layer *tRectLayer) set(other tLayer) {
+	otherLayer, ok := other.(*tRectLayer)
 	if ok {
-		layer.setBase(&otherLayer.tLayerBase)
-		for i, otherRects := range otherLayer.rects {
-			layer.rects[i] = layer.rects[i][:len(otherRects)]
-			copy(layer.rects[i], otherRects)
+		if cap(layer.rects) <= len(otherLayer.rects) {
+			layer.rects = layer.rects[:len(otherLayer.rects)]
+		} else {
+			layer.rects = make([]C.g2d_rect_t, len(otherLayer.rects), cap(otherLayer.rects))
 		}
+		copy(layer.rects, otherLayer.rects)
+		layer.tBaseLayer.set(otherLayer.enabled, otherLayer.unused, otherLayer.totalActive)
 	} else {
 		panic(wrongLayerType)
 	}
 }
 
-func newRectLayer(id, size int) *tLayerRects {
-	layer := new(tLayerRects)
+type tEntitiesLayer interface {
+	newRectEntity(buffer **tBuffer, layer, index int) *Rect
+	release(chunk, index int)
+}
+
+type tBaseEntitiesLayer struct {
+	unused [][]int
+	size   int
+}
+
+func (layer *tBaseEntitiesLayer) initBase(size int) {
+	layer.unused = make([][]int, 1)
+	layer.unused[0] = make([]int, 0, size)
+}
+
+func (layer *tBaseEntitiesLayer) appendBase(size int) {
+	if layer.size == 0 {
+		layer.size = size
+	} else {
+		layer.size *= 2
+	}
+	layer.unused = append(layer.unused, make([]int, 0, layer.size))
+}
+
+func (layer *tBaseEntitiesLayer) release(chunk, index int) {
+	layer.unused[chunk] = append(layer.unused[chunk], index)
+}
+
+type tRectEntitiesLayer struct {
+	tBaseEntitiesLayer
+	rects [][]Rect
+}
+
+func newRectEntitiesLayer(size int) *tRectEntitiesLayer {
+	layer := new(tRectEntitiesLayer)
 	layer.rects = make([][]Rect, 1)
-	layer.rects[0] = make([]Rect, size)
-	layer.initBase(id, size)
+	layer.rects[0] = make([]Rect, 0, size)
+	layer.initBase(size)
 	return layer
+}
+
+func (layer *tRectEntitiesLayer) newRectEntity(buffer **tBuffer, bufferLayer, index int) *Rect {
+	for chunk, rects := range layer.rects {
+		unused := layer.unused[chunk]
+		lengthUnused := len(unused)
+		if lengthUnused == 0 {
+			if len(rects) < cap(rects) {
+				entityIndex := len(rects)
+				layer.rects[chunk] = append(rects, Rect{})
+				rect := &layer.rects[chunk][entityIndex]
+				return rect.init(buffer, bufferLayer, index, chunk, entityIndex, layer)
+			}
+		} else if lengthUnused > 0 {
+			lengthUnusedNew := lengthUnused - 1
+			entityIndex := unused[lengthUnusedNew]
+			rect := &layer.rects[chunk][entityIndex]
+			layer.unused[chunk] = unused[:lengthUnusedNew]
+			return rect.init(buffer, bufferLayer, index, chunk, entityIndex, layer)
+		}
+	}
+	layer.appendBase(len(layer.rects[0]))
+	layer.rects = append(layer.rects, make([]Rect, 1, layer.size))
+	return (&layer.rects[len(layer.rects)-1][0]).init(buffer, bufferLayer, index, len(layer.unused)-1, 0, layer)
 }
 
 func newConfiguration() *Configuration {

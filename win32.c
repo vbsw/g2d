@@ -180,6 +180,10 @@ void g2d_free(void *const data) {
 	free(data);
 }
 
+void g2d_test(int *array) {
+	goDebug(array[0], array[0], 0, 0);
+}
+
 void g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num) {
 	LPTSTR str_new = NULL;
 	size_t length;
