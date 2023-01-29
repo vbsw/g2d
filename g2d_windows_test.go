@@ -156,3 +156,22 @@ func TestLayerB(t *testing.T) {
 		t.Error(rectD.layer, rectD.chunk, rectD.entityIndex, rectB.layer, rectB.chunk, rectB.entityIndex)
 	}
 }
+
+func TestSwitchBuffer(t *testing.T) {
+	var gfx Graphics
+	gfx.rBuffer = &gfx.buffers[0]
+	gfx.wBuffer = &gfx.buffers[0]
+	gfx.NewRectLayer(100)
+	if len(gfx.wBuffer.layers) != 1 || len(gfx.entitiesLayers) != 1 {
+		t.Error(len(gfx.wBuffer.layers), len(gfx.entitiesLayers))
+	} else {
+		gfx.switchWBuffer()
+		if len(gfx.wBuffer.layers) != 1 || len(gfx.entitiesLayers) != 1 {
+			t.Error(len(gfx.wBuffer.layers), len(gfx.entitiesLayers))
+		}
+		gfx.switchWBuffer()
+		if len(gfx.wBuffer.layers) != 1 || len(gfx.entitiesLayers) != 1 {
+			t.Error(len(gfx.wBuffer.layers), len(gfx.entitiesLayers))
+		}
+	}
+}

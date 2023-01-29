@@ -279,10 +279,10 @@ type tBuffer struct {
 
 func (buffer *tBuffer) set(other *tBuffer) {
 	buffer.bgR, buffer.bgG, buffer.bgB = other.bgR, other.bgG, other.bgB
-	for i, layer := range buffer.layers {
+	for i, layer := range other.layers {
 		layer.set(other.layers[i])
 	}
-	for _, otherLayer := range buffer.layers[len(buffer.layers):] {
+	for _, otherLayer := range other.layers[len(buffer.layers):] {
 		buffer.layers = append(buffer.layers, otherLayer.clone())
 	}
 }
