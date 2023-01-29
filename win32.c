@@ -398,5 +398,9 @@ void g2d_gfx_set_swap_interval(const int interval) {
 	wglSwapIntervalEXT(interval);
 }
 
+void g2d_gfx_draw_rect(const char *const enabled, const g2d_rect_t *const rects) {
+	
+}
+
 /* #if defined(G2D_WIN32) */
 #endif

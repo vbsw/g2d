@@ -79,6 +79,8 @@ func (window *tWindow) logicThread() {
 				window.onKeyDown(msg.keyCode, msg.repeated)
 			case keyUpType:
 				window.onKeyUp(msg.keyCode)
+			case updateType:
+				window.onUpdate()
 			case quitReqType:
 				window.onQuitReq()
 			case quitType:
@@ -144,6 +146,7 @@ func (window *tWindow) onCreate() {
 	if err == nil {
 		window.state = 1
 		window.wgt.Gfx.switchWBuffer()
+		window.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 		go window.graphicsThread()
 		mainLoop.postMessage(&tShowWindowRequest{window: window}, 1000)
 	} else {
@@ -154,6 +157,7 @@ func (window *tWindow) onCreate() {
 func (window *tWindow) onShow() {
 	err := window.abst.OnShow()
 	window.wgt.Gfx.switchWBuffer()
+	window.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 	if err != nil {
 		window.onError(err)
 	}
@@ -169,6 +173,16 @@ func (window *tWindow) onKeyDown(keyCode int, repeated uint) {
 func (window *tWindow) onKeyUp(keyCode int) {
 	err := window.abst.OnKeyUp(keyCode)
 	if err != nil {
+		window.onError(err)
+	}
+}
+
+func (window *tWindow) onUpdate() {
+	err := window.abst.OnUpdate()
+	if err == nil {
+		window.wgt.Gfx.switchWBuffer()
+		window.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
+	} else {
 		window.onError(err)
 	}
 }
@@ -205,11 +219,20 @@ func (window *tWindow) drawGraphics() {
 	window.wgt.Gfx.switchRBuffer()
 	buffer := window.wgt.Gfx.rBuffer
 	C.g2d_gfx_clear_bg(buffer.bgR, buffer.bgG, buffer.bgB)
+	for _, layer := range window.wgt.Gfx.rBuffer.layers {
+		layer.draw()
+	}
 	C.g2d_gfx_swap_buffers(window.dataC, &errNumC, &errWin32C)
 	if errNumC != 0 {
 		window.state = 2
 		appendError(toError(errNumC, errWin32C, nil))
 		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+	}
+}
+
+func (layer *tRectLayer) draw() {
+	if len(layer.rects) > 0 {
+		C.g2d_gfx_draw_rect(&layer.enabled[0], &layer.rects[0])
 	}
 }
 
@@ -234,7 +257,23 @@ func (window *tWindow) nextLMessage() *tLMessage {
 
 func (window *tWindow) nextGMessage() *tGMessage {
 	var message *tGMessage
-	message = <-window.wgt.Gfx.msgs
+	if window.wgt.Gfx.refresh {
+		select {
+		case msg := <-window.wgt.Gfx.msgs:
+			if msg.typeId != refreshType {
+				message = msg
+			}
+		default:
+			window.wgt.Gfx.refresh = false
+			message = &tGMessage{typeId: refreshType}
+		}
+	} else {
+		message = <-window.wgt.Gfx.msgs
+		if message.typeId == refreshType {
+			window.wgt.Gfx.refresh = true
+			message = nil
+		}
+	}
 	if window.state == 2 && message.typeId != quitType {
 		message = nil
 	}

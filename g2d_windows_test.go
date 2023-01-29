@@ -161,17 +161,33 @@ func TestSwitchBuffer(t *testing.T) {
 	var gfx Graphics
 	gfx.rBuffer = &gfx.buffers[0]
 	gfx.wBuffer = &gfx.buffers[0]
+	gfx.SetBGColor(1.0, 0.0, 0.0)
 	gfx.NewRectLayer(100)
 	if len(gfx.wBuffer.layers) != 1 || len(gfx.entitiesLayers) != 1 {
 		t.Error(len(gfx.wBuffer.layers), len(gfx.entitiesLayers))
+	} else if gfx.wBuffer.bgR != 1.0 || gfx.wBuffer.bgG != 0.0 {
+		t.Error(gfx.wBuffer.bgR, gfx.wBuffer.bgG)
 	} else {
+		gfx.SetBGColor(0.0, 1.0, 0.0)
 		gfx.switchWBuffer()
 		if len(gfx.wBuffer.layers) != 1 || len(gfx.entitiesLayers) != 1 {
 			t.Error(len(gfx.wBuffer.layers), len(gfx.entitiesLayers))
+		} else if gfx.wBuffer.bgR != 0.0 || gfx.wBuffer.bgG != 1.0 {
+			t.Error(gfx.wBuffer.bgR, gfx.wBuffer.bgG)
 		}
 		gfx.switchWBuffer()
 		if len(gfx.wBuffer.layers) != 1 || len(gfx.entitiesLayers) != 1 {
 			t.Error(len(gfx.wBuffer.layers), len(gfx.entitiesLayers))
+		}
+		gfx.NewRectLayer(100)
+		if len(gfx.wBuffer.layers) != 2 || len(gfx.entitiesLayers) != 2 {
+			t.Error(len(gfx.wBuffer.layers), len(gfx.entitiesLayers))
+		} else if gfx.wBuffer.bgR != 0.0 || gfx.wBuffer.bgG != 1.0 {
+			t.Error(gfx.wBuffer.bgR, gfx.wBuffer.bgG)
+		}
+		gfx.switchRBuffer()
+		if gfx.rBuffer.bgR != 0.0 || gfx.rBuffer.bgG != 1.0 {
+			t.Error(gfx.rBuffer.bgR, gfx.rBuffer.bgG)
 		}
 	}
 }

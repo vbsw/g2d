@@ -83,6 +83,7 @@ type Window interface {
 	OnShow() error
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
+	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy()
 }
@@ -95,6 +96,10 @@ func (_ *DefaultWindow) OnConfig(config *Configuration) error {
 }
 
 func (_ *DefaultWindow) OnCreate(widget *Widget) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnUpdate() error {
 	return nil
 }
 
@@ -150,11 +155,8 @@ type Graphics struct {
 	entitiesLayers []tEntitiesLayer
 	mutex          sync.Mutex
 	state          int
+	refresh        bool
 	vsync          bool
-}
-
-func (gfx *Graphics) Refresh() {
-	gfx.msgs <- &tGMessage{typeId: refreshType}
 }
 
 func (gfx *Graphics) SetBGColor(r, g, b float32) {
@@ -395,6 +397,7 @@ type tLayer interface {
 	enable(index int)
 	disable(index int)
 	clone() tLayer
+	draw()
 	set(other tLayer)
 	release(index int)
 }
