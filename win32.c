@@ -49,6 +49,17 @@
 #define WGL_SWAP_COPY_EXT                 0x2029
 #define WGL_SWAP_UNDEFINED_EXT            0x202A
 
+// copied from glcorearb.h
+#define GL_ARRAY_BUFFER                   0x8892
+#define GL_STATIC_DRAW                    0x88E4
+#define GL_FRAGMENT_SHADER                0x8B30
+#define GL_VERTEX_SHADER                  0x8B31
+#define GL_COMPILE_STATUS                 0x8B81
+#define GL_INFO_LOG_LENGTH                0x8B84
+#define GL_LINK_STATUS                    0x8B82
+#define GL_VALIDATE_STATUS                0x8B83
+#define GL_CLAMP_TO_BORDER                0x812D
+
 /* wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions). */
 #define LOAD_FUNC(t, n, e) if (err_num[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_error = GetLastError(); if (last_error == 0) n = (t) proc; else { err_num[0] = e; err_win32[0] = (g2d_ul_t)last_error; }}
 
@@ -87,6 +98,7 @@ typedef void (APIENTRY *PFNGLDELETEBUFFERSPROC) (GLsizei n, const GLuint *buffer
 typedef void (APIENTRY *PFNGLDELETEPROGRAMPROC) (GLuint program);
 typedef void (APIENTRY *PFNGLDELETESHADERPROC) (GLuint shader);
 typedef GLint(APIENTRY *PFNGLGETUNIFORMLOCATIONPROC) (GLuint program, const GLchar *name);
+typedef void (APIENTRY *PFNGLUNIFORM1FVPROC) (GLint location, GLsizei count, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX4FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
@@ -120,6 +132,11 @@ typedef struct {
 } state_t;
 
 typedef struct {
+	GLuint vs_id, fs_id, id;
+	GLint position_att, projection_unif, data_unif;
+} program_t;
+
+typedef struct {
 	window_t wnd;
 	client_t client;
 	client_t client_bak;
@@ -127,6 +144,10 @@ typedef struct {
 	state_t state;
 	int key_repeated[255];
 	int cb_id;
+	GLuint fs_id;
+	program_t prog_rect;
+	GLuint vao, vbo;
+	float mat_projection[4*4];
 } window_data_t;
 
 static const WPARAM const g2d_EVENT = (WPARAM)"g2d";
@@ -170,6 +191,7 @@ static PFNGLDELETEBUFFERSPROC            glDeleteBuffers            = NULL;
 static PFNGLDELETEPROGRAMPROC            glDeleteProgram            = NULL;
 static PFNGLDELETESHADERPROC             glDeleteShader             = NULL;
 static PFNGLGETUNIFORMLOCATIONPROC       glGetUniformLocation       = NULL;
+static PFNGLUNIFORM1FVPROC               glUniform1fv               = NULL;
 static PFNGLUNIFORMMATRIX4FVPROC         glUniformMatrix4fv         = NULL;
 static PFNGLUNIFORMMATRIX3FVPROC         glUniformMatrix3fv         = NULL;
 static PFNGLUNIFORMMATRIX2X3FVPROC       glUniformMatrix2x3fv       = NULL;
@@ -209,6 +231,7 @@ void g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num) {
 	str[0] = (void*)str_new;
 }
 
+#include "win32_graphics.h"
 #include "win32_keys.h"
 #include "win32_window.h"
 
@@ -281,10 +304,11 @@ void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {
 										LOAD_FUNC(PFNGLDELETESHADERPROC, glDeleteShader, 228)
 										LOAD_FUNC(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation, 229)
 										LOAD_FUNC(PFNGLUNIFORMMATRIX3FVPROC, glUniformMatrix3fv, 230)
-										LOAD_FUNC(PFNGLUNIFORMMATRIX4FVPROC, glUniformMatrix4fv, 231)
-										LOAD_FUNC(PFNGLUNIFORMMATRIX2X3FVPROC, glUniformMatrix2x3fv, 232)
-										LOAD_FUNC(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap, 233)
-										LOAD_FUNC(PFNGLACTIVETEXTUREPROC, glActiveTexture, 234)
+										LOAD_FUNC(PFNGLUNIFORM1FVPROC, glUniform1fv, 231)
+										LOAD_FUNC(PFNGLUNIFORMMATRIX4FVPROC, glUniformMatrix4fv, 232)
+										LOAD_FUNC(PFNGLUNIFORMMATRIX2X3FVPROC, glUniformMatrix2x3fv, 233)
+										LOAD_FUNC(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap, 234)
+										LOAD_FUNC(PFNGLACTIVETEXTUREPROC, glActiveTexture, 235)
 										/* destroy dummy */
 										if (!wglMakeCurrent(NULL, NULL) && err_num[0] == 0) {
 											err_num[0] = 9; err_win32[0] = (g2d_ul_t)GetLastError();
@@ -366,40 +390,16 @@ void g2d_quit_message_queue() {
 
 void g2d_context_make_current(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	if (wglMakeCurrent(wnd_data[0].wnd.ctx.dc, wnd_data[0].wnd.ctx.rc)) {
-		glClearColor(0.0, 0.0, 1.0, 1.0);
-		glClear(GL_COLOR_BUFFER_BIT);
-		wglSwapIntervalEXT(1);
-	} else {
+	if (!wglMakeCurrent(wnd_data[0].wnd.ctx.dc, wnd_data[0].wnd.ctx.rc)) {
 		err_num[0] = 56; err_win32[0] = (g2d_ul_t)GetLastError();
 	}
 }
 
 void g2d_context_release(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	if (!wglMakeCurrent(NULL, NULL)) {
+	if (wnd_data[0].wnd.ctx.rc == wglGetCurrentContext() && !wglMakeCurrent(NULL, NULL)) {
 		err_num[0] = 19; err_win32[0] = (g2d_ul_t)GetLastError();
 	}
-}
-
-void g2d_gfx_clear_bg(const float r, const float g, const float b) {
-	glClearColor((GLclampf)r, (GLclampf)g, (GLclampf)b, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-}
-
-void g2d_gfx_swap_buffers(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
-	glFinish();
-	if (!SwapBuffers(((window_data_t*)data)[0].wnd.ctx.dc)) {
-		err_num[0] = 61; err_win32[0] = (g2d_ul_t)GetLastError();
-	}
-}
-
-void g2d_gfx_set_swap_interval(const int interval) {
-	wglSwapIntervalEXT(interval);
-}
-
-void g2d_gfx_draw_rect(const char *const enabled, const g2d_rect_t *const rects) {
-	
 }
 
 /* #if defined(G2D_WIN32) */

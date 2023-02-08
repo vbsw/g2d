@@ -106,23 +106,30 @@ func (window *tWindow) graphicsThread() {
 	runtime.LockOSThread()
 	C.g2d_context_make_current(window.dataC, &errNumC, &errWin32C)
 	if errNumC == 0 {
-		for {
-			msg := window.nextGMessage()
-			if msg != nil {
-				switch msg.typeId {
-				case vsyncType:
-					C.g2d_gfx_set_swap_interval(C.int(msg.val))
-				case refreshType:
-					window.drawGraphics()
-				case quitType:
-					C.g2d_context_release(window.dataC, &errNumC, &errWin32C)
-					if errNumC != 0 {
-						appendError(toError(errNumC, errWin32C, nil))
+		var errStrC *C.char
+		C.g2d_gfx_init(window.dataC, &errNumC, &errStrC)
+		if errNumC == 0 {
+			C.g2d_gfx_set_view_size(window.dataC, 640, 480)
+			for {
+				msg := window.nextGMessage()
+				if msg != nil {
+					if msg.typeId == vsyncType {
+						C.g2d_gfx_set_swap_interval(C.int(msg.val))
+					} else if msg.typeId == refreshType {
+						window.drawGraphics()
+					} else if msg.typeId == quitType {
+						C.g2d_context_release(window.dataC, &errNumC, &errWin32C)
+						if errNumC != 0 {
+							appendError(toError(errNumC, errWin32C, nil))
+						}
+						window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
+						break
 					}
-					window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
-					break
 				}
 			}
+		} else {
+			appendError(toError(errNumC, errWin32C, nil))
+			window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
 		}
 	} else {
 		appendError(toError(errNumC, errWin32C, nil))
@@ -139,6 +146,10 @@ func (window *tWindow) onConfig() {
 	} else {
 		window.onError(err)
 	}
+}
+
+func (gfx *Graphics) Help() {
+	//println(gfx.wBuffer, &gfx.buffers[0], &gfx.buffers[1], &gfx.buffers[2])
 }
 
 func (window *tWindow) onCreate() {
@@ -181,7 +192,7 @@ func (window *tWindow) onUpdate() {
 	err := window.abst.OnUpdate()
 	if err == nil {
 		window.wgt.Gfx.switchWBuffer()
-		window.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
+		//window.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 	} else {
 		window.onError(err)
 	}
@@ -220,7 +231,11 @@ func (window *tWindow) drawGraphics() {
 	buffer := window.wgt.Gfx.rBuffer
 	C.g2d_gfx_clear_bg(buffer.bgR, buffer.bgG, buffer.bgB)
 	for _, layer := range window.wgt.Gfx.rBuffer.layers {
-		layer.draw()
+		err := layer.draw(window.dataC)
+		if err != nil {
+			appendError(err)
+			window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+		}
 	}
 	C.g2d_gfx_swap_buffers(window.dataC, &errNumC, &errWin32C)
 	if errNumC != 0 {
@@ -230,19 +245,27 @@ func (window *tWindow) drawGraphics() {
 	}
 }
 
-func (layer *tRectLayer) draw() {
-	if len(layer.rects) > 0 {
-		C.g2d_gfx_draw_rect(&layer.enabled[0], &layer.rects[0])
+func (layer *tRectLayer) draw(dataC unsafe.Pointer) error {
+	var errNumC C.int
+	var errStrC *C.char
+	length := len(layer.enabled)
+	if length > 0 {
+		C.g2d_gfx_draw_rect(dataC, &layer.enabled[0], &layer.rects[0], C.int(length), &errNumC, &errStrC)
+		if errNumC != 0 {
+			return toError(errNumC, 0, errStrC)
+		}
 	}
+	return nil
 }
 
 func (window *tWindow) nextLMessage() *tLMessage {
 	var message *tLMessage
-	if window.autoUpdate || window.wgt.update {
+	if window.state >= 1 && (window.autoUpdate || window.wgt.update) {
 		select {
 		case msg := <-window.wgt.msgs:
 			message = msg
 		default:
+			time.Sleep(time.Millisecond)
 			window.wgt.update = false
 			message = &tLMessage{typeId: updateType, nanos: deltaNanos()}
 		}
@@ -264,7 +287,7 @@ func (window *tWindow) nextGMessage() *tGMessage {
 				message = msg
 			}
 		default:
-			window.wgt.Gfx.refresh = false
+			//window.wgt.Gfx.refresh = false
 			message = &tGMessage{typeId: refreshType}
 		}
 	} else {
@@ -651,12 +674,14 @@ func (_ *tErrorHandler) ToError(g2dErrNum, win32ErrNum uint64, info string) erro
 	case 230:
 		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniformMatrix3fv")
 	case 231:
-		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniformMatrix4fv")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniform1fv")
 	case 232:
-		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniformMatrix2x3fv")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniformMatrix4fv")
 	case 233:
-		errStr = fmt.Sprintf(errStrGetProcAddr, "glGenerateMipmap")
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glUniformMatrix2x3fv")
 	case 234:
+		errStr = fmt.Sprintf(errStrGetProcAddr, "glGenerateMipmap")
+	case 235:
 		errStr = fmt.Sprintf(errStrGetProcAddr, "glActiveTexture")
 	default:
 		errStr = "unknown error"

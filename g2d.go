@@ -281,7 +281,7 @@ type tBuffer struct {
 
 func (buffer *tBuffer) set(other *tBuffer) {
 	buffer.bgR, buffer.bgG, buffer.bgB = other.bgR, other.bgG, other.bgB
-	for i, layer := range other.layers {
+	for i, layer := range buffer.layers {
 		layer.set(other.layers[i])
 	}
 	for _, otherLayer := range other.layers[len(buffer.layers):] {
@@ -397,7 +397,7 @@ type tLayer interface {
 	enable(index int)
 	disable(index int)
 	clone() tLayer
-	draw()
+	draw(dataC unsafe.Pointer) error
 	set(other tLayer)
 	release(index int)
 }
@@ -436,16 +436,24 @@ func (layer *tBaseLayer) disable(index int) {
 }
 
 func (layer *tBaseLayer) set(enabled []C.char, unused []int, totalActive int) {
-	if cap(layer.enabled) <= len(enabled) {
+	if cap(layer.enabled) >= len(enabled) {
 		layer.enabled = layer.enabled[:len(enabled)]
 	} else {
 		layer.enabled = make([]C.char, len(enabled), cap(enabled))
 	}
-	if cap(layer.unused) <= len(unused) {
+	if cap(layer.unused) >= len(unused) {
 		layer.unused = layer.unused[:len(unused)]
 	} else {
 		layer.unused = make([]int, len(unused), cap(unused))
 	}
+	copy(layer.enabled, enabled)
+	copy(layer.unused, unused)
+	layer.totalActive = totalActive
+}
+
+func (layer *tBaseLayer) clone(enabled []C.char, unused []int, totalActive int) {
+	layer.enabled = make([]C.char, len(enabled), cap(enabled))
+	layer.unused = make([]int, len(unused), cap(unused))
 	copy(layer.enabled, enabled)
 	copy(layer.unused, unused)
 	layer.totalActive = totalActive
@@ -481,14 +489,14 @@ func (layer *tRectLayer) clone() tLayer {
 	other := new(tRectLayer)
 	other.rects = make([]C.g2d_rect_t, len(layer.rects), cap(layer.rects))
 	copy(other.rects, layer.rects)
-	other.tBaseLayer.set(layer.enabled, layer.unused, layer.totalActive)
+	other.tBaseLayer.clone(layer.enabled, layer.unused, layer.totalActive)
 	return other
 }
 
 func (layer *tRectLayer) set(other tLayer) {
 	otherLayer, ok := other.(*tRectLayer)
 	if ok {
-		if cap(layer.rects) <= len(otherLayer.rects) {
+		if cap(layer.rects) >= len(otherLayer.rects) {
 			layer.rects = layer.rects[:len(otherLayer.rects)]
 		} else {
 			layer.rects = make([]C.g2d_rect_t, len(otherLayer.rects), cap(otherLayer.rects))
