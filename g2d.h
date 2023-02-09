@@ -26,7 +26,7 @@ extern void g2d_gfx_init(void *data, int *err_num, char **err_str);
 extern void g2d_gfx_clear_bg(float r, float g, float b);
 extern void g2d_gfx_swap_buffers(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_gfx_set_swap_interval(int interval);
-extern void g2d_gfx_draw_rect(void *data, const char *enabled, const g2d_rect_t *rects, int length, int *err_num, char **err_str);
+extern void g2d_gfx_draw_rect(void *data, const char *enabled, const g2d_rect_t *rects, int length, int active, int *err_num, char **err_str);
 extern void g2d_gfx_set_view_size(void *data, int w, int h);
 
 #elif defined(G2D_LINUX)

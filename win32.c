@@ -132,7 +132,7 @@ typedef struct {
 } state_t;
 
 typedef struct {
-	GLuint vs_id, fs_id, id;
+	GLuint vs_id, fs_id, vao, vbo, id;
 	GLint position_att, projection_unif, data_unif;
 } program_t;
 
@@ -146,7 +146,7 @@ typedef struct {
 	int cb_id;
 	GLuint fs_id;
 	program_t prog_rect;
-	GLuint vao, vbo;
+	program_t prog_rect1k;
 	float mat_projection[4*4];
 } window_data_t;
 

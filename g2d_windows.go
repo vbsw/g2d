@@ -128,7 +128,7 @@ func (window *tWindow) graphicsThread() {
 				}
 			}
 		} else {
-			appendError(toError(errNumC, errWin32C, nil))
+			appendError(toError(errNumC, errWin32C, errStrC))
 			window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
 		}
 	} else {
@@ -250,7 +250,7 @@ func (layer *tRectLayer) draw(dataC unsafe.Pointer) error {
 	var errStrC *C.char
 	length := len(layer.enabled)
 	if length > 0 {
-		C.g2d_gfx_draw_rect(dataC, &layer.enabled[0], &layer.rects[0], C.int(length), &errNumC, &errStrC)
+		C.g2d_gfx_draw_rect(dataC, &layer.enabled[0], &layer.rects[0], C.int(length), C.int(layer.totalActive), &errNumC, &errStrC)
 		if errNumC != 0 {
 			return toError(errNumC, 0, errStrC)
 		}
