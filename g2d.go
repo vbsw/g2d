@@ -25,6 +25,7 @@ const (
 	configType = iota
 	createType
 	showType
+	resizeType
 	keyDownType
 	keyUpType
 	updateType
@@ -81,6 +82,7 @@ type Window interface {
 	OnConfig(config *Configuration) error
 	OnCreate(widget *Widget) error
 	OnShow() error
+	OnResize() error
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
 	OnUpdate() error
@@ -108,6 +110,10 @@ func (_ *DefaultWindow) OnClose() (bool, error) {
 }
 
 func (_ *DefaultWindow) OnShow() error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnResize() error {
 	return nil
 }
 
@@ -166,9 +172,9 @@ func (gfx *Graphics) SetBGColor(r, g, b float32) {
 func (gfx *Graphics) SetVSync(vsync bool) {
 	gfx.vsync = vsync
 	if vsync {
-		gfx.msgs <- &tGMessage{typeId: vsyncType, val: 1}
+		gfx.msgs <- &tGMessage{typeId: vsyncType, valA: 1}
 	} else {
-		gfx.msgs <- &tGMessage{typeId: vsyncType, val: 0}
+		gfx.msgs <- &tGMessage{typeId: vsyncType, valA: 0}
 	}
 }
 
@@ -371,7 +377,8 @@ type tLMessage struct {
 
 type tGMessage struct {
 	typeId int
-	val    int
+	valA   int
+	valB   int
 }
 
 type tConfigWindowRequest struct {

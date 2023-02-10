@@ -34,6 +34,17 @@ static void style_update(window_data_t *const wnd_data) {
 			wnd_data[0].config.style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
 }
 
+static void client_update(window_data_t *const wnd_data) {
+	POINT point = { 0, 0 };
+	RECT rect = {0, 0, 0, 0};
+	ClientToScreen(wnd_data[0].wnd.hndl, &point);
+	GetClientRect(wnd_data[0].wnd.hndl, &rect);
+	wnd_data[0].client.x = point.x;
+	wnd_data[0].client.y = point.y;
+	wnd_data[0].client.width = (int)(rect.right - rect.left);
+	wnd_data[0].client.height = (int)(rect.bottom - rect.top);
+}
+
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	LRESULT result = 0;
 	if (message == WM_NCCREATE) {
@@ -45,6 +56,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 		window_data_t *const wnd_data = (window_data_t*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 		if (wnd_data) {
 			switch (message) {
+			case WM_SIZE:
+				client_update(wnd_data);
+				goResize(wnd_data[0].cb_id);
+				result = DefWindowProc(hWnd, message, wParam, lParam);
+				break;
 			case WM_CLOSE:
 				g2dClose(wnd_data[0].cb_id);
 				break;

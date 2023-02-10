@@ -75,6 +75,9 @@ func (window *tWindow) logicThread() {
 				window.onCreate()
 			case showType:
 				window.onShow()
+			case resizeType:
+				window.updateProps(msg)
+				window.onResize()
 			case keyDownType:
 				window.onKeyDown(msg.keyCode, msg.repeated)
 			case keyUpType:
@@ -114,7 +117,9 @@ func (window *tWindow) graphicsThread() {
 				msg := window.nextGMessage()
 				if msg != nil {
 					if msg.typeId == vsyncType {
-						C.g2d_gfx_set_swap_interval(C.int(msg.val))
+						C.g2d_gfx_set_swap_interval(C.int(msg.valA))
+					} else if msg.typeId == resizeType {
+						C.g2d_gfx_set_view_size(window.dataC, C.int(msg.valA), C.int(msg.valB))
 					} else if msg.typeId == refreshType {
 						window.drawGraphics()
 					} else if msg.typeId == quitType {
@@ -152,6 +157,15 @@ func (gfx *Graphics) Help() {
 	//println(gfx.wBuffer, &gfx.buffers[0], &gfx.buffers[1], &gfx.buffers[2])
 }
 
+func (window *tWindow) updateProps(msg *tLMessage) {
+	window.wgt.ClientX = msg.props.ClientX
+	window.wgt.ClientY = msg.props.ClientY
+	window.wgt.ClientWidth = msg.props.ClientWidth
+	window.wgt.ClientHeight = msg.props.ClientHeight
+	window.wgt.MouseX = msg.props.MouseX
+	window.wgt.MouseY = msg.props.MouseY
+}
+
 func (window *tWindow) onCreate() {
 	err := window.abst.OnCreate(window.wgt)
 	if err == nil {
@@ -169,6 +183,13 @@ func (window *tWindow) onShow() {
 	err := window.abst.OnShow()
 	window.wgt.Gfx.switchWBuffer()
 	window.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
+	if err != nil {
+		window.onError(err)
+	}
+}
+
+func (window *tWindow) onResize() {
+	err := window.abst.OnResize()
 	if err != nil {
 		window.onError(err)
 	}
@@ -368,6 +389,15 @@ func g2dProcessMessage() {
 			destroyWindow(msg.window)
 		}
 	}
+}
+
+//export goResize
+func goResize(cbIdC C.int) {
+	window := cb.wnds[int(cbIdC)]
+	msg := &tLMessage{typeId: resizeType, nanos: deltaNanos()}
+	msg.props.update(window.dataC)
+	window.wgt.msgs <- msg
+	window.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
 }
 
 //export g2dClose
