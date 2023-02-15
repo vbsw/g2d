@@ -82,17 +82,6 @@ static GLuint rect_prog_create(const GLuint vs_id, const GLuint fs_id, int *cons
 	return 0;
 }
 
-static void rect_prog_enable(const GLuint prog_id, const GLint proj_unif, const GLuint vao, const GLuint vbo, const float *const projection_mat, int *const err_num) {
-	prog_use(prog_id, 1200, 1201, err_num);
-	if (err_num[0] == 0) {
-		bind_vao(vao, 1202, err_num);
-		if (err_num[0] == 0) {
-			glUniformMatrix4fv(proj_unif, 1, GL_FALSE, projection_mat);
-			bind_vbo(vbo, 1203, 1204, err_num);
-		}
-	}
-}
-
 static void enable_attr(const GLint attr, const int err_a, const int err_b, int *const err_num) {
 	if (err_num[0] == 0) {
 		glEnableVertexAttribArray(attr);
@@ -191,6 +180,17 @@ static void vertex_att_pointer(const GLuint index, const GLint size, const GLsiz
 			err_num[0] = err_b;
 		} else if (err_enum == GL_INVALID_OPERATION) {
 			err_num[0] = err_c;
+		}
+	}
+}
+
+static void rect_prog_enable(const GLuint prog_id, const GLint proj_unif, const GLuint vao, const GLuint vbo, const float *const projection_mat, int *const err_num) {
+	prog_use(prog_id, 1200, 1201, err_num);
+	if (err_num[0] == 0) {
+		bind_vao(vao, 1202, err_num);
+		if (err_num[0] == 0) {
+			glUniformMatrix4fv(proj_unif, 1, GL_FALSE, projection_mat);
+			bind_vbo(vbo, 1203, 1204, err_num);
 		}
 	}
 }
