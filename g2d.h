@@ -9,7 +9,6 @@ extern "C" {
 
 typedef unsigned long g2d_ul_t;
 typedef unsigned int g2d_ui_t;
-typedef struct { float x, y, w, h, r, g, b, a; } g2d_rect_t;
 extern void g2d_free(void *data);
 extern void g2d_to_tstr(void **str, void *go_cstr, int *err_num);
 extern void g2d_init(int *err_num, g2d_ul_t *err_win32);
@@ -26,7 +25,7 @@ extern void g2d_gfx_init(void *data, int *err_num, char **err_str);
 extern void g2d_gfx_clear_bg(float r, float g, float b);
 extern void g2d_gfx_swap_buffers(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_gfx_set_swap_interval(int interval);
-extern void g2d_gfx_draw_rect(void *data, const char *enabled, const g2d_rect_t *rects, int length, int active, int *err_num, char **err_str);
+extern void g2d_gfx_draw_rect(void *data, const char *enabled, const float *rects, int length, int active, int *err_num, char **err_str);
 extern void g2d_gfx_set_view_size(void *data, int w, int h);
 
 #elif defined(G2D_LINUX)

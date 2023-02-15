@@ -153,10 +153,6 @@ func (window *tWindow) onConfig() {
 	}
 }
 
-func (gfx *Graphics) Help() {
-	//println(gfx.wBuffer, &gfx.buffers[0], &gfx.buffers[1], &gfx.buffers[2])
-}
-
 func (window *tWindow) updateProps(msg *tLMessage) {
 	window.wgt.ClientX = msg.props.ClientX
 	window.wgt.ClientY = msg.props.ClientY

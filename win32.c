@@ -51,7 +51,9 @@
 
 // copied from glcorearb.h
 #define GL_ARRAY_BUFFER                   0x8892
+#define GL_ELEMENT_ARRAY_BUFFER           0x8893
 #define GL_STATIC_DRAW                    0x88E4
+#define GL_DYNAMIC_DRAW                   0x88E8
 #define GL_FRAGMENT_SHADER                0x8B30
 #define GL_VERTEX_SHADER                  0x8B31
 #define GL_COMPILE_STATUS                 0x8B81
@@ -72,6 +74,7 @@ typedef int (WINAPI * PFNWGLGETSWAPINTERVALEXTPROC) (void);
 // from glcorearb.h
 typedef char GLchar;
 typedef ptrdiff_t GLsizeiptr;
+typedef ptrdiff_t GLintptr;
 typedef GLuint(APIENTRY *PFNGLCREATESHADERPROC) (GLenum type);
 typedef void (APIENTRY *PFNGLSHADERSOURCEPROC) (GLuint shader, GLsizei count, const GLchar *const*string, const GLint *length);
 typedef void (APIENTRY *PFNGLCOMPILESHADERPROC) (GLuint shader);
@@ -91,6 +94,7 @@ typedef void (APIENTRY *PFNGLENABLEVERTEXATTRIBARRAYPROC) (GLuint index);
 typedef void (APIENTRY *PFNGLVERTEXATTRIBPOINTERPROC) (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid *pointer);
 typedef void (APIENTRY *PFNGLBINDBUFFERPROC) (GLenum target, GLuint buffer);
 typedef void (APIENTRY *PFNGLBUFFERDATAPROC) (GLenum target, GLsizeiptr size, const GLvoid *data, GLenum usage);
+typedef void (APIENTRY *PFNGLBUFFERSUBDATAPROC) (GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
 typedef void (APIENTRY *PFNGLGETVERTEXATTRIBPOINTERVPROC) (GLuint index, GLenum pname, GLvoid **pointer);
 typedef void (APIENTRY *PFNGLUSEPROGRAMPROC) (GLuint program);
 typedef void (APIENTRY *PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint *arrays);
@@ -132,9 +136,10 @@ typedef struct {
 } state_t;
 
 typedef struct {
-	GLuint vs_id, fs_id, vao, vbo, id;
-	GLint position_att, projection_unif, data_unif;
-} program_t;
+	GLuint id, vao, vbo, ebo, max_size;
+	GLint pos_att, col_att, proj_unif;
+	float *buffer;
+} rect_program_t;
 
 typedef struct {
 	window_t wnd;
@@ -144,10 +149,8 @@ typedef struct {
 	state_t state;
 	int key_repeated[255];
 	int cb_id;
-	GLuint fs_id;
-	program_t prog_rect;
-	program_t prog_rect1k;
-	float mat_projection[4*4];
+	rect_program_t rect_prog;
+	float projection_mat[4*4];
 } window_data_t;
 
 static const WPARAM const g2d_EVENT = (WPARAM)"g2d";
@@ -184,6 +187,7 @@ static PFNGLENABLEVERTEXATTRIBARRAYPROC  glEnableVertexAttribArray  = NULL;
 static PFNGLVERTEXATTRIBPOINTERPROC      glVertexAttribPointer      = NULL;
 static PFNGLBINDBUFFERPROC               glBindBuffer               = NULL;
 static PFNGLBUFFERDATAPROC               glBufferData               = NULL;
+static PFNGLBUFFERSUBDATAPROC            glBufferSubData            = NULL;
 static PFNGLGETVERTEXATTRIBPOINTERVPROC  glGetVertexAttribPointerv  = NULL;
 static PFNGLUSEPROGRAMPROC               glUseProgram               = NULL;
 static PFNGLDELETEVERTEXARRAYSPROC       glDeleteVertexArrays       = NULL;
@@ -296,19 +300,20 @@ void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {
 										LOAD_FUNC(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer, 220)
 										LOAD_FUNC(PFNGLBINDBUFFERPROC, glBindBuffer, 221)
 										LOAD_FUNC(PFNGLBUFFERDATAPROC, glBufferData, 222)
-										LOAD_FUNC(PFNGLGETVERTEXATTRIBPOINTERVPROC, glGetVertexAttribPointerv, 223)
-										LOAD_FUNC(PFNGLUSEPROGRAMPROC, glUseProgram, 224)
-										LOAD_FUNC(PFNGLDELETEVERTEXARRAYSPROC, glDeleteVertexArrays, 225)
-										LOAD_FUNC(PFNGLDELETEBUFFERSPROC, glDeleteBuffers, 226)
-										LOAD_FUNC(PFNGLDELETEPROGRAMPROC, glDeleteProgram, 227)
-										LOAD_FUNC(PFNGLDELETESHADERPROC, glDeleteShader, 228)
-										LOAD_FUNC(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation, 229)
-										LOAD_FUNC(PFNGLUNIFORMMATRIX3FVPROC, glUniformMatrix3fv, 230)
-										LOAD_FUNC(PFNGLUNIFORM1FVPROC, glUniform1fv, 231)
-										LOAD_FUNC(PFNGLUNIFORMMATRIX4FVPROC, glUniformMatrix4fv, 232)
-										LOAD_FUNC(PFNGLUNIFORMMATRIX2X3FVPROC, glUniformMatrix2x3fv, 233)
-										LOAD_FUNC(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap, 234)
-										LOAD_FUNC(PFNGLACTIVETEXTUREPROC, glActiveTexture, 235)
+										LOAD_FUNC(PFNGLBUFFERSUBDATAPROC, glBufferSubData, 223)
+										LOAD_FUNC(PFNGLGETVERTEXATTRIBPOINTERVPROC, glGetVertexAttribPointerv, 224)
+										LOAD_FUNC(PFNGLUSEPROGRAMPROC, glUseProgram, 225)
+										LOAD_FUNC(PFNGLDELETEVERTEXARRAYSPROC, glDeleteVertexArrays, 226)
+										LOAD_FUNC(PFNGLDELETEBUFFERSPROC, glDeleteBuffers, 227)
+										LOAD_FUNC(PFNGLDELETEPROGRAMPROC, glDeleteProgram, 228)
+										LOAD_FUNC(PFNGLDELETESHADERPROC, glDeleteShader, 229)
+										LOAD_FUNC(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation, 230)
+										LOAD_FUNC(PFNGLUNIFORMMATRIX3FVPROC, glUniformMatrix3fv, 231)
+										LOAD_FUNC(PFNGLUNIFORM1FVPROC, glUniform1fv, 232)
+										LOAD_FUNC(PFNGLUNIFORMMATRIX4FVPROC, glUniformMatrix4fv, 233)
+										LOAD_FUNC(PFNGLUNIFORMMATRIX2X3FVPROC, glUniformMatrix2x3fv, 234)
+										LOAD_FUNC(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap, 235)
+										LOAD_FUNC(PFNGLACTIVETEXTUREPROC, glActiveTexture, 236)
 										/* destroy dummy */
 										if (!wglMakeCurrent(NULL, NULL) && err_num[0] == 0) {
 											err_num[0] = 9; err_win32[0] = (g2d_ul_t)GetLastError();

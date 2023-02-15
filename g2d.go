@@ -8,7 +8,6 @@
 // Package g2d is a framework to create 2D graphic applications.
 package g2d
 
-// typedef struct { float x, y, w, h, r, g, b, a; } g2d_rect_t;
 import "C"
 import (
 	"github.com/vbsw/golib/queue"
@@ -226,43 +225,47 @@ func (rect *Rect) init(buffer **tBuffer, layer, index, chunk, entityIndex int, e
 }
 
 func (rect *Rect) XY() (float32, float32) {
-	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
-	return float32(rectC.x), float32(rectC.y)
+	offset := rect.index * 20
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset]), float32(data[offset+1])
 }
 
 func (rect *Rect) WH() (float32, float32) {
-	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
-	return float32(rectC.w), float32(rectC.h)
+	offset := rect.index * 20
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset+2]), float32(data[offset+3])
 }
 
 func (rect *Rect) XYWH() (float32, float32, float32, float32) {
-	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
-	return float32(rectC.x), float32(rectC.y), float32(rectC.w), float32(rectC.h)
+	offset := rect.index * 20
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset]), float32(data[offset+1]), float32(data[offset+2]), float32(data[offset+3])
 }
 
 func (rect *Rect) RGBA() (float32, float32, float32, float32) {
-	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
-	return float32(rectC.r), float32(rectC.g), float32(rectC.b), float32(rectC.a)
+	offset := rect.index * 20
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset+4]), float32(data[offset+5]), float32(data[offset+6]), float32(data[offset+7])
 }
 
 func (rect *Rect) SetXY(x, y float32) {
-	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
-	rectC.x, rectC.y = C.float(x), C.float(y)
+	(*rect.buffer).layers[rect.layer].setData2(rect.index*20, C.float(x), C.float(y))
 }
 
 func (rect *Rect) SetWH(w, h float32) {
-	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
-	rectC.w, rectC.h = C.float(w), C.float(h)
+	(*rect.buffer).layers[rect.layer].setData2(rect.index*20+2, C.float(w), C.float(h))
 }
 
 func (rect *Rect) SetXYWH(x, y, w, h float32) {
-	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
-	rectC.x, rectC.y, rectC.w, rectC.h = C.float(x), C.float(y), C.float(w), C.float(h)
+	(*rect.buffer).layers[rect.layer].setData4(rect.index*20, C.float(x), C.float(y), C.float(w), C.float(h))
 }
 
 func (rect *Rect) SetRGBA(r, g, b, a float32) {
-	rectC := (*rect.buffer).layers[rect.layer].rect(rect.index)
-	rectC.r, rectC.g, rectC.b, rectC.a = C.float(r), C.float(g), C.float(b), C.float(a)
+	offset := rect.index * 20
+	(*rect.buffer).layers[rect.layer].setData4(offset+4, C.float(r), C.float(g), C.float(b), C.float(a))
+	(*rect.buffer).layers[rect.layer].setData4(offset+8, C.float(r), C.float(g), C.float(b), C.float(a))
+	(*rect.buffer).layers[rect.layer].setData4(offset+12, C.float(r), C.float(g), C.float(b), C.float(a))
+	(*rect.buffer).layers[rect.layer].setData4(offset+16, C.float(r), C.float(g), C.float(b), C.float(a))
 }
 
 func (rect *Rect) SetEnabled(enabled bool) {
@@ -400,7 +403,9 @@ type tDestroyWindowRequest struct {
 
 type tLayer interface {
 	newRectIndex() int
-	rect(index int) *C.g2d_rect_t
+	data() []C.float
+	setData2(offset int, a, b C.float)
+	setData4(offset int, a, b, c, d C.float)
 	enable(index int)
 	disable(index int)
 	clone() tLayer
@@ -468,33 +473,51 @@ func (layer *tBaseLayer) clone(enabled []C.char, unused []int, totalActive int) 
 
 type tRectLayer struct {
 	tBaseLayer
-	rects []C.g2d_rect_t
+	rects []C.float
 }
 
 func newRectLayer(size int) *tRectLayer {
 	layer := new(tRectLayer)
-	layer.rects = make([]C.g2d_rect_t, 0, size)
+	layer.rects = make([]C.float, 0, size*20)
 	layer.initBase(size)
 	return layer
-}
-
-func (layer *tRectLayer) rect(index int) *C.g2d_rect_t {
-	return &layer.rects[index]
 }
 
 func (layer *tRectLayer) newRectIndex() int {
 	layer.totalActive++
 	if len(layer.unused) == 0 {
 		layer.enabled = append(layer.enabled, 1)
-		layer.rects = append(layer.rects, C.g2d_rect_t{})
+		if cap(layer.rects)-len(layer.rects) >= 20 {
+			layer.rects = layer.rects[:len(layer.rects)+20]
+		} else {
+			rectsNew := make([]C.float, len(layer.rects)+20, cap(layer.rects)*2)
+			copy(rectsNew, layer.rects)
+			layer.rects = rectsNew
+		}
 		return len(layer.enabled) - 1
 	}
 	return layer.usedIndex()
 }
 
+func (layer *tRectLayer) data() []C.float {
+	return layer.rects
+}
+
+func (layer *tRectLayer) setData2(offset int, a, b C.float) {
+	layer.rects[offset] = a
+	layer.rects[offset+1] = b
+}
+
+func (layer *tRectLayer) setData4(offset int, a, b, c, d C.float) {
+	layer.rects[offset] = a
+	layer.rects[offset+1] = b
+	layer.rects[offset+2] = c
+	layer.rects[offset+3] = d
+}
+
 func (layer *tRectLayer) clone() tLayer {
 	other := new(tRectLayer)
-	other.rects = make([]C.g2d_rect_t, len(layer.rects), cap(layer.rects))
+	other.rects = make([]C.float, len(layer.rects), cap(layer.rects))
 	copy(other.rects, layer.rects)
 	other.tBaseLayer.clone(layer.enabled, layer.unused, layer.totalActive)
 	return other
@@ -506,7 +529,7 @@ func (layer *tRectLayer) set(other tLayer) {
 		if cap(layer.rects) >= len(otherLayer.rects) {
 			layer.rects = layer.rects[:len(otherLayer.rects)]
 		} else {
-			layer.rects = make([]C.g2d_rect_t, len(otherLayer.rects), cap(otherLayer.rects))
+			layer.rects = make([]C.float, len(otherLayer.rects), cap(otherLayer.rects))
 		}
 		copy(layer.rects, otherLayer.rects)
 		layer.tBaseLayer.set(otherLayer.enabled, otherLayer.unused, otherLayer.totalActive)
