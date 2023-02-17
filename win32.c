@@ -210,24 +210,15 @@ void g2d_test(int *array) {
 	goDebug(array[0], array[0], 0, 0);
 }
 
-void g2d_to_tstr(void **const str, void *const go_cstr, int *const err_num) {
-	LPTSTR str_new = NULL;
-	size_t length;
-	if (go_cstr)
-		length = strlen(go_cstr);
-	else
-		length = 0;
-	#ifdef UNICODE
-	str_new = (LPTSTR)malloc(sizeof(WCHAR) * (length + 1));
+void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, int *const err_num) {
+	LPTSTR const str_new = (LPTSTR)malloc(sizeof(TCHAR) * (length + 1));
 	if (str_new) {
 		if (length > 0)
+			#ifdef UNICODE
 			MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char*)go_cstr, length, str_new, length);
-	#else
-	str_new = (LPTSTR)malloc(sizeof(char) * (length + 1));
-	if (str_new) {
-		if (length > 0)
+			#else
 			memcpy(str_new, go_cstr, length);
-	#endif
+			#endif
 		str_new[length] = 0;
 	}
 	else

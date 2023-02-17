@@ -10,7 +10,7 @@ extern "C" {
 typedef unsigned long g2d_ul_t;
 typedef unsigned int g2d_ui_t;
 extern void g2d_free(void *data);
-extern void g2d_to_tstr(void **str, void *go_cstr, int *err_num);
+extern void g2d_to_tstr(void **str, void *go_cstr, size_t length, int *err_num);
 extern void g2d_init(int *err_num, g2d_ul_t *err_win32);
 extern void g2d_window_create(void **data, int cb_id, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_window_show(void *data, int *err_num, g2d_ul_t *err_win32);

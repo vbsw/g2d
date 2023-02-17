@@ -730,12 +730,11 @@ func (_ *tErrorHandler) LogError(err error) {
 func toTString(str string) (unsafe.Pointer, C.int) {
 	var strT unsafe.Pointer
 	var errNumC C.int
-	strC := unsafe.Pointer(C.CString(str))
-	if strC != nil {
-		C.g2d_to_tstr(&strT, strC, &errNumC)
-		C.g2d_free(strC)
+	if len(str) > 0 {
+		bytes := *(*[]byte)(unsafe.Pointer(&str))
+		C.g2d_to_tstr(&strT, unsafe.Pointer(&bytes[0]), C.size_t(len(str)), &errNumC)
 	} else {
-		errNumC = 100
+		C.g2d_to_tstr(&strT, nil, C.size_t(len(str)), &errNumC)
 	}
 	return strT, errNumC
 }
