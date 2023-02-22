@@ -352,3 +352,16 @@ void g2d_gfx_set_view_size(void *const data, const int w, const int h) {
 	wnd_data[0].projection_mat[0] = 2.0f / (float)w;
 	wnd_data[0].projection_mat[5] = -2.0f / (float)h;
 }
+
+void g2d_gfx_gen_tex(void *const data, const void *const tex, const int w, const int h, int *const err_num, char **const err_str) {
+	GLuint *textures;
+	//glEnable(GL_TEXTURE_2D);
+	glGenTextures(1, textures);
+	//glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, *textures);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex);
+}

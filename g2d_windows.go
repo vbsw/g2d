@@ -112,25 +112,10 @@ func (window *tWindow) graphicsThread() {
 		var errStrC *C.char
 		C.g2d_gfx_init(window.dataC, &errNumC, &errStrC)
 		if errNumC == 0 {
+			processing := true
 			C.g2d_gfx_set_view_size(window.dataC, 640, 480)
-			for {
-				msg := window.nextGMessage()
-				if msg != nil {
-					if msg.typeId == vsyncType {
-						C.g2d_gfx_set_swap_interval(C.int(msg.valA))
-					} else if msg.typeId == resizeType {
-						C.g2d_gfx_set_view_size(window.dataC, C.int(msg.valA), C.int(msg.valB))
-					} else if msg.typeId == refreshType {
-						window.drawGraphics()
-					} else if msg.typeId == quitType {
-						C.g2d_context_release(window.dataC, &errNumC, &errWin32C)
-						if errNumC != 0 {
-							appendError(toError(errNumC, errWin32C, nil))
-						}
-						window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
-						break
-					}
-				}
+			for processing {
+				processing = window.processGMessage(window.nextGMessage())
 			}
 		} else {
 			appendError(toError(errNumC, errWin32C, errStrC))
@@ -140,6 +125,42 @@ func (window *tWindow) graphicsThread() {
 		appendError(toError(errNumC, errWin32C, nil))
 		window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
 	}
+}
+
+func (window *tWindow) processGMessage(msg *tGMessage) bool {
+	processing := true
+	if msg != nil {
+		if msg.err == nil {
+			var errNumC C.int
+			var errWin32C C.g2d_ul_t
+			if msg.typeId == vsyncType {
+				C.g2d_gfx_set_swap_interval(C.int(msg.valA))
+			} else if msg.typeId == resizeType {
+				C.g2d_gfx_set_view_size(window.dataC, C.int(msg.valA), C.int(msg.valB))
+			} else if msg.typeId == refreshType {
+				window.drawGraphics()
+			} else if msg.typeId == imageType {
+				texBytes, ok := msg.valC.([]byte)
+				if ok {
+					window.wgt.Gfx.loadTexture(texBytes)
+				} else {
+					appendError(msg.err)
+					processing = window.processGMessage(&tGMessage{typeId: quitType})
+				}
+			} else if msg.typeId == quitType {
+				C.g2d_context_release(window.dataC, &errNumC, &errWin32C)
+				if errNumC != 0 {
+					appendError(toError(errNumC, errWin32C, nil))
+				}
+				window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
+				processing = false
+			}
+		} else {
+			appendError(msg.err)
+			processing = window.processGMessage(&tGMessage{typeId: quitType})
+		}
+	}
+	return processing
 }
 
 func (window *tWindow) onConfig() {
@@ -260,6 +281,10 @@ func (window *tWindow) drawGraphics() {
 		appendError(toError(errNumC, errWin32C, nil))
 		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
 	}
+}
+
+func (gfx *Graphics) loadTexture(bytes []byte) {
+	
 }
 
 func (layer *tRectLayer) draw(dataC unsafe.Pointer) error {

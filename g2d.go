@@ -33,6 +33,7 @@ const (
 	leaveType
 	refreshType
 	vsyncType
+	imageType
 )
 
 var (
@@ -87,6 +88,10 @@ type Window interface {
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy()
+}
+
+type TextureProvider interface {
+	RGBABytes() ([]byte, error)
 }
 
 type DefaultWindow struct {
@@ -175,6 +180,13 @@ func (gfx *Graphics) SetVSync(vsync bool) {
 	} else {
 		gfx.msgs <- &tGMessage{typeId: vsyncType, valA: 0}
 	}
+}
+
+func (gfx *Graphics) LoadTexture(texture TextureProvider) {
+	go func() {
+		bytes, err := texture.RGBABytes()
+		gfx.msgs <- &tGMessage{typeId: imageType, valC: bytes, err: err}
+	}()
 }
 
 func (gfx *Graphics) NewRectLayer(size int) int {
@@ -382,6 +394,8 @@ type tGMessage struct {
 	typeId int
 	valA   int
 	valB   int
+	valC   interface{}
+	err    error
 }
 
 type tConfigWindowRequest struct {
