@@ -142,6 +142,12 @@ typedef struct {
 } rect_program_t;
 
 typedef struct {
+	GLuint id, vao, vbo, ebo, max_size;
+	GLint pos_att, col_att, tex_att, proj_unif, tex_unif;
+	float *buffer;
+} image_program_t;
+
+typedef struct {
 	window_t wnd;
 	client_t client;
 	client_t client_bak;
@@ -150,6 +156,7 @@ typedef struct {
 	int key_repeated[255];
 	int cb_id;
 	rect_program_t rect_prog;
+	image_program_t image_prog;
 	float projection_mat[4*4];
 } window_data_t;
 
@@ -230,7 +237,7 @@ void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, int
 #include "win32_keys.h"
 #include "win32_window.h"
 
-void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {
+void g2d_init(int *const max_t_size, int *const err_num, g2d_ul_t *const err_win32) {
 	if (!initialized) {
 		/* module */
 		instance = GetModuleHandle(NULL);
@@ -266,6 +273,7 @@ void g2d_init(int *const err_num, g2d_ul_t *const err_win32) {
 								HGLRC const dummy_rc = wglCreateContext(dummy_dc);
 								if (dummy_rc) {
 									if (wglMakeCurrent(dummy_dc, dummy_rc)) {
+										glGetIntegerv(GL_MAX_TEXTURE_SIZE, max_t_size);
 										/* wgl functions */
 										LOAD_FUNC(PFNWGLCHOOSEPIXELFORMATARBPROC, wglChoosePixelFormatARB, 200)
 										LOAD_FUNC(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB, 201)

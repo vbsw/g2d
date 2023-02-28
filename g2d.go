@@ -14,10 +14,17 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+	"image/png"
+	"os"
+	"image"
+	"path/filepath"
+	"image/jpeg"
+	"image/gif"
 )
 
 const (
 	wrongLayerType = "cast to wrong layer type"
+	notImplemented = "function not implemented"
 )
 
 const (
@@ -34,6 +41,7 @@ const (
 	refreshType
 	vsyncType
 	imageType
+	textureType
 )
 
 var (
@@ -48,6 +56,7 @@ var (
 	startTime   time.Time
 	cb          tCallback
 	fsm         [56]int
+	maxTexSize  C.int
 )
 
 func Errors() []error {
@@ -85,13 +94,84 @@ type Window interface {
 	OnResize() error
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
+	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy()
 }
 
 type TextureProvider interface {
-	RGBABytes() ([]byte, error)
+	RGBABytes() ([]byte, int, int, error)
+}
+
+type ImageLoader struct {
+}
+
+func (loader *ImageLoader) RGBABytes() ([]byte, int, int, error) {
+	var img image.Image
+	var err error
+	var bytes []byte
+	var width, height int
+	path := "./test.png"
+	if len(path) > 0 {
+		file, err := os.Open(path)
+		if err == nil {
+			defer file.Close()
+			ext := filepath.Ext(path)
+			if ext == ".jpg" || ext == ".jpeg" {
+				img, err = jpeg.Decode(file)
+			} else if ext == ".png" || ext == ".apng" {
+				img, err = png.Decode(file)
+			} else if ext == ".gif" {
+				img, err = gif.Decode(file)
+			} else {
+				img, _, err = image.Decode(file)
+			}
+			bounds := img.Bounds()
+			xMin := bounds.Min.X
+			xMax := bounds.Max.X
+			yMin := bounds.Min.Y
+			yMax := bounds.Max.Y
+			width = xMax - xMin
+			height = yMax - yMin
+
+			switch imgStruct := img.(type) {
+			case *image.RGBA:
+				bytes = imgStruct.Pix
+				println("RGBA stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.RGBA64:
+				bytes = imgStruct.Pix
+				println("RGBA64 stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.Alpha:
+				bytes = imgStruct.Pix
+				println("Alpha stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.Alpha16:
+				bytes = imgStruct.Pix
+				println("Alpha16 stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.CMYK:
+				bytes = imgStruct.Pix
+				println("CMYK stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.Gray:
+				bytes = imgStruct.Pix
+				println("Gray stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.Gray16:
+				bytes = imgStruct.Pix
+				println("Gray16 stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.NRGBA:
+				bytes = imgStruct.Pix
+				println("NRGBA stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.NRGBA64:
+				bytes = imgStruct.Pix
+				println("NRGBA64 stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			case *image.Paletted:
+				bytes = imgStruct.Pix
+				println("Paletted stride", imgStruct.Stride, "width", width, "height", height, "bytes", len(bytes))
+			default:
+				panic("image format not supported")
+			}
+		}
+	}
+	return bytes, width, height, err
 }
 
 type DefaultWindow struct {
@@ -129,6 +209,10 @@ func (_ *DefaultWindow) OnKeyUp(keyCode int) error {
 	return nil
 }
 
+func (_ *DefaultWindow) OnTextureLoaded(textureId int) error {
+	return nil
+}
+
 func (_ *DefaultWindow) OnDestroy() {
 }
 
@@ -158,6 +242,7 @@ func (wgt *Widget) Close() {
 }
 
 type Graphics struct {
+	MaxTextureSize int
 	rBuffer        *tBuffer
 	wBuffer        *tBuffer
 	msgs           chan *tGMessage
@@ -184,8 +269,8 @@ func (gfx *Graphics) SetVSync(vsync bool) {
 
 func (gfx *Graphics) LoadTexture(texture TextureProvider) {
 	go func() {
-		bytes, err := texture.RGBABytes()
-		gfx.msgs <- &tGMessage{typeId: imageType, valC: bytes, err: err}
+		bytes, w, h, err := texture.RGBABytes()
+		gfx.msgs <- &tGMessage{typeId: imageType, valA: w, valB: h, valC: bytes, err: err}
 	}()
 }
 
@@ -196,9 +281,22 @@ func (gfx *Graphics) NewRectLayer(size int) int {
 	return layerId
 }
 
+func (gfx *Graphics) NewImangeLayer(size int) int {
+	layerId := len(gfx.wBuffer.layers)
+	gfx.wBuffer.layers = append(gfx.wBuffer.layers, newImageLayer(size))
+	gfx.entitiesLayers = append(gfx.entitiesLayers, newImageEntitiesLayer(size))
+	return layerId
+}
+
 func (gfx *Graphics) NewRect(layer int) *Rect {
 	index := gfx.wBuffer.layers[layer].newRectIndex()
 	rect := gfx.entitiesLayers[layer].newRectEntity(&gfx.wBuffer, layer, index)
+	return rect
+}
+
+func (gfx *Graphics) NewImage(layer int) *Image {
+	index := gfx.wBuffer.layers[layer].newImageIndex()
+	rect := gfx.entitiesLayers[layer].newImageEntity(&gfx.wBuffer, layer, index)
 	return rect
 }
 
@@ -223,16 +321,16 @@ func (gfx *Graphics) switchWBuffer() {
 
 type Rect struct {
 	buffer             **tBuffer
-	entitylayer        tEntitiesLayer
+	entityLayer        tEntitiesLayer
 	chunk, entityIndex int
 	layer, index       int
 }
 
-func (rect *Rect) init(buffer **tBuffer, layer, index, chunk, entityIndex int, entitylayer tEntitiesLayer) *Rect {
+func (rect *Rect) init(buffer **tBuffer, layer, index, chunk, entityIndex int, entityLayer tEntitiesLayer) *Rect {
 	rect.buffer = buffer
 	rect.layer, rect.index = layer, index
 	rect.chunk, rect.entityIndex = chunk, entityIndex
-	rect.entitylayer = entitylayer
+	rect.entityLayer = entityLayer
 	return rect
 }
 
@@ -290,10 +388,101 @@ func (rect *Rect) SetEnabled(enabled bool) {
 
 func (rect *Rect) Release() {
 	(*rect.buffer).layers[rect.layer].release(rect.index)
-	rect.entitylayer.release(rect.chunk, rect.entityIndex)
+	rect.entityLayer.release(rect.chunk, rect.entityIndex)
 	rect.buffer = nil
-	rect.entitylayer = nil
+	rect.entityLayer = nil
 }
+
+
+
+
+
+type Image struct {
+	buffer             **tBuffer
+	entityLayer        tEntitiesLayer
+	chunk, entityIndex int
+	layer, index       int
+}
+
+func (rect *Image) init(buffer **tBuffer, layer, index, chunk, entityIndex int, entityLayer tEntitiesLayer) *Image {
+	rect.buffer = buffer
+	rect.layer, rect.index = layer, index
+	rect.chunk, rect.entityIndex = chunk, entityIndex
+	rect.entityLayer = entityLayer
+	return rect
+}
+
+func (rect *Image) XY() (float32, float32) {
+	offset := rect.index * 26
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset]), float32(data[offset+1])
+}
+
+func (rect *Image) WH() (float32, float32) {
+	offset := rect.index * 26
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset+2]), float32(data[offset+3])
+}
+
+func (rect *Image) XYWH() (float32, float32, float32, float32) {
+	offset := rect.index * 26
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset]), float32(data[offset+1]), float32(data[offset+2]), float32(data[offset+3])
+}
+
+func (rect *Image) TexXYWH() (float32, float32, float32, float32) {
+	offset := rect.index * 26
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset+4]), float32(data[offset+5]), float32(data[offset+6]), float32(data[offset+7])
+}
+
+func (rect *Image) RGBA() (float32, float32, float32, float32) {
+	offset := rect.index * 26
+	data := (*rect.buffer).layers[rect.layer].data()
+	return float32(data[offset+8]), float32(data[offset+9]), float32(data[offset+10]), float32(data[offset+11])
+}
+
+func (rect *Image) SetXY(x, y float32) {
+	(*rect.buffer).layers[rect.layer].setData2(rect.index*26, C.float(x), C.float(y))
+}
+
+func (rect *Image) SetWH(w, h float32) {
+	(*rect.buffer).layers[rect.layer].setData2(rect.index*26+2, C.float(w), C.float(h))
+}
+
+func (rect *Image) SetXYWH(x, y, w, h float32) {
+	(*rect.buffer).layers[rect.layer].setData4(rect.index*26, C.float(x), C.float(y), C.float(w), C.float(h))
+}
+
+func (rect *Image) SetTexXYWH(x, y, w, h float32) {
+	(*rect.buffer).layers[rect.layer].setData4(rect.index*26+4, C.float(x), C.float(y), C.float(w), C.float(h))
+}
+
+func (rect *Image) SetRGBA(r, g, b, a float32) {
+	offset := rect.index * 26
+	(*rect.buffer).layers[rect.layer].setData4(offset+8, C.float(r), C.float(g), C.float(b), C.float(a))
+	(*rect.buffer).layers[rect.layer].setData4(offset+12, C.float(r), C.float(g), C.float(b), C.float(a))
+	(*rect.buffer).layers[rect.layer].setData4(offset+16, C.float(r), C.float(g), C.float(b), C.float(a))
+	(*rect.buffer).layers[rect.layer].setData4(offset+20, C.float(r), C.float(g), C.float(b), C.float(a))
+}
+
+func (rect *Image) SetEnabled(enabled bool) {
+	if enabled {
+		(*rect.buffer).layers[rect.layer].enable(rect.index)
+	} else {
+		(*rect.buffer).layers[rect.layer].disable(rect.index)
+	}
+}
+
+func (rect *Image) Release() {
+	(*rect.buffer).layers[rect.layer].release(rect.index)
+	rect.entityLayer.release(rect.chunk, rect.entityIndex)
+	rect.buffer = nil
+	rect.entityLayer = nil
+}
+
+
+
 
 type tBuffer struct {
 	bgR, bgG, bgB C.float
@@ -383,7 +572,7 @@ func (cb *tCallback) unregisterAll() {
 
 type tLMessage struct {
 	typeId   int
-	keyCode  int
+	valA     int
 	repeated uint
 	nanos    int64
 	props    Properties
@@ -417,6 +606,7 @@ type tDestroyWindowRequest struct {
 
 type tLayer interface {
 	newRectIndex() int
+	newImageIndex() int
 	data() []C.float
 	setData2(offset int, a, b C.float)
 	setData4(offset int, a, b, c, d C.float)
@@ -513,6 +703,10 @@ func (layer *tRectLayer) newRectIndex() int {
 	return layer.usedIndex()
 }
 
+func (layer *tRectLayer) newImageIndex() int {
+	panic(notImplemented)
+}
+
 func (layer *tRectLayer) data() []C.float {
 	return layer.rects
 }
@@ -552,8 +746,86 @@ func (layer *tRectLayer) set(other tLayer) {
 	}
 }
 
+
+
+
+type tImageLayer struct {
+	tBaseLayer
+	rects []C.float
+}
+
+func newImageLayer(size int) *tImageLayer {
+	layer := new(tImageLayer)
+	layer.rects = make([]C.float, 0, size*26)
+	layer.initBase(size)
+	return layer
+}
+
+func (layer *tImageLayer) newRectIndex() int {
+	panic(notImplemented)
+}
+
+func (layer *tImageLayer) newImageIndex() int {
+	layer.totalActive++
+	if len(layer.unused) == 0 {
+		layer.enabled = append(layer.enabled, 1)
+		if cap(layer.rects)-len(layer.rects) >= 26 {
+			layer.rects = layer.rects[:len(layer.rects)+26]
+		} else {
+			rectsNew := make([]C.float, len(layer.rects)+26, cap(layer.rects)*2)
+			copy(rectsNew, layer.rects)
+			layer.rects = rectsNew
+		}
+		return len(layer.enabled) - 1
+	}
+	return layer.usedIndex()
+}
+
+func (layer *tImageLayer) data() []C.float {
+	return layer.rects
+}
+
+func (layer *tImageLayer) setData2(offset int, a, b C.float) {
+	layer.rects[offset] = a
+	layer.rects[offset+1] = b
+}
+
+func (layer *tImageLayer) setData4(offset int, a, b, c, d C.float) {
+	layer.rects[offset] = a
+	layer.rects[offset+1] = b
+	layer.rects[offset+2] = c
+	layer.rects[offset+3] = d
+}
+
+func (layer *tImageLayer) clone() tLayer {
+	other := new(tImageLayer)
+	other.rects = make([]C.float, len(layer.rects), cap(layer.rects))
+	copy(other.rects, layer.rects)
+	other.tBaseLayer.clone(layer.enabled, layer.unused, layer.totalActive)
+	return other
+}
+
+func (layer *tImageLayer) set(other tLayer) {
+	otherLayer, ok := other.(*tImageLayer)
+	if ok {
+		if cap(layer.rects) >= len(otherLayer.rects) {
+			layer.rects = layer.rects[:len(otherLayer.rects)]
+		} else {
+			layer.rects = make([]C.float, len(otherLayer.rects), cap(otherLayer.rects))
+		}
+		copy(layer.rects, otherLayer.rects)
+		layer.tBaseLayer.set(otherLayer.enabled, otherLayer.unused, otherLayer.totalActive)
+	} else {
+		panic(wrongLayerType)
+	}
+}
+
+
+
+
 type tEntitiesLayer interface {
 	newRectEntity(buffer **tBuffer, layer, index int) *Rect
+	newImageEntity(buffer **tBuffer, layer, index int) *Image
 	release(chunk, index int)
 }
 
@@ -614,6 +886,54 @@ func (layer *tRectEntitiesLayer) newRectEntity(buffer **tBuffer, bufferLayer, in
 	}
 	layer.appendBase(len(layer.rects[0]))
 	layer.rects = append(layer.rects, make([]Rect, 1, layer.size))
+	return (&layer.rects[len(layer.rects)-1][0]).init(buffer, bufferLayer, index, len(layer.unused)-1, 0, layer)
+}
+
+func (layer *tRectEntitiesLayer) newImageEntity(buffer **tBuffer, bufferLayer, index int) *Image {
+	panic(notImplemented)
+}
+
+
+
+
+type tImageEntitiesLayer struct {
+	tBaseEntitiesLayer
+	rects [][]Image
+}
+
+func newImageEntitiesLayer(size int) *tImageEntitiesLayer {
+	layer := new(tImageEntitiesLayer)
+	layer.rects = make([][]Image, 1)
+	layer.rects[0] = make([]Image, 0, size)
+	layer.initBase(size)
+	return layer
+}
+
+func (layer *tImageEntitiesLayer) newRectEntity(buffer **tBuffer, bufferLayer, index int) *Rect {
+	panic(notImplemented)
+}
+
+func (layer *tImageEntitiesLayer) newImageEntity(buffer **tBuffer, bufferLayer, index int) *Image {
+	for chunk, rects := range layer.rects {
+		unused := layer.unused[chunk]
+		lengthUnused := len(unused)
+		if lengthUnused == 0 {
+			if len(rects) < cap(rects) {
+				entityIndex := len(rects)
+				layer.rects[chunk] = append(rects, Image{})
+				rect := &layer.rects[chunk][entityIndex]
+				return rect.init(buffer, bufferLayer, index, chunk, entityIndex, layer)
+			}
+		} else if lengthUnused > 0 {
+			lengthUnusedNew := lengthUnused - 1
+			entityIndex := unused[lengthUnusedNew]
+			rect := &layer.rects[chunk][entityIndex]
+			layer.unused[chunk] = unused[:lengthUnusedNew]
+			return rect.init(buffer, bufferLayer, index, chunk, entityIndex, layer)
+		}
+	}
+	layer.appendBase(len(layer.rects[0]))
+	layer.rects = append(layer.rects, make([]Image, 1, layer.size))
 	return (&layer.rects[len(layer.rects)-1][0]).init(buffer, bufferLayer, index, len(layer.unused)-1, 0, layer)
 }
 

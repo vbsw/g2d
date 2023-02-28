@@ -34,7 +34,7 @@ func Init(params ...interface{}) {
 		clearErrors()
 		initCustParams(params)
 		initDefaultParams()
-		C.g2d_init(&errNumC, &errWin32C)
+		C.g2d_init(&maxTexSize, &errNumC, &errWin32C)
 		if errNumC == 0 {
 			startTime = time.Now()
 			fsm = [56]int{0, 1, 2, 0, 10, 2, 2, 1, 3, 1, 2, 0, 3, 4, 1, 0, 6, 5, 1, 2, 0, 4, 1, 0, 6, 7, 0, 2, 13, 8, 0, 1, 9, 7, 0, 2, 9, 5, 1, 2, 10, 11, 0, 1, 9, 12, 0, 2, 13, 11, 0, 1, 13, 2, 2, 1}
@@ -79,9 +79,11 @@ func (window *tWindow) logicThread() {
 				window.updateProps(msg)
 				window.onResize()
 			case keyDownType:
-				window.onKeyDown(msg.keyCode, msg.repeated)
+				window.onKeyDown(msg.valA, msg.repeated)
 			case keyUpType:
-				window.onKeyUp(msg.keyCode)
+				window.onKeyUp(msg.valA)
+			case textureType:
+				window.onTextureLoaded(msg.valA)
 			case updateType:
 				window.onUpdate()
 			case quitReqType:
@@ -142,7 +144,7 @@ func (window *tWindow) processGMessage(msg *tGMessage) bool {
 			} else if msg.typeId == imageType {
 				texBytes, ok := msg.valC.([]byte)
 				if ok {
-					window.wgt.Gfx.loadTexture(texBytes)
+					window.loadTexture(texBytes, msg.valA, msg.valB)
 				} else {
 					appendError(msg.err)
 					processing = window.processGMessage(&tGMessage{typeId: quitType})
@@ -226,6 +228,13 @@ func (window *tWindow) onKeyUp(keyCode int) {
 	}
 }
 
+func (window *tWindow) onTextureLoaded(textureId int) {
+	err := window.abst.OnTextureLoaded(textureId)
+	if err != nil {
+		window.onError(err)
+	}
+}
+
 func (window *tWindow) onUpdate() {
 	err := window.abst.OnUpdate()
 	if err == nil {
@@ -283,8 +292,16 @@ func (window *tWindow) drawGraphics() {
 	}
 }
 
-func (gfx *Graphics) loadTexture(bytes []byte) {
-	
+func (window *tWindow) loadTexture(bytes []byte, w, h int) {
+	var errNumC, texIdC C.int
+	C.g2d_gfx_gen_tex(window.dataC, unsafe.Pointer(&bytes[0]), C.int(w), C.int(h), &texIdC, &errNumC)
+	if errNumC == 0 {
+		window.wgt.msgs <- &tLMessage{typeId: textureType, valA: int(texIdC), nanos: deltaNanos()}
+	} else {
+		window.state = 2
+		appendError(toError(errNumC, 0, nil))
+		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+	}
 }
 
 func (layer *tRectLayer) draw(dataC unsafe.Pointer) error {
@@ -293,6 +310,19 @@ func (layer *tRectLayer) draw(dataC unsafe.Pointer) error {
 	length := len(layer.enabled)
 	if length > 0 {
 		C.g2d_gfx_draw_rect(dataC, &layer.enabled[0], &layer.rects[0], C.int(length), C.int(layer.totalActive), &errNumC, &errStrC)
+		if errNumC != 0 {
+			return toError(errNumC, 0, errStrC)
+		}
+	}
+	return nil
+}
+
+func (layer *tImageLayer) draw(dataC unsafe.Pointer) error {
+	var errNumC C.int
+	var errStrC *C.char
+	length := len(layer.enabled)
+	if length > 0 {
+		C.g2d_gfx_draw_image(dataC, &layer.enabled[0], &layer.rects[0], C.int(length), C.int(layer.totalActive), &errNumC, &errStrC)
 		if errNumC != 0 {
 			return toError(errNumC, 0, errStrC)
 		}
@@ -430,7 +460,7 @@ func g2dClose(cbIdC C.int) {
 //export g2dKeyDown
 func g2dKeyDown(cbIdC, code C.int, repeated C.g2d_ui_t) {
 	window := cb.wnds[int(cbIdC)]
-	msg := &tLMessage{typeId: keyDownType, keyCode: int(code), repeated: uint(repeated), nanos: deltaNanos()}
+	msg := &tLMessage{typeId: keyDownType, valA: int(code), repeated: uint(repeated), nanos: deltaNanos()}
 	msg.props.update(window.dataC)
 	window.wgt.msgs <- msg
 }
@@ -438,7 +468,7 @@ func g2dKeyDown(cbIdC, code C.int, repeated C.g2d_ui_t) {
 //export g2dKeyUp
 func g2dKeyUp(cbIdC, code C.int) {
 	window := cb.wnds[int(cbIdC)]
-	msg := &tLMessage{typeId: keyUpType, keyCode: int(code), nanos: deltaNanos()}
+	msg := &tLMessage{typeId: keyUpType, valA: int(code), nanos: deltaNanos()}
 	msg.props.update(window.dataC)
 	window.wgt.msgs <- msg
 }
@@ -520,6 +550,7 @@ func newWindow(abst Window) *tWindow {
 	window.wgt.Gfx.msgs = make(chan *tGMessage, 1024)
 	window.wgt.Gfx.rBuffer = &window.wgt.Gfx.buffers[0]
 	window.wgt.Gfx.wBuffer = &window.wgt.Gfx.buffers[0]
+	window.wgt.Gfx.MaxTextureSize = int(maxTexSize)
 	go window.logicThread()
 	return window
 }
