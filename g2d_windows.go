@@ -322,7 +322,7 @@ func (layer *tImageLayer) draw(dataC unsafe.Pointer) error {
 	var errStrC *C.char
 	length := len(layer.enabled)
 	if length > 0 {
-		C.g2d_gfx_draw_image(dataC, &layer.enabled[0], &layer.rects[0], C.int(length), C.int(layer.totalActive), &errNumC, &errStrC)
+		C.g2d_gfx_draw_image(dataC, &layer.enabled[0], &layer.rects[0], C.int(length), C.int(layer.totalActive), C.int(layer.textureId), &errNumC, &errStrC)
 		if errNumC != 0 {
 			return toError(errNumC, 0, errStrC)
 		}

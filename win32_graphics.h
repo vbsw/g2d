@@ -7,6 +7,7 @@
 
 /* orthographic projection */
 static const float projection_mat[4*4] = { 2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, -1.0f, 1.0f, 0.0f, 1.0f };
+
 static LPCSTR const vs_rect_str = "#version 130\nin vec2 positionIn; in vec4 colorIn; out vec4 fragementColor; uniform mat4 projection = mat4(1.0); void main() { gl_Position = projection * vec4(positionIn, 1.0, 1.0); fragementColor = colorIn; }";
 static LPCSTR const fs_rect_str = "#version 130\nin vec4 fragementColor; out vec4 color; void main() { color = fragementColor; }";
 
@@ -198,15 +199,16 @@ static void bind_ebo(const GLuint ebo, const int err_a, const int err_b, int *co
 	}
 }
 
-static void bind_texture(const GLuint texture, int *const err_num) {
+static void bind_texture(const GLuint texture, const int err_a, const int err_b, const int err_c, int *const err_num) {
+	//glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	const GLenum err_enum = glGetError();
 	if (err_enum == GL_INVALID_ENUM) {
-		err_num[0] = 1170;
+		err_num[0] = err_a;
 	} else if (err_enum == GL_INVALID_VALUE) {
-		err_num[0] = 1171;
+		err_num[0] = err_b;
 	} else if (err_enum == GL_INVALID_OPERATION) {
-		err_num[0] = 1172;
+		err_num[0] = err_c;
 	}
 }
 
@@ -247,6 +249,19 @@ static void rect_prog_enable(const GLuint prog_id, const GLint proj_unif, const 
 		if (err_num[0] == 0) {
 			glUniformMatrix4fv(proj_unif, 1, GL_FALSE, projection_mat);
 			bind_vbo(vbo, 1203, 1204, err_num);
+		}
+	}
+}
+
+static void image_prog_enable(const GLuint prog_id, const GLint proj_unif, const GLuint vao, const GLuint vbo, const float *const projection_mat, const int tex_id, int *const err_num) {
+	prog_use(prog_id, 1300, 1301, err_num);
+	if (err_num[0] == 0) {
+		bind_vao(vao, 1302, err_num);
+		if (err_num[0] == 0) {
+			glUniformMatrix4fv(proj_unif, 1, GL_FALSE, projection_mat);
+			bind_vbo(vbo, 1303, 1304, err_num);
+			if (err_num[0] == 0)
+				bind_texture((GLuint)tex_id, 1305, 1306, 1307, err_num);
 		}
 	}
 }
@@ -333,10 +348,12 @@ static void image_init(window_data_t *const wnd_data, int *const err_num, char *
 				wnd_data[0].image_prog.id = image_prog_create(vs_id, fs_id, err_num, err_str);
 				wnd_data[0].image_prog.pos_att = att_location(wnd_data[0].image_prog.id, "positionIn", 1110, err_num);
 				wnd_data[0].image_prog.col_att = att_location(wnd_data[0].image_prog.id, "colorIn", 1111, err_num);
+				wnd_data[0].image_prog.tex_att = att_location(wnd_data[0].image_prog.id, "texCoordIn", 1111, err_num);
 				wnd_data[0].image_prog.proj_unif = unf_location(wnd_data[0].image_prog.id, "projection", 1112, 1113, err_num);
 				bind_vao(wnd_data[0].image_prog.vao, 1114, err_num);
 				enable_attr(wnd_data[0].image_prog.pos_att, 1115, 1116, err_num);
 				enable_attr(wnd_data[0].image_prog.col_att, 1117, 1118, err_num);
+				enable_attr(wnd_data[0].image_prog.tex_att, 1117, 1118, err_num);
 				bind_vbo(wnd_data[0].image_prog.vbo, 1119, 1120, err_num);
 				buffer_data(GL_ARRAY_BUFFER, sizeof(float) * size * 4 * (2+4+2), NULL, GL_DYNAMIC_DRAW, 1121, 1122, 1123, 1124, err_num);
 				vertex_att_pointer(wnd_data[0].image_prog.pos_att, 2, sizeof(float) * (2+4+2), (void*)(sizeof(float) * 0), 1125, 1126, 1127, err_num);
@@ -454,13 +471,13 @@ void g2d_gfx_draw_rect(void *const data, const char *const enabled, const float 
 	}
 }
 
-void g2d_gfx_draw_image(void *const data, const char *const enabled, const float *const images, const int length, const int active, int *const err_num, char **const err_str) {
+void g2d_gfx_draw_image(void *const data, const char *const enabled, const float *const images, const int length, const int active, const int tex_id, int *const err_num, char **const err_str) {
 	if (active > 0) {
 		int i, drawn;
 		window_data_t *const wnd_data = (window_data_t*)data;
-		const int size = (int)wnd_data[0].rect_prog.max_size;
-		float *const buffer = wnd_data[0].rect_prog.buffer;
-		rect_prog_enable(wnd_data[0].rect_prog.id, wnd_data[0].rect_prog.proj_unif, wnd_data[0].rect_prog.vao, wnd_data[0].rect_prog.vbo, wnd_data[0].projection_mat, err_num);
+		const int size = (int)wnd_data[0].image_prog.max_size;
+		float *const buffer = wnd_data[0].image_prog.buffer;
+		image_prog_enable(wnd_data[0].image_prog.id, wnd_data[0].image_prog.proj_unif, wnd_data[0].image_prog.vao, wnd_data[0].image_prog.vbo, wnd_data[0].projection_mat, tex_id, err_num);
 		for (i = 0, drawn = 0; err_num[0] == 0 && drawn < active; drawn += size) {
 			int k;
 			const int limit = drawn + size > active ? active - drawn : size;
@@ -475,37 +492,57 @@ void g2d_gfx_draw_image(void *const data, const char *const enabled, const float
 					buffer[offs+3] = images[index+9]; // g
 					buffer[offs+4] = images[index+10]; // b
 					buffer[offs+5] = images[index+11]; // a
+/*
 					buffer[offs+6] = tx;
 					buffer[offs+7] = ty;
+*/
+					buffer[offs+6] = 0;
+					buffer[offs+7] = 1;
+
 					buffer[offs+8] = x + w;
 					buffer[offs+9] = y;
 					buffer[offs+10] = images[index+12];
 					buffer[offs+11] = images[index+13];
 					buffer[offs+12] = images[index+14];
 					buffer[offs+13] = images[index+15];
+/*
 					buffer[offs+14] = tx + tw;
 					buffer[offs+15] = ty;
+*/
+					buffer[offs+14] = 1;
+					buffer[offs+15] = 1;
+
 					buffer[offs+16] = x;
 					buffer[offs+17] = y + h;
 					buffer[offs+18] = images[index+16];
 					buffer[offs+19] = images[index+17];
 					buffer[offs+20] = images[index+18];
 					buffer[offs+21] = images[index+19];
+/*
 					buffer[offs+22] = tx;
 					buffer[offs+23] = ty + th;
+*/
+					buffer[offs+22] = 0;
+					buffer[offs+23] = 0;
+
 					buffer[offs+24] = x + w;
 					buffer[offs+25] = y + h;
 					buffer[offs+26] = images[index+20];
 					buffer[offs+27] = images[index+21];
 					buffer[offs+28] = images[index+22];
 					buffer[offs+29] = images[index+23];
+/*
 					buffer[offs+30] = tx + tw;
 					buffer[offs+31] = ty + th;
+*/
+					buffer[offs+30] = 1;
+					buffer[offs+31] = 0;
+
 					k++;
 				}
 			}
 			buffer_sub_data(sizeof(float) * limit * 4 * (2+4+2), buffer, 1205, 1206, 1207, err_num);
-			draw_elements(limit * 6, 1208, 1209, 1210, err_num);
+			draw_elements(limit * 6, 1318, 1319, 1320, err_num);
 		}
 	}
 }
@@ -518,18 +555,18 @@ void g2d_gfx_set_view_size(void *const data, const int w, const int h) {
 }
 
 void g2d_gfx_gen_tex(void *const data, const void *const tex, const int w, const int h, int *const tex_id, int *const err_num) {
-	GLuint textures;
-	glGenTextures(1, &textures);
-	bind_texture(textures, err_num);
+	GLuint texture;
+	glGenTextures(1, &texture);
+	bind_texture(texture, 1170, 1171, 1172, err_num);
 	if (err_num[0] == 0) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexImage2D(GL_TEXTURE_2D, 0, 4, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex);
 		const GLenum err_enum = glGetError();
 		if (err_enum == GL_NO_ERROR) {
-			tex_id[0] = (int)textures;
+			tex_id[0] = (int)texture;
 		} else if (err_enum == GL_INVALID_ENUM) {
 			err_num[0] = 1173;
 		} else if (err_enum == GL_INVALID_VALUE) {

@@ -50,6 +50,7 @@
 #define WGL_SWAP_UNDEFINED_EXT            0x202A
 
 // copied from glcorearb.h
+#define GL_TEXTURE0                       0x84C0
 #define GL_ARRAY_BUFFER                   0x8892
 #define GL_ELEMENT_ARRAY_BUFFER           0x8893
 #define GL_STATIC_DRAW                    0x88E4

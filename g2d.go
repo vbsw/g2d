@@ -281,9 +281,9 @@ func (gfx *Graphics) NewRectLayer(size int) int {
 	return layerId
 }
 
-func (gfx *Graphics) NewImangeLayer(size int) int {
+func (gfx *Graphics) NewImageLayer(textureId, size int) int {
 	layerId := len(gfx.wBuffer.layers)
-	gfx.wBuffer.layers = append(gfx.wBuffer.layers, newImageLayer(size))
+	gfx.wBuffer.layers = append(gfx.wBuffer.layers, newImageLayer(textureId, size))
 	gfx.entitiesLayers = append(gfx.entitiesLayers, newImageEntitiesLayer(size))
 	return layerId
 }
@@ -752,11 +752,13 @@ func (layer *tRectLayer) set(other tLayer) {
 type tImageLayer struct {
 	tBaseLayer
 	rects []C.float
+	textureId int
 }
 
-func newImageLayer(size int) *tImageLayer {
+func newImageLayer(textureId, size int) *tImageLayer {
 	layer := new(tImageLayer)
 	layer.rects = make([]C.float, 0, size*26)
+	layer.textureId = textureId
 	layer.initBase(size)
 	return layer
 }
@@ -800,6 +802,7 @@ func (layer *tImageLayer) setData4(offset int, a, b, c, d C.float) {
 func (layer *tImageLayer) clone() tLayer {
 	other := new(tImageLayer)
 	other.rects = make([]C.float, len(layer.rects), cap(layer.rects))
+	other.textureId = layer.textureId
 	copy(other.rects, layer.rects)
 	other.tBaseLayer.clone(layer.enabled, layer.unused, layer.totalActive)
 	return other
@@ -808,6 +811,7 @@ func (layer *tImageLayer) clone() tLayer {
 func (layer *tImageLayer) set(other tLayer) {
 	otherLayer, ok := other.(*tImageLayer)
 	if ok {
+		otherLayer.textureId = layer.textureId
 		if cap(layer.rects) >= len(otherLayer.rects) {
 			layer.rects = layer.rects[:len(otherLayer.rects)]
 		} else {
