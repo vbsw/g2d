@@ -31,25 +31,25 @@ func (errConv *ErrorConvertor) ToError(err1, err2 int64, info string) error {
 	if err1 > 0 {
 		if err1 < 1000 {
 			errStr = "memory allocation failed"
-		} else if err1 < 1010 {
+		} else if err1 < 1100 {
 			if err1 == 1000 {
-				errStr = "ogfl GetModuleHandle failed"
+				errStr = "g2d ogfl GetModuleHandle failed"
 			} else if err1 == 1001 {
-				errStr = "ogfl RegisterClassEx failed"
+				errStr = "g2d ogfl RegisterClassEx failed"
 			} else if err1 == 1002 {
-				errStr = "ogfl CreateWindow failed"
+				errStr = "g2d ogfl CreateWindow failed"
 			} else if err1 == 1003 {
-				errStr = "ogfl GetDC failed"
+				errStr = "g2d ogfl GetDC failed"
 			} else if err1 == 1004 {
-				errStr = "ogfl ChoosePixelFormat failed"
+				errStr = "g2d ogfl ChoosePixelFormat failed"
 			} else if err1 == 1005 {
-				errStr = "ogfl SetPixelFormat failed"
+				errStr = "g2d ogfl SetPixelFormat failed"
 			} else if err1 == 1006 {
-				errStr = "ogfl wglCreateContext failed"
+				errStr = "g2d ogfl wglCreateContext failed"
 			} else if err1 == 1007 {
-				errStr = "ogfl wglMakeCurrent failed"
+				errStr = "g2d ogfl wglMakeCurrent failed"
 			} else if err1 == 1008 {
-				errStr = "ogfl get cdata failed"
+				errStr = "g2d ogfl get cdata failed"
 			} else {
 				errStr = unknownError
 			}
