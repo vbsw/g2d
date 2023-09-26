@@ -8,6 +8,94 @@
 // Package g2d is a framework to create 2D graphic applications.
 package g2d
 
+import (
+	"sync"
+	"time"
+	"unsafe"
+)
+
+var (
+	mutex       sync.Mutex
+	engines     []*Engine
+	enginesNext []int
+)
+
+type ErrorConvertor interface {
+	ToError(err1, err2 int64, info string) error
+}
+
+type Window interface {
+/*
+	OnConfig(config *Configuration) error
+	OnCreate(widget *Widget) error
+	OnShow() error
+	OnResize() error
+	OnKeyDown(keyCode int, repeated uint) error
+	OnKeyUp(keyCode int) error
+	OnTextureLoaded(textureId int) error
+	OnUpdate() error
+	OnClose() (bool, error)
+*/
+	OnDestroy()
+}
+
+type Engine struct {
+	ErrConv     ErrorConvertor
+	MaxTexSize  int
+	dataC       unsafe.Pointer
+	initialized bool
+	initFailed  bool
+	startTime   time.Time
+	mutex       sync.Mutex
+	running bool
+/*
+	errLogger   ErrorLogger
+	errs        []error
+	Gfx         Graphics
+*/
+}
+
+type engineProperties struct {
+	errConv     ErrorConvertor
+}
+
+type defaultErrorConvertor struct {
+}
+
+func (engine *Engine) getProperties() *engineProperties {
+	props := new(engineProperties)
+	if engine.ErrConv != nil {
+		props.errConv = engine.ErrConv
+	} else {
+		props.errConv = new(defaultErrorConvertor)
+	}
+	return props
+}
+
+/*
+func unregister(id int) int {
+	mutex.Lock()
+	defer mutex.Unlock()
+	wndsUsed[id] = nil
+	wndsUnused = append(enginesNext, id)
+	return len(engines) - len(enginesNext)
+}
+
+
+import (
+	"sync"
+	"time"
+	"unsafe"
+)
+
+var fsm = [56]int{0, 1, 2, 0, 10, 2, 2, 1, 3, 1, 2, 0, 3, 4, 1, 0, 6, 5, 1, 2, 0, 4, 1, 0, 6, 7, 0, 2, 13, 8, 0, 1, 9, 7, 0, 2, 9, 5, 1, 2, 10, 11, 0, 1, 9, 12, 0, 2, 13, 11, 0, 1, 13, 2, 2, 1}
+
+type Graphics struct {
+	MaxTextureSize int
+}
+*/
+
+/*
 import "C"
 import (
 	"github.com/vbsw/golib/queue"
@@ -85,19 +173,6 @@ type Properties struct {
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen             bool
 	Title                             string
-}
-
-type Window interface {
-	OnConfig(config *Configuration) error
-	OnCreate(widget *Widget) error
-	OnShow() error
-	OnResize() error
-	OnKeyDown(keyCode int, repeated uint) error
-	OnKeyUp(keyCode int) error
-	OnTextureLoaded(textureId int) error
-	OnUpdate() error
-	OnClose() (bool, error)
-	OnDestroy()
 }
 
 type TextureProvider interface {
@@ -988,3 +1063,4 @@ func toCInt(b bool) C.int {
 	}
 	return C.int(0)
 }
+*/

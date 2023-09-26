@@ -8,10 +8,32 @@
 package g2d
 
 import (
-	"errors"
 	"testing"
 )
 
+func TestInit(t *testing.T) {
+	var engine Engine
+	err := engine.Init()
+	if err != nil {
+		t.Error(err.Error())
+	}
+}
+
+/*
+func BenchmarkInit(b *testing.B) {
+	var collection cdata.Collection
+	var loader ogfl.Loader
+	var rects modules.Rectangles
+	collection.Passes = 2
+	collection.Init(&loader, &rects)
+	var engine Engine
+	params := new(EngineParams)
+	params.Modules = append(params.Modules, new(modules.Rectangles))
+	engine.Init(params)
+}
+*/
+
+/*
 type tTestConfigWindow struct {
 	DefaultWindow
 	configCalled  bool
@@ -191,3 +213,4 @@ func TestSwitchBuffer(t *testing.T) {
 		}
 	}
 }
+*/

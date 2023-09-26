@@ -7,20 +7,180 @@
 
 package g2d
 
-// #cgo CFLAGS: -DG2D_WIN32 -DUNICODE
+// #cgo CFLAGS: -DVBSW_G2D_WIN32 -DUNICODE
 // #cgo LDFLAGS: -luser32 -lgdi32 -lOpenGL32
 // #include "g2d.h"
 import "C"
 import (
 	"errors"
-	"fmt"
-	"reflect"
-	"runtime"
 	"strconv"
 	"time"
+)
+
+func (engine *Engine) Init() error {
+	if !engine.initialized {
+		props := engine.getProperties()
+		var xts C.int
+		var err1, err2 C.longlong
+		mutex.Lock()
+		defer mutex.Unlock()
+		id := C.int(len(engines))
+		C.g2d_init(&engine.dataC, &xts, id, &err1, &err2)
+		if err1 == 0 {
+			engines = append(engines, engine)
+			engine.ErrConv = props.errConv
+			engine.MaxTexSize = int(xts)
+			engine.initialized = true
+			engine.initFailed = false
+			engine.startTime = time.Now()
+			return nil
+		}
+		engine.initFailed = true
+		return props.errConv.ToError(int64(err1), int64(err2), "")
+	}
+	panic("g2d engine is already initialized")
+}
+
+func (engine *Engine) Show(window Window) {
+	if !engine.initFailed && window != nil {
+		if engine.initialized {
+/*
+			wnd := newWindow(window)
+			wnd.loopId = mainLoop.register(wnd)
+			mainLoop.postMessage(&tConfigWindowRequest{window: wnd}, 1000)
+*/
+			engine.runMainLoop()
+		} else {
+			panic("g2d is not initialized")
+		}
+	}
+}
+
+func (engine *Engine) runMainLoop() {
+	engine.mutex.Lock()
+	if !engine.running {
+		engine.running = true
+		engine.mutex.Unlock()
+		C.g2d_process_messages(engine.dataC)
+		engine.mutex.Lock()
+		engine.running = false
+		engine.mutex.Unlock()
+	} else {
+		engine.mutex.Unlock()
+	}
+}
+
+func (errConv *defaultErrorConvertor) ToError(err1, err2 int64, info string) error {
+	var errStr string
+	if err1 > 0 && err1 < 1000 {
+		errStr = "memory allocation failed"
+	} else {
+		errStr = "unknown error"
+	}
+	errStr = errStr + " (" + strconv.FormatInt(err1, 10)
+	if err2 == 0 {
+		errStr = errStr + ")"
+	} else {
+		errStr = errStr + ", " + strconv.FormatInt(err2, 10) + ")"
+	}
+	if len(info) > 0 {
+		errStr = errStr + "; " + info
+	}
+	return errors.New(errStr)
+}
+
+/*
+import (
+	"github.com/vbsw/golib/cdata"
+	"github.com/vbsw/g2d/ogfl"
+	"github.com/vbsw/g2d/modules"
 	"unsafe"
 )
 
+func initA() {
+	var collection cdata.Collection
+	var loader ogfl.Loader
+	var rects modules.Rectangles
+	collection.Passes = 2
+	collection.Init(&loader, &rects)
+}
+
+import (
+	"github.com/vbsw/g2d/win32"
+)
+
+type ErrorConvertor interface {
+	ToError(g2dErrNum, win32ErrNum uint64, info string) error
+}
+
+type ErrorLogger interface {
+	LogError(err error)
+}
+
+type EngineParams struct {
+	ErrConv   ErrorConvertor
+	ErrLogger ErrorLogger
+	Modules   []Module
+}
+
+type Module interface {
+	DataFunc() (*unsafe.Pointer, unsafe.Pointer)
+}
+
+func (engine *Engine) Errors() []error {
+	engine.mutex.Lock()
+	defer engine.mutex.Unlock()
+	return engine.errs
+}
+
+func (engine *Engine) setErrConv(errConv ErrorConvertor) {
+	if errConv == nil {
+		engine.errConv = new(tDefaultErrorConvertor)
+	} else {
+		engine.errConv = errConv
+	}
+}
+
+func (engine *Engine) setErrLogger(errLogger ErrorLogger) {
+	if errLogger == nil {
+		engine.errLogger = new(tDefaultErrorLogger)
+	} else {
+		engine.errLogger = errLogger
+	}
+}
+
+func (engine *Engine) appendError(err error) {
+	engine.mutex.Lock()
+	engine.errs = append(engine.errs, err)
+	engine.errLogger.LogError(err)
+	engine.mutex.Unlock()
+}
+
+type tDefaultErrorConvertor struct {
+}
+
+type tDefaultErrorLogger struct {
+}
+
+func (errLoger *tDefaultErrorLogger) LogError(err error) {
+}
+
+func newInitParams(engineDataC *unsafe.Pointer, engineParams *EngineParams) *win32.InitParams {
+	initParams := new(win32.InitParams)
+	length := len(engineParams.Modules)
+	if length > 0 {
+		initParams.Data = make([]*unsafe.Pointer, length)
+		initParams.Funcs = make([]unsafe.Pointer, length)
+		for i, m := range engineParams.Modules {
+			initParams.Data[i], initParams.Funcs[i] = m.DataFunc()
+		}
+	}
+	initParams.Engine = engineDataC
+	return initParams
+}
+*/
+
+/*
 const (
 	errStrPostMessage = "post message failed"
 	errStrMalloc      = "memory allocation failed"
@@ -46,19 +206,6 @@ func Init(params ...interface{}) {
 		}
 	} else {
 		panic("g2d is already initialized")
-	}
-}
-
-func Show(window Window) {
-	if !initFailed && window != nil {
-		if initialized {
-			wnd := newWindow(window)
-			wnd.loopId = mainLoop.register(wnd)
-			mainLoop.postMessage(&tConfigWindowRequest{window: wnd}, 1000)
-			mainLoop.run()
-		} else {
-			panic("g2d is not initialized")
-		}
 	}
 }
 
@@ -375,28 +522,6 @@ func (window *tWindow) nextGMessage() *tGMessage {
 	return message
 }
 
-func (loop *tMainLoop) register(window *tWindow) int {
-	loop.mutex.Lock()
-	defer loop.mutex.Unlock()
-	if len(loop.wndsUnused) == 0 {
-		loop.wndsUsed = append(loop.wndsUsed, window)
-		return len(loop.wndsUsed) - 1
-	}
-	lastIndex := len(loop.wndsUnused) - 1
-	index := loop.wndsUnused[lastIndex]
-	loop.wndsUnused = loop.wndsUnused[:lastIndex]
-	loop.wndsUsed[index] = window
-	return index
-}
-
-func (loop *tMainLoop) unregister(loopId int) int {
-	loop.mutex.Lock()
-	defer loop.mutex.Unlock()
-	loop.wndsUsed[loopId] = nil
-	loop.wndsUnused = append(loop.wndsUnused, loopId)
-	return len(loop.wndsUsed) - len(loop.wndsUnused)
-}
-
 func (loop *tMainLoop) postMessage(msg interface{}, errNumC C.int) {
 	var errNumOrigC C.int
 	var errWin32C C.g2d_ul_t
@@ -408,20 +533,6 @@ func (loop *tMainLoop) postMessage(msg interface{}, errNumC C.int) {
 	} else {
 		C.g2d_quit_message_queue()
 		appendError(toError(errNumC, errWin32C, nil))
-	}
-}
-
-func (loop *tMainLoop) run() {
-	loop.mutex.Lock()
-	if !mainLoop.running {
-		mainLoop.running = true
-		mainLoop.mutex.Unlock()
-		C.g2d_process_messages()
-		loop.mutex.Lock()
-		mainLoop.running = false
-		mainLoop.mutex.Unlock()
-	} else {
-		mainLoop.mutex.Unlock()
 	}
 }
 
@@ -553,19 +664,6 @@ func newWindow(abst Window) *tWindow {
 	window.wgt.Gfx.MaxTextureSize = int(maxTexSize)
 	go window.logicThread()
 	return window
-}
-
-func initCustParams(params []interface{}) {
-	for i, param := range params {
-		var ok, used bool
-		errGen, ok = param.(tErrorGenerator)
-		used = used || ok
-		errLog, ok = param.(tErrorLogger)
-		used = used || ok
-		if !used {
-			panic(fmt.Sprintf("parameter %d is not used", i))
-		}
-	}
 }
 
 func initDefaultParams() {
@@ -807,3 +905,4 @@ func getType(myvar interface{}) string {
 func goDebug(a, b C.int, c, d C.g2d_ul_t) {
 	fmt.Println(a, b, c, d)
 }
+*/
