@@ -9,15 +9,46 @@
 package g2d
 
 import (
+	"github.com/vbsw/golib/queue"
 	"sync"
 	"time"
 	"unsafe"
 )
 
+const (
+	configType = iota
+	createType
+	showType
+	resizeType
+	keyDownType
+	keyUpType
+	updateType
+	quitReqType
+	quitType
+	leaveType
+	refreshType
+	vsyncType
+	imageType
+	textureType
+)
+
 var (
+	ErrConv     ErrorConvertor
+	MaxTextureSize  int
+	Err error
+	quitting bool
+
+	initialized bool
+	initFailed  bool
+	wndCbs     []*tWindow
+	wndCbsNext []int
+	msgs       queue.Queue
+
+	startTime   time.Time
 	mutex       sync.Mutex
-	engines     []*Engine
-	enginesNext []int
+
+	running bool
+//	msgs                      chan *tLMessage
 )
 
 type ErrorConvertor interface {
@@ -39,47 +70,88 @@ type Window interface {
 	OnDestroy()
 }
 
-type Engine struct {
-	ErrConv     ErrorConvertor
-	MaxTexSize  int
-	dataC       unsafe.Pointer
-	initialized bool
-	initFailed  bool
-	startTime   time.Time
-	mutex       sync.Mutex
-	running bool
-/*
-	errLogger   ErrorLogger
-	errs        []error
-	Gfx         Graphics
-*/
+type Widget struct {
+	ClientX, ClientY          int
+	ClientWidth, ClientHeight int
+	MouseX, MouseY            int
+	PrevUpdateNanos           int64
+	CurrEventNanos            int64
+	update                    bool
+	Gfx                       Graphics
+	msgs                      chan *tLMessage
 }
 
-type engineProperties struct {
+type tEngineProperties struct {
 	errConv     ErrorConvertor
 }
 
-type defaultErrorConvertor struct {
+type tErrorConvertor struct {
 }
 
-func (engine *Engine) getProperties() *engineProperties {
-	props := new(engineProperties)
-	if engine.ErrConv != nil {
-		props.errConv = engine.ErrConv
+type tWindow struct {
+	abst       Window
+	cbId       int
+	wgt        *Widget
+/*
+	dataC      unsafe.Pointer
+	autoUpdate bool
+	loopId     int
+	state      int
+*/
+}
+
+type tConfigWindowRequest struct {
+	window *tWindow
+}
+
+type tLMessage struct {
+	typeId   int
+	valA     int
+	repeated uint
+	nanos    int64
+/*
+	props    Properties
+*/
+	obj      interface{}
+}
+
+func engineProperties() *tEngineProperties {
+	props := new(tEngineProperties)
+	if ErrConv != nil {
+		errConv = engine.ErrConv
 	} else {
-		props.errConv = new(defaultErrorConvertor)
+		errConv = new(tErrorConvertor)
 	}
 	return props
 }
 
-/*
-func unregister(id int) int {
-	mutex.Lock()
-	defer mutex.Unlock()
-	wndsUsed[id] = nil
-	wndsUnused = append(enginesNext, id)
-	return len(engines) - len(enginesNext)
+func register(wnd *tWindow) int {
+	if len(wndCbsNext) == 0 {
+		wndCbs = append(wndCbs, wnd)
+		return len(wndCbs) - 1
+	}
+	indexLast := len(wndCbsNext) - 1
+	cbId := wndCbsNext[indexLast]
+	wndCbsNext = wndCbsNext[:indexLast]
+	wndCbs[cbId] = wnd
+	return cbId
 }
+
+func unregister(cbId int) {
+	wndCbs[cbId] = nil
+	wndCbsNext = append(wndCbsNext, cbId)
+}
+
+func anyAvailable(windows []Window) bool {
+	for (wnd := range windows) {
+		if wnd != nil {
+			return true
+		}
+	}
+	return false
+}
+
+/*
 
 
 import (
@@ -98,7 +170,6 @@ type Graphics struct {
 /*
 import "C"
 import (
-	"github.com/vbsw/golib/queue"
 	"sync"
 	"time"
 	"unsafe"
@@ -113,23 +184,6 @@ import (
 const (
 	wrongLayerType = "cast to wrong layer type"
 	notImplemented = "function not implemented"
-)
-
-const (
-	configType = iota
-	createType
-	showType
-	resizeType
-	keyDownType
-	keyUpType
-	updateType
-	quitReqType
-	quitType
-	leaveType
-	refreshType
-	vsyncType
-	imageType
-	textureType
 )
 
 var (
@@ -289,17 +343,6 @@ func (_ *DefaultWindow) OnTextureLoaded(textureId int) error {
 }
 
 func (_ *DefaultWindow) OnDestroy() {
-}
-
-type Widget struct {
-	ClientX, ClientY          int
-	ClientWidth, ClientHeight int
-	MouseX, MouseY            int
-	PrevUpdateNanos           int64
-	CurrEventNanos            int64
-	update                    bool
-	Gfx                       Graphics
-	msgs                      chan *tLMessage
 }
 
 func (wgt *Widget) Update() {
@@ -587,7 +630,6 @@ type tErrorHandler struct {
 
 type tMainLoop struct {
 	mutex      sync.Mutex
-	msgs       queue.Queue
 	running    bool
 	wndsUsed   []*tWindow
 	wndsUnused []int
@@ -597,16 +639,6 @@ func (loop *tMainLoop) nextMessage() interface{} {
 	loop.mutex.Lock()
 	defer loop.mutex.Unlock()
 	return loop.msgs.First()
-}
-
-type tWindow struct {
-	abst       Window
-	wgt        *Widget
-	dataC      unsafe.Pointer
-	autoUpdate bool
-	loopId     int
-	cbId       int
-	state      int
 }
 
 type tCallback struct {
@@ -645,25 +677,12 @@ func (cb *tCallback) unregisterAll() {
 	}
 }
 
-type tLMessage struct {
-	typeId   int
-	valA     int
-	repeated uint
-	nanos    int64
-	props    Properties
-	obj      interface{}
-}
-
 type tGMessage struct {
 	typeId int
 	valA   int
 	valB   int
 	valC   interface{}
 	err    error
-}
-
-type tConfigWindowRequest struct {
-	window *tWindow
 }
 
 type tCreateWindowRequest struct {

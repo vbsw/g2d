@@ -288,21 +288,24 @@ void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, int
 #include "win32_window.h"
 */
 
-void g2d_process_messages(void *const data) {
-	if (data) {
-		MSG msg; BOOL ret_code;
-		engine_t *const engine = (engine_t*)data;
-		thread_id = GetCurrentThreadId(); thread_id_set = TRUE;
-		while ((ret_code = GetMessage(&msg, NULL, 0, 0)) > 0) {
-			if (msg.message == WM_APP && msg.wParam == g2d_EVENT) {
-				// g2dProcessMessage();
-			} else {
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
+void g2d_process_messages() {
+	MSG msg; BOOL ret_code;
+	engine_t *const engine = (engine_t*)data;
+	thread_id = GetCurrentThreadId(); thread_id_set = TRUE;
+	while ((ret_code = GetMessage(&msg, NULL, 0, 0)) > 0) {
+		if (msg.message == WM_APP && msg.wParam == g2d_EVENT) {
+			// g2dProcessMessage();
+		} else {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
 		}
-		thread_id_set = FALSE;
 	}
+	thread_id_set = FALSE;
+}
+
+void g2d_clean_up_messages() {
+	MSG msg;
+	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE));
 }
 
 /*

@@ -5,45 +5,42 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-void g2d_init(void **const data, int *const xts, const int id, long long *const err1, long long *const err2) {
-	/* module */
-	HINSTANCE const instance = GetModuleHandle(NULL);
-	if (instance) {
-		/* dummy class */
-		WNDCLASSEX cls;
-		ZeroMemory(&cls, sizeof(WNDCLASSEX));
-		cls.cbSize = sizeof(WNDCLASSEX);
-		cls.style = CS_OWNDC;
-		cls.lpfnWndProc = DefWindowProc;
-		cls.hInstance = instance;
-		cls.lpszClassName = class_name_dummy;
-		if (RegisterClassEx(&cls) != INVALID_ATOM) {
-			/* dummy window */
-			HWND const dummy_hndl = CreateWindow(class_name_dummy, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, instance, NULL);
-			if (dummy_hndl) {
-				/* dummy context */
-				HDC const dummy_dc = GetDC(dummy_hndl);
-				if (dummy_dc) {
-					int pixelFormat;
-					PIXELFORMATDESCRIPTOR pixelFormatDesc;
-					ZeroMemory(&pixelFormatDesc, sizeof(PIXELFORMATDESCRIPTOR));
-					pixelFormatDesc.nSize = sizeof(PIXELFORMATDESCRIPTOR);
-					pixelFormatDesc.nVersion = 1;
-					pixelFormatDesc.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
-					pixelFormatDesc.iPixelType = PFD_TYPE_RGBA;
-					pixelFormatDesc.cColorBits = 32;
-					pixelFormatDesc.cAlphaBits = 8;
-					pixelFormatDesc.cDepthBits = 24;
-					pixelFormat = ChoosePixelFormat(dummy_dc, &pixelFormatDesc);
-					if (pixelFormat) {
-						if (SetPixelFormat(dummy_dc, pixelFormat, &pixelFormatDesc)) {
-							HGLRC const dummy_rc = wglCreateContext(dummy_dc);
-							if (dummy_rc) {
-								if (wglMakeCurrent(dummy_dc, dummy_rc)) {
-									engine_t *const engine = (engine_t*)malloc(sizeof(engine_t));
-									if (engine) {
-										engine[0].id = id;
-										engine[0].instance = instance;
+void g2d_init(void **const data, int *const xts, long long *const err1, long long *const err2) {
+	if (!initialized) {
+		/* module */
+		instance = GetModuleHandle(NULL);
+		if (instance) {
+			/* dummy class */
+			WNDCLASSEX cls;
+			ZeroMemory(&cls, sizeof(WNDCLASSEX));
+			cls.cbSize = sizeof(WNDCLASSEX);
+			cls.style = CS_OWNDC;
+			cls.lpfnWndProc = DefWindowProc;
+			cls.hInstance = instance;
+			cls.lpszClassName = class_name_dummy;
+			if (RegisterClassEx(&cls) != INVALID_ATOM) {
+				/* dummy window */
+				HWND const dummy_hndl = CreateWindow(class_name_dummy, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, instance, NULL);
+				if (dummy_hndl) {
+					/* dummy context */
+					HDC const dummy_dc = GetDC(dummy_hndl);
+					if (dummy_dc) {
+						int pixelFormat;
+						PIXELFORMATDESCRIPTOR pixelFormatDesc;
+						ZeroMemory(&pixelFormatDesc, sizeof(PIXELFORMATDESCRIPTOR));
+						pixelFormatDesc.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+						pixelFormatDesc.nVersion = 1;
+						pixelFormatDesc.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
+						pixelFormatDesc.iPixelType = PFD_TYPE_RGBA;
+						pixelFormatDesc.cColorBits = 32;
+						pixelFormatDesc.cAlphaBits = 8;
+						pixelFormatDesc.cDepthBits = 24;
+						pixelFormat = ChoosePixelFormat(dummy_dc, &pixelFormatDesc);
+						if (pixelFormat) {
+							if (SetPixelFormat(dummy_dc, pixelFormat, &pixelFormatDesc)) {
+								HGLRC const dummy_rc = wglCreateContext(dummy_dc);
+								if (dummy_rc) {
+									if (wglMakeCurrent(dummy_dc, dummy_rc)) {
 										glGetIntegerv(GL_MAX_TEXTURE_SIZE, xts);
 										/* wgl functions */
 										LOAD_FUNC(PFNWGLCHOOSEPIXELFORMATARBPROC, wglChoosePixelFormatARB, 1100)
@@ -98,43 +95,41 @@ void g2d_init(void **const data, int *const xts, const int id, long long *const 
 										if (!UnregisterClass(class_name_dummy, instance) && err1[0] == 0) {
 											err1[0] = 1011; err2[0] = (long long)GetLastError();
 										}
-										if (err1[0]) {
+										if (err1[0] == 0) {
+											initialized = TRUE;
+										} else {
 											free(engine);
 										}
 									} else {
-										err1[0] = 1; err2[0] = (long long)GetLastError();
+										err1[0] = 1007; err2[0] = (long long)GetLastError();
 										wglDeleteContext(dummy_rc); ReleaseDC(dummy_hndl, dummy_dc);
 										DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 									}
 								} else {
-									err1[0] = 1007; err2[0] = (long long)GetLastError();
-									wglDeleteContext(dummy_rc); ReleaseDC(dummy_hndl, dummy_dc);
-									DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
+									err1[0] = 1006; err2[0] = (long long)GetLastError();
+									ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 								}
 							} else {
-								err1[0] = 1006; err2[0] = (long long)GetLastError();
+								err1[0] = 1005; err2[0] = (long long)GetLastError();
 								ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 							}
 						} else {
-							err1[0] = 1005; err2[0] = (long long)GetLastError();
+							err1[0] = 1004; err2[0] = (long long)GetLastError();
 							ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 						}
 					} else {
-						err1[0] = 1004; err2[0] = (long long)GetLastError();
-						ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
+						err1[0] = 1003;
+						DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 					}
 				} else {
-					err1[0] = 1003;
-					DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
+					err1[0] = 1002; err2[0] = (long long)GetLastError();
+					UnregisterClass(class_name_dummy, instance);
 				}
 			} else {
-				err1[0] = 1002; err2[0] = (long long)GetLastError();
-				UnregisterClass(class_name_dummy, instance);
+				err1[0] = 1001; err2[0] = (long long)GetLastError();
 			}
 		} else {
-			err1[0] = 1001; err2[0] = (long long)GetLastError();
+			err1[0] = 1000; err2[0] = (long long)GetLastError();
 		}
-	} else {
-		err1[0] = 1000; err2[0] = (long long)GetLastError();
 	}
 }

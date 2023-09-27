@@ -17,57 +17,157 @@ import (
 	"time"
 )
 
-func (engine *Engine) Init() error {
-	if !engine.initialized {
-		props := engine.getProperties()
-		var xts C.int
+func Init() {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if !initialized {
+		props := engineProperties()
+		var maxTexSizeC C.int
 		var err1, err2 C.longlong
-		mutex.Lock()
-		defer mutex.Unlock()
-		id := C.int(len(engines))
-		C.g2d_init(&engine.dataC, &xts, id, &err1, &err2)
+		C.g2d_init(&engine.dataC, &maxTexSizeC, &err1, &err2)
 		if err1 == 0 {
-			engines = append(engines, engine)
-			engine.ErrConv = props.errConv
-			engine.MaxTexSize = int(xts)
-			engine.initialized = true
-			engine.initFailed = false
-			engine.startTime = time.Now()
-			return nil
+			ErrConv = props.errConv
+			MaxTextureSize = int(maxTexSizeC)
+			initialized = true
+			initFailed = false
+			quitting = false
+			startTime = time.Now()
+		} else {
+			initFailed = true
+			Err = props.errConv.ToError(int64(err1), int64(err2), "")
 		}
-		engine.initFailed = true
-		return props.errConv.ToError(int64(err1), int64(err2), "")
+	} else {
+		panic("g2d engine is already initialized")
 	}
-	panic("g2d engine is already initialized")
 }
 
-func (engine *Engine) Show(window Window) {
-	if !engine.initFailed && window != nil {
-		if engine.initialized {
-/*
-			wnd := newWindow(window)
-			wnd.loopId = mainLoop.register(wnd)
-			mainLoop.postMessage(&tConfigWindowRequest{window: wnd}, 1000)
-*/
-			engine.runMainLoop()
+func Show(window ...Window) {
+	if anyAvailable(window) {
+		mutex.Lock()
+		if !initFailed {
+			if initialized {
+				for (abst := range window) {
+					if abst != nil && !quitting {
+						wnd := newWindow(abst)
+						go wnd.logicThread()
+						postConfig(wnd)
+					}
+				}
+				if !running {
+					if !quitting {
+						running = true
+						mutex.Unlock()
+						C.g2d_process_messages()
+						mutex.Lock()
+						quitting = true
+						running = false
+					}
+					cleanUp()
+				}
+				mutex.Unlock()
+			} else {
+				mutex.Unlock()
+				panic("g2d is not initialized")
+			}
+		} else {
+			mutex.Unlock()
+		}
+	}
+}
+
+func cleanUp() {
+	var cleanUpMsgs bool
+	for (wnd := range wndCbs) {
+		if wnd != nil {
+			var err1, err2 C.longlong
+			wnd.wgt.Gfx.msgs <- (&tGMessage{typeId: quitType})
+			wnd.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
+			cleanUpMsgs = true
+			unregister(wnd.cbId)
+			C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+		}
+	}
+	if cleanUpMsgs {
+		C.g2d_clean_up_messages()
+	}
+}
+
+func destroyWindow(wnd *tWindow) {
+	if wnd.cbId >= 0 {
+		var errNumC C.int
+		var errWin32C C.g2d_ul_t
+		C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+		cb.unregister(wnd.cbId)
+		wnd.cbId = -1
+		if errNumC != 0 {
+			appendError(toError(errNumC, errWin32C, nil))
+		}
+	}
+	registered := mainLoop.unregister(wnd.loopId)
+	if registered <= 0 {
+		C.g2d_quit_message_queue()
+	}
+}
+
+func postConfig(wnd *tWindow) {
+	var err1, err2 C.longlong
+	C.g2d_post_message(&err1, &err2)
+	if err1 == 0 {
+		msgs.Put(&tConfigWindowRequest{window: wnd})
+	} else {
+		setError(err1, err2, nil)
+	}
+}
+
+func setError(err1, err2 C.longlong, errStr *C.char) error {
+	if Err == nil {
+		var info string
+		if errStr != nil {
+			info = C.GoString(errStr)
+			C.g2d_free(unsafe.Pointer(errStr))
+		}
+		Err = ErrConv.ToError(int64(err1), int64(err1), info)
+	}
+	if running && !quitting {
+		C.g2d_quit_message_queue()
+		quitting = true
+	}
+}
+
+func MainLoop() {
+	if !initFailed {
+		if initialized {
+			mutex.Lock()
+			if !running {
+				running = true
+				mutex.Unlock()
+				C.g2d_process_messages()
+				mutex.Lock()
+				running = false
+				mutex.Unlock()
+			} else {
+				mutex.Unlock()
+			}
 		} else {
 			panic("g2d is not initialized")
 		}
 	}
 }
 
-func (engine *Engine) runMainLoop() {
-	engine.mutex.Lock()
-	if !engine.running {
-		engine.running = true
-		engine.mutex.Unlock()
-		C.g2d_process_messages(engine.dataC)
-		engine.mutex.Lock()
-		engine.running = false
-		engine.mutex.Unlock()
-	} else {
-		engine.mutex.Unlock()
-	}
+func newWindow(abst Window) *tWindow {
+	window := new(tWindow)
+	window.abst = abst
+	window.cbId = register(window)
+/*
+	window.cbId = -1
+	window.wgt = new(Widget)
+	window.wgt.msgs = make(chan *tLMessage, 1024)
+	window.wgt.Gfx.msgs = make(chan *tGMessage, 1024)
+	window.wgt.Gfx.rBuffer = &window.wgt.Gfx.buffers[0]
+	window.wgt.Gfx.wBuffer = &window.wgt.Gfx.buffers[0]
+	window.wgt.Gfx.MaxTextureSize = int(maxTexSize)
+*/
+	return window
 }
 
 func (errConv *defaultErrorConvertor) ToError(err1, err2 int64, info string) error {
@@ -87,6 +187,9 @@ func (errConv *defaultErrorConvertor) ToError(err1, err2 int64, info string) err
 		errStr = errStr + "; " + info
 	}
 	return errors.New(errStr)
+}
+
+func (window *tWindow) logicThread() {
 }
 
 /*
@@ -635,37 +738,6 @@ func showWindow(window *tWindow) {
 	}
 }
 
-func destroyWindow(window *tWindow) {
-	if window.cbId >= 0 {
-		var errNumC C.int
-		var errWin32C C.g2d_ul_t
-		C.g2d_window_destroy(window.dataC, &errNumC, &errWin32C)
-		cb.unregister(window.cbId)
-		window.cbId = -1
-		if errNumC != 0 {
-			appendError(toError(errNumC, errWin32C, nil))
-		}
-	}
-	registered := mainLoop.unregister(window.loopId)
-	if registered <= 0 {
-		C.g2d_quit_message_queue()
-	}
-}
-
-func newWindow(abst Window) *tWindow {
-	window := new(tWindow)
-	window.cbId = -1
-	window.abst = abst
-	window.wgt = new(Widget)
-	window.wgt.msgs = make(chan *tLMessage, 1024)
-	window.wgt.Gfx.msgs = make(chan *tGMessage, 1024)
-	window.wgt.Gfx.rBuffer = &window.wgt.Gfx.buffers[0]
-	window.wgt.Gfx.wBuffer = &window.wgt.Gfx.buffers[0]
-	window.wgt.Gfx.MaxTextureSize = int(maxTexSize)
-	go window.logicThread()
-	return window
-}
-
 func initDefaultParams() {
 	if errGen == nil {
 		errGen = &errHandler
@@ -691,15 +763,6 @@ func (props *Properties) update(dataC unsafe.Pointer) {
 	props.Resizable = bool(r != 0)
 	props.Fullscreen = bool(f != 0)
 	props.MouseLocked = bool(l != 0)
-}
-
-func toError(errNumC C.int, errWin32C C.g2d_ul_t, errStrC *C.char) error {
-	var errStr string
-	if errStrC != nil {
-		errStr = C.GoString(errStrC)
-		C.g2d_free(unsafe.Pointer(errStrC))
-	}
-	return errGen.ToError(uint64(errNumC), uint64(errWin32C), errStr)
 }
 
 func (_ *tErrorHandler) ToError(g2dErrNum, win32ErrNum uint64, info string) error {
