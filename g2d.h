@@ -12,17 +12,18 @@ extern void g2d_free(void *data);
 extern void g2d_init(void **data, int *xts, long long *err1, long long *err2);
 extern void g2d_process_messages();
 extern void g2d_clean_up_messages();
+extern void g2d_post_message(long long *err1, long long *err2);
 extern void g2d_quit_message_queue();
+
+extern void g2d_window_show(void *data, long long *err1, long long *err2);
 
 /*
 typedef unsigned long g2d_ul_t;
 typedef unsigned int g2d_ui_t;
 extern void g2d_to_tstr(void **str, void *go_cstr, size_t length, int *err_num);
 extern void g2d_window_create(void **data, int cb_id, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t, int *err_num, g2d_ul_t *err_win32);
-extern void g2d_window_show(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_window_destroy(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
-extern void g2d_post_message(int *err_num, g2d_ul_t *err_win32);
 extern void g2d_context_make_current(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_context_release(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_gfx_init(void *data, int *err_num, char **err_str);

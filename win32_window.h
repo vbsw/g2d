@@ -198,7 +198,7 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 	}
 }
 
-void g2d_window_show(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+void g2d_window_show(void *data, long long *err1, long long *err2) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
 }

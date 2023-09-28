@@ -16,6 +16,12 @@ import (
 )
 
 const (
+	configState = iota
+	runningState
+	quitState
+)
+
+const (
 	configType = iota
 	createType
 	showType
@@ -43,12 +49,11 @@ var (
 	wndCbs     []*tWindow
 	wndCbsNext []int
 	msgs       queue.Queue
+	wndsActive sync.WaitGroup 
 
-	startTime   time.Time
 	mutex       sync.Mutex
-
+	startTime   time.Time
 	running bool
-//	msgs                      chan *tLMessage
 )
 
 type ErrorConvertor interface {
@@ -56,7 +61,6 @@ type ErrorConvertor interface {
 }
 
 type Window interface {
-/*
 	OnConfig(config *Configuration) error
 	OnCreate(widget *Widget) error
 	OnShow() error
@@ -66,7 +70,6 @@ type Window interface {
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
-*/
 	OnDestroy()
 }
 
@@ -79,6 +82,18 @@ type Widget struct {
 	update                    bool
 	Gfx                       Graphics
 	msgs                      chan *tLMessage
+	quitted                   chan bool
+}
+
+type Configuration struct {
+	ClientX, ClientY                  int
+	ClientWidth, ClientHeight         int
+	ClientWidthMin, ClientHeightMin   int
+	ClientWidthMax, ClientHeightMax   int
+	MouseLocked, Borderless, Dragable bool
+	Resizable, Fullscreen, Centered   bool
+	AutoUpdate                        bool
+	Title                             string
 }
 
 type tEngineProperties struct {
@@ -89,18 +104,32 @@ type tErrorConvertor struct {
 }
 
 type tWindow struct {
-	abst       Window
+	state      int
 	cbId       int
+	cbIdStr string
+	abst       Window
 	wgt        *Widget
 /*
 	dataC      unsafe.Pointer
 	autoUpdate bool
 	loopId     int
-	state      int
 */
 }
 
 type tConfigWindowRequest struct {
+	window *tWindow
+}
+
+type tCreateWindowRequest struct {
+	window *tWindow
+	config *Configuration
+}
+
+type tShowWindowRequest struct {
+	window *tWindow
+}
+
+type tDestroyWindowRequest struct {
 	window *tWindow
 }
 
@@ -142,13 +171,25 @@ func unregister(cbId int) {
 	wndCbsNext = append(wndCbsNext, cbId)
 }
 
-func anyAvailable(windows []Window) bool {
-	for (wnd := range windows) {
-		if wnd != nil {
-			return true
-		}
-	}
-	return false
+func newConfiguration() *Configuration {
+	config := new(Configuration)
+	config.ClientX = 50
+	config.ClientY = 50
+	config.ClientWidth = 640
+	config.ClientHeight = 480
+	config.ClientWidthMin = 0
+	config.ClientHeightMin = 0
+	config.ClientWidthMax = 99999
+	config.ClientHeightMax = 99999
+	config.MouseLocked = false
+	config.Borderless = false
+	config.Dragable = false
+	config.Resizable = true
+	config.Fullscreen = false
+	config.Centered = true
+	config.AutoUpdate = true
+	config.Title = "g2d - 0.1.0"
+	return config
 }
 
 /*
@@ -205,17 +246,6 @@ func Errors() []error {
 	mutex.Lock()
 	defer mutex.Unlock()
 	return errs
-}
-
-type Configuration struct {
-	ClientX, ClientY                  int
-	ClientWidth, ClientHeight         int
-	ClientWidthMin, ClientHeightMin   int
-	ClientWidthMax, ClientHeightMax   int
-	MouseLocked, Borderless, Dragable bool
-	Resizable, Fullscreen, Centered   bool
-	AutoUpdate                        bool
-	Title                             string
 }
 
 type Properties struct {
@@ -370,6 +400,8 @@ type Graphics struct {
 	state          int
 	refresh        bool
 	vsync          bool
+	quitted                   chan bool
+	running bool
 }
 
 func (gfx *Graphics) SetBGColor(r, g, b float32) {
@@ -683,19 +715,6 @@ type tGMessage struct {
 	valB   int
 	valC   interface{}
 	err    error
-}
-
-type tCreateWindowRequest struct {
-	window *tWindow
-	config *Configuration
-}
-
-type tShowWindowRequest struct {
-	window *tWindow
-}
-
-type tDestroyWindowRequest struct {
-	window *tWindow
 }
 
 type tLayer interface {
@@ -1035,27 +1054,6 @@ func (layer *tImageEntitiesLayer) newImageEntity(buffer **tBuffer, bufferLayer, 
 	return (&layer.rects[len(layer.rects)-1][0]).init(buffer, bufferLayer, index, len(layer.unused)-1, 0, layer)
 }
 
-func newConfiguration() *Configuration {
-	config := new(Configuration)
-	config.ClientX = 50
-	config.ClientY = 50
-	config.ClientWidth = 640
-	config.ClientHeight = 480
-	config.ClientWidthMin = 0
-	config.ClientHeightMin = 0
-	config.ClientWidthMax = 99999
-	config.ClientHeightMax = 99999
-	config.MouseLocked = false
-	config.Borderless = false
-	config.Dragable = false
-	config.Resizable = true
-	config.Fullscreen = false
-	config.Centered = true
-	config.AutoUpdate = true
-	config.Title = "g2d - 0.1.0"
-	return config
-}
-
 func appendError(err error) {
 	mutex.Lock()
 	errs = append(errs, err)
@@ -1068,6 +1066,7 @@ func clearErrors() {
 	errs = errs[:0]
 	mutex.Unlock()
 }
+*/
 
 func deltaNanos() int64 {
 	timeNow := time.Now()
@@ -1075,11 +1074,18 @@ func deltaNanos() int64 {
 	return d.Nanoseconds()
 }
 
-// toCInt converts bool value to C int value.
+func anyAvailable(windows []Window) bool {
+	for (wnd := range windows) {
+		if wnd != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func toCInt(b bool) C.int {
 	if b {
 		return C.int(1)
 	}
 	return C.int(0)
 }
-*/

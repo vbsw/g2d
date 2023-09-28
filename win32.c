@@ -64,7 +64,7 @@
 #define GL_CLAMP_TO_BORDER                0x812D
 
 /* wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions). */
-#define LOAD_FUNC(t, n, e) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_err = GetLastError(); if (last_err == 0) engine[0].n = (t) proc; else { err1[0] = e; err2[0] = (long long)last_err; }}
+#define LOAD_FUNC(t, n, e) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_err = GetLastError(); if (last_err == 0) n = (t) proc; else { err1[0] = e; err2[0] = (long long)last_err; }}
 
 /* from wglext.h */
 typedef BOOL(WINAPI * PFNWGLCHOOSEPIXELFORMATARBPROC) (HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
@@ -109,51 +109,6 @@ typedef void (APIENTRY *PFNGLUNIFORMMATRIX3FVPROC) (GLint location, GLsizei coun
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
-
-typedef struct {
-	/* wgl functions */
-	PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB;
-	PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
-	PFNWGLSWAPINTERVALEXTPROC         wglSwapIntervalEXT;
-	PFNWGLGETSWAPINTERVALEXTPROC      wglGetSwapIntervalEXT;
-	/* ogl functions */
-	PFNGLCREATESHADERPROC             glCreateShader;
-	PFNGLSHADERSOURCEPROC             glShaderSource;
-	PFNGLCOMPILESHADERPROC            glCompileShader;
-	PFNGLGETSHADERIVPROC              glGetShaderiv;
-	PFNGLGETSHADERINFOLOGPROC         glGetShaderInfoLog;
-	PFNGLCREATEPROGRAMPROC            glCreateProgram;
-	PFNGLATTACHSHADERPROC             glAttachShader;
-	PFNGLLINKPROGRAMPROC              glLinkProgram;
-	PFNGLVALIDATEPROGRAMPROC          glValidateProgram;
-	PFNGLGETPROGRAMIVPROC             glGetProgramiv;
-	PFNGLGETPROGRAMINFOLOGPROC        glGetProgramInfoLog;
-	PFNGLGENBUFFERSPROC               glGenBuffers;
-	PFNGLGENVERTEXARRAYSPROC          glGenVertexArrays;
-	PFNGLGETATTRIBLOCATIONPROC        glGetAttribLocation;
-	PFNGLBINDVERTEXARRAYPROC          glBindVertexArray;
-	PFNGLENABLEVERTEXATTRIBARRAYPROC  glEnableVertexAttribArray;
-	PFNGLVERTEXATTRIBPOINTERPROC      glVertexAttribPointer;
-	PFNGLBINDBUFFERPROC               glBindBuffer;
-	PFNGLBUFFERDATAPROC               glBufferData;
-	PFNGLBUFFERSUBDATAPROC            glBufferSubData;
-	PFNGLGETVERTEXATTRIBPOINTERVPROC  glGetVertexAttribPointerv;
-	PFNGLUSEPROGRAMPROC               glUseProgram;
-	PFNGLDELETEVERTEXARRAYSPROC       glDeleteVertexArrays;
-	PFNGLDELETEBUFFERSPROC            glDeleteBuffers;
-	PFNGLDELETEPROGRAMPROC            glDeleteProgram;
-	PFNGLDELETESHADERPROC             glDeleteShader;
-	PFNGLGETUNIFORMLOCATIONPROC       glGetUniformLocation;
-	PFNGLUNIFORM1FVPROC               glUniform1fv;
-	PFNGLUNIFORMMATRIX4FVPROC         glUniformMatrix4fv;
-	PFNGLUNIFORMMATRIX3FVPROC         glUniformMatrix3fv;
-	PFNGLUNIFORMMATRIX2X3FVPROC       glUniformMatrix2x3fv;
-	PFNGLGENERATEMIPMAPPROC           glGenerateMipmap;
-	PFNGLACTIVETEXTUREPROC            glActiveTexture;
-	/* other */
-	HINSTANCE instance;
-	int id;
-} engine_t;
 
 typedef struct {
 	HDC dc;
@@ -206,14 +161,14 @@ typedef struct {
 	float projection_mat[4*4];
 } window_data_t;
 
-static const WPARAM const g2d_EVENT = (WPARAM)"g2d";
+static const WPARAM g2d_EVENT = (WPARAM)"g2d";
 static LPCTSTR const class_name = TEXT("g2d");
 static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
 
+static BOOL initialized = FALSE;
 static HINSTANCE instance = NULL;
 static DWORD thread_id;
 static BOOL thread_id_set = FALSE;
-static BOOL initialized = FALSE;
 static int windows_count = 0;
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
@@ -254,11 +209,12 @@ static PFNGLUNIFORMMATRIX3FVPROC         glUniformMatrix3fv         = NULL;
 static PFNGLUNIFORMMATRIX2X3FVPROC       glUniformMatrix2x3fv       = NULL;
 static PFNGLGENERATEMIPMAPPROC           glGenerateMipmap           = NULL;
 static PFNGLACTIVETEXTUREPROC            glActiveTexture            = NULL;
-/*
+
 void g2d_free(void *const data) {
 	free(data);
 }
 
+/*
 void g2d_test(int *array) {
 	goDebug(array[0], array[0], 0, 0);
 }
@@ -281,11 +237,11 @@ void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, int
 */
 
 #include "win32_init.h"
+#include "win32_window.h"
 
 /*
 #include "win32_graphics.h"
 #include "win32_keys.h"
-#include "win32_window.h"
 */
 
 void g2d_process_messages() {
@@ -308,15 +264,14 @@ void g2d_clean_up_messages() {
 	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE));
 }
 
-/*
-void g2d_post_message(int *const err_num, g2d_ul_t *const err_win32) {
+void g2d_post_message(long long *const err1, long long *const err2) {
 	if (thread_id_set) {
 		if (!PostThreadMessage(thread_id, WM_APP, g2d_EVENT, 0)) {
-			err_num[0] = 82; err_win32[0] = (g2d_ul_t)GetLastError();
+			err1[0] = 82; err2[0] = (long long)GetLastError();
 		}
 	} else {
 		if (!PostMessage(NULL, WM_APP, g2d_EVENT, 0)) {
-			err_num[0] = 82; err_win32[0] = (g2d_ul_t)GetLastError();
+			err1[0] = 82; err2[0] = (long long)GetLastError();
 		}
 	}
 }
@@ -325,6 +280,7 @@ void g2d_quit_message_queue() {
 	PostQuitMessage(0);
 }
 
+/*
 void g2d_context_make_current(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (!wglMakeCurrent(wnd_data[0].wnd.ctx.dc, wnd_data[0].wnd.ctx.rc)) {

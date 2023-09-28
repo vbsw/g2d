@@ -75,20 +75,239 @@ func Show(window ...Window) {
 	}
 }
 
+func postConfig(wnd *tWindow) {
+	var err1, err2 C.longlong
+	C.g2d_post_message(&err1, &err2)
+	if err1 == 0 {
+		msgs.Put(&tConfigWindowRequest{window: wnd})
+	} else {
+		setError(err1, err2, nil, "configuration event to window " + wnd.cbIdStr)
+	}
+}
+
+func postMessage(msg interface{}, errInfo string) {
+	var err1, err2 C.longlong
+	mutex.Lock()
+	defer mutex.Unlock()
+	C.g2d_post_message(&err1, &err2)
+	if err1 == 0 {
+		msgs.Put(msg)
+	} else {
+		setError(err1, err2, nil, errInfo)
+	}
+}
+
 func cleanUp() {
-	var cleanUpMsgs bool
+	var wndsActiveAvailable bool
 	for (wnd := range wndCbs) {
 		if wnd != nil {
-			var err1, err2 C.longlong
-			wnd.wgt.Gfx.msgs <- (&tGMessage{typeId: quitType})
 			wnd.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
-			cleanUpMsgs = true
-			unregister(wnd.cbId)
-			C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+			wndsActiveAvailable = true
 		}
 	}
-	if cleanUpMsgs {
-		C.g2d_clean_up_messages()
+	if wndsActiveAvailable {
+		for (wnd := range wndCbs) {
+			if wnd != nil {
+				var err1, err2 C.longlong
+				<- wnd.wgt.quitted
+				C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+				unregister(wnd.cbId)
+				if err1 != 0 {
+					setError(err1, err2, nil, "window " + wnd.cbIdStr)
+				}
+			}
+		}
+	}
+	msgs.Reset(-1)
+	C.g2d_clean_up_messages()
+}
+
+func newWindow(abst Window) *tWindow {
+	wnd := new(tWindow)
+	wnd.state = configState
+	wnd.abst = abst
+	wnd.wgt = new(Widget)
+	wnd.wgt.msgs = make(chan *tLMessage, 1000)
+	wnd.wgt.quitted = make(chan bool, 1)
+	wnd.cbId = register(wnd)
+	wnd.cbIdStr = strconv.FormatInt(wnd.cbId, 10)
+/*
+	wnd.wgt.Gfx.msgs = make(chan *tGMessage, 1024)
+	wnd.wgt.Gfx.rBuffer = &wnd.wgt.Gfx.buffers[0]
+	wnd.wgt.Gfx.wBuffer = &wnd.wgt.Gfx.buffers[0]
+*/
+	return wnd
+}
+
+func (wnd *tWindow) logicThread() {
+	for wnd.state != quitState {
+		msg := wnd.nextLMessage()
+		if msg != nil {
+			wnd.wgt.CurrEventNanos = msg.nanos
+			switch msg.typeId {
+			case configType:
+				wnd.onConfig()
+			case createType:
+				wnd.onCreate()
+			case showType:
+				wnd.onShow()
+			case resizeType:
+				wnd.updateProps(msg)
+				wnd.onResize()
+			case keyDownType:
+				wnd.onKeyDown(msg.valA, msg.repeated)
+			case keyUpType:
+				wnd.onKeyUp(msg.valA)
+			case textureType:
+				wnd.onTextureLoaded(msg.valA)
+			case updateType:
+				wnd.onUpdate()
+			case quitReqType:
+				wnd.onQuitReq()
+			case quitType:
+				wnd.onQuit()
+			}
+		}
+	}
+	wnd.wgt.Gfx.rBuffer = nil
+	wnd.wgt.Gfx.wBuffer = nil
+	wnd.wgt.Gfx.buffers[0].layers = nil
+	wnd.wgt.Gfx.buffers[1].layers = nil
+	wnd.wgt.Gfx.buffers[2].layers = nil
+	wnd.wgt.Gfx.entitiesLayers = nil
+	wnd.wgt = nil
+}
+
+func (wnd *tWindow) nextLMessage() *tLMessage {
+	if wnd.state >= configState && (wnd.autoUpdate || wnd.wgt.update) {
+		select {
+		case msg := <-wnd.wgt.msgs:
+			return msg
+		default:
+			wnd.wgt.update = false
+			return &tLMessage{typeId: updateType, nanos: deltaNanos()}
+		}
+	}
+	return <-wnd.wgt.msgs
+}
+
+func (wnd *tWindow) onConfig() {
+	config := newConfiguration()
+	err := wnd.abst.OnConfig(config)
+	wnd.autoUpdate = config.AutoUpdate
+	if err == nil {
+		errInfo := "create-request, window " + wnd.cbIdStr
+		postMessage(&tCreateWindowRequest{window: wnd, config: config}, errInfo)
+	} else {
+		wnd.onError(err)
+	}
+}
+
+func (wnd *tWindow) onCreate() {
+	err := wnd.abst.OnCreate(wnd.wgt)
+	if err == nil {
+		wnd.state = runningState
+/*
+		wnd.wgt.Gfx.switchWBuffer()
+		wnd.wgt.Gfx.running = true
+		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
+		go wnd.graphicsThread()
+*/
+		errInfo := "show-request, window " + wnd.cbIdStr
+		postMessage(&tShowWindowRequest{window: wnd}, errInfo)
+	} else {
+		wnd.onError(err)
+	}
+}
+
+func (wnd *tWindow) onQuit() {
+	if wnd.wgt.Gfx.running {
+		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+		wnd.abst.OnDestroy()
+		<- wnd.wgt.Gfx.quitted
+	} else {
+		wnd.abst.OnDestroy()
+	}
+	wnd.wgt.quitted <- true
+	wnd.state = quitState
+}
+
+func (wnd *tWindow) onError(err error) {
+	mutex.Lock()
+	if Err == nil {
+		Err = err
+	}
+	if running && !quitting {
+		C.g2d_quit_message_queue()
+		quitting = true
+	}
+	mutex.Unlock()
+	wnd.onQuit()
+}
+
+//export g2dProcessMessage
+func g2dProcessMessage() {
+	message := mainLoop.nextMessage()
+	if message != nil {
+		switch msg := message.(type) {
+		case *tConfigWindowRequest:
+			configWindow(msg.window)
+		case *tCreateWindowRequest:
+			createWindow(msg.window, msg.config)
+		case *tShowWindowRequest:
+			showWindow(msg.window)
+		case *tDestroyWindowRequest:
+			destroyWindow(msg.window)
+		}
+	}
+}
+
+func configWindow(window *tWindow) {
+	window.wgt.msgs <- (&tLMessage{typeId: configType, nanos: deltaNanos()})
+}
+
+func createWindow(window *tWindow, config *Configuration) {
+	x := C.int(config.ClientX)
+	y := C.int(config.ClientY)
+	w := C.int(config.ClientWidth)
+	h := C.int(config.ClientHeight)
+	wn := C.int(config.ClientWidthMin)
+	hn := C.int(config.ClientHeightMin)
+	wx := C.int(config.ClientWidthMax)
+	hx := C.int(config.ClientHeightMax)
+	c := toCInt(config.Centered)
+	l := toCInt(config.MouseLocked)
+	b := toCInt(config.Borderless)
+	d := toCInt(config.Dragable)
+	r := toCInt(config.Resizable)
+	f := toCInt(config.Fullscreen)
+	t, errNumC := toTString(config.Title)
+	if errNumC == 0 {
+		var errWin32C C.g2d_ul_t
+		window.cbId = cb.register(window)
+		C.g2d_window_create(&window.dataC, C.int(window.cbId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t, &errNumC, &errWin32C)
+		C.g2d_free(t)
+		if errNumC == 0 {
+			msg := &tLMessage{typeId: createType, nanos: deltaNanos()}
+			msg.props.update(window.dataC)
+			window.wgt.msgs <- msg
+		} else {
+			appendError(toError(errNumC, errWin32C, nil))
+			window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
+		}
+	} else {
+		appendError(toError(errNumC+100, 0, nil))
+		window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
+	}
+}
+
+func showWindow(window *tWindow) {
+	var err1, err2 C.longlong
+	C.g2d_window_show(window.dataC, &err1, &err2)
+	if err1 == 0 {
+		window.wgt.msgs <- (&tLMessage{typeId: showType, nanos: deltaNanos()})
+	} else {
+		setError(err1, err2, nil, "window " + wnd.cbIdStr)
 	}
 }
 
@@ -109,19 +328,8 @@ func destroyWindow(wnd *tWindow) {
 	}
 }
 
-func postConfig(wnd *tWindow) {
-	var err1, err2 C.longlong
-	C.g2d_post_message(&err1, &err2)
-	if err1 == 0 {
-		msgs.Put(&tConfigWindowRequest{window: wnd})
-	} else {
-		setError(err1, err2, nil)
-	}
-}
-
-func setError(err1, err2 C.longlong, errStr *C.char) error {
+func setError(err1, err2 C.longlong, errStr *C.char, info string) error {
 	if Err == nil {
-		var info string
 		if errStr != nil {
 			info = C.GoString(errStr)
 			C.g2d_free(unsafe.Pointer(errStr))
@@ -134,43 +342,7 @@ func setError(err1, err2 C.longlong, errStr *C.char) error {
 	}
 }
 
-func MainLoop() {
-	if !initFailed {
-		if initialized {
-			mutex.Lock()
-			if !running {
-				running = true
-				mutex.Unlock()
-				C.g2d_process_messages()
-				mutex.Lock()
-				running = false
-				mutex.Unlock()
-			} else {
-				mutex.Unlock()
-			}
-		} else {
-			panic("g2d is not initialized")
-		}
-	}
-}
-
-func newWindow(abst Window) *tWindow {
-	window := new(tWindow)
-	window.abst = abst
-	window.cbId = register(window)
-/*
-	window.cbId = -1
-	window.wgt = new(Widget)
-	window.wgt.msgs = make(chan *tLMessage, 1024)
-	window.wgt.Gfx.msgs = make(chan *tGMessage, 1024)
-	window.wgt.Gfx.rBuffer = &window.wgt.Gfx.buffers[0]
-	window.wgt.Gfx.wBuffer = &window.wgt.Gfx.buffers[0]
-	window.wgt.Gfx.MaxTextureSize = int(maxTexSize)
-*/
-	return window
-}
-
-func (errConv *defaultErrorConvertor) ToError(err1, err2 int64, info string) error {
+func (errConv *tErrorConvertor) ToError(err1, err2 int64, info string) error {
 	var errStr string
 	if err1 > 0 && err1 < 1000 {
 		errStr = "memory allocation failed"
@@ -187,9 +359,6 @@ func (errConv *defaultErrorConvertor) ToError(err1, err2 int64, info string) err
 		errStr = errStr + "; " + info
 	}
 	return errors.New(errStr)
-}
-
-func (window *tWindow) logicThread() {
 }
 
 /*
@@ -312,49 +481,6 @@ func Init(params ...interface{}) {
 	}
 }
 
-func (window *tWindow) logicThread() {
-	runtime.LockOSThread()
-	for {
-		msg := window.nextLMessage()
-		if msg != nil {
-			window.wgt.CurrEventNanos = msg.nanos
-			switch msg.typeId {
-			case configType:
-				window.onConfig()
-			case createType:
-				window.onCreate()
-			case showType:
-				window.onShow()
-			case resizeType:
-				window.updateProps(msg)
-				window.onResize()
-			case keyDownType:
-				window.onKeyDown(msg.valA, msg.repeated)
-			case keyUpType:
-				window.onKeyUp(msg.valA)
-			case textureType:
-				window.onTextureLoaded(msg.valA)
-			case updateType:
-				window.onUpdate()
-			case quitReqType:
-				window.onQuitReq()
-			case quitType:
-				window.onQuit()
-			case leaveType:
-				mainLoop.postMessage(&tDestroyWindowRequest{window: window}, 1000)
-				break
-			}
-		}
-	}
-	window.wgt.Gfx.rBuffer = nil
-	window.wgt.Gfx.wBuffer = nil
-	window.wgt.Gfx.buffers[0].layers = nil
-	window.wgt.Gfx.buffers[1].layers = nil
-	window.wgt.Gfx.buffers[2].layers = nil
-	window.wgt.Gfx.entitiesLayers = nil
-	window.wgt = nil
-}
-
 func (window *tWindow) graphicsThread() {
 	var errNumC C.int
 	var errWin32C C.g2d_ul_t
@@ -415,17 +541,6 @@ func (window *tWindow) processGMessage(msg *tGMessage) bool {
 	return processing
 }
 
-func (window *tWindow) onConfig() {
-	config := newConfiguration()
-	err := window.abst.OnConfig(config)
-	window.autoUpdate = config.AutoUpdate
-	if err == nil {
-		mainLoop.postMessage(&tCreateWindowRequest{window: window, config: config}, 1000)
-	} else {
-		window.onError(err)
-	}
-}
-
 func (window *tWindow) updateProps(msg *tLMessage) {
 	window.wgt.ClientX = msg.props.ClientX
 	window.wgt.ClientY = msg.props.ClientY
@@ -433,19 +548,6 @@ func (window *tWindow) updateProps(msg *tLMessage) {
 	window.wgt.ClientHeight = msg.props.ClientHeight
 	window.wgt.MouseX = msg.props.MouseX
 	window.wgt.MouseY = msg.props.MouseY
-}
-
-func (window *tWindow) onCreate() {
-	err := window.abst.OnCreate(window.wgt)
-	if err == nil {
-		window.state = 1
-		window.wgt.Gfx.switchWBuffer()
-		window.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
-		go window.graphicsThread()
-		mainLoop.postMessage(&tShowWindowRequest{window: window}, 1000)
-	} else {
-		window.onError(err)
-	}
 }
 
 func (window *tWindow) onShow() {
@@ -504,21 +606,6 @@ func (window *tWindow) onQuitReq() {
 	} else {
 		window.onError(err)
 	}
-}
-
-func (window *tWindow) onQuit() {
-	window.abst.OnDestroy()
-	if window.state == 0 {
-		window.state = 10
-		window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
-	} else {
-		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
-	}
-}
-
-func (window *tWindow) onError(err error) {
-	appendError(err)
-	window.onQuit()
 }
 
 func (window *tWindow) drawGraphics() {
@@ -580,26 +667,6 @@ func (layer *tImageLayer) draw(dataC unsafe.Pointer) error {
 	return nil
 }
 
-func (window *tWindow) nextLMessage() *tLMessage {
-	var message *tLMessage
-	if window.state >= 1 && (window.autoUpdate || window.wgt.update) {
-		select {
-		case msg := <-window.wgt.msgs:
-			message = msg
-		default:
-			time.Sleep(time.Millisecond)
-			window.wgt.update = false
-			message = &tLMessage{typeId: updateType, nanos: deltaNanos()}
-		}
-	} else {
-		message = <-window.wgt.msgs
-	}
-	if window.state == 10 && message.typeId != leaveType {
-		message = nil
-	}
-	return message
-}
-
 func (window *tWindow) nextGMessage() *tGMessage {
 	var message *tGMessage
 	if window.wgt.Gfx.refresh {
@@ -623,37 +690,6 @@ func (window *tWindow) nextGMessage() *tGMessage {
 		message = nil
 	}
 	return message
-}
-
-func (loop *tMainLoop) postMessage(msg interface{}, errNumC C.int) {
-	var errNumOrigC C.int
-	var errWin32C C.g2d_ul_t
-	loop.mutex.Lock()
-	defer loop.mutex.Unlock()
-	C.g2d_post_message(&errNumOrigC, &errWin32C)
-	if errNumOrigC == 0 {
-		loop.msgs.Put(msg)
-	} else {
-		C.g2d_quit_message_queue()
-		appendError(toError(errNumC, errWin32C, nil))
-	}
-}
-
-//export g2dProcessMessage
-func g2dProcessMessage() {
-	message := mainLoop.nextMessage()
-	if message != nil {
-		switch msg := message.(type) {
-		case *tConfigWindowRequest:
-			configWindow(msg.window)
-		case *tCreateWindowRequest:
-			createWindow(msg.window, msg.config)
-		case *tShowWindowRequest:
-			showWindow(msg.window)
-		case *tDestroyWindowRequest:
-			destroyWindow(msg.window)
-		}
-	}
 }
 
 //export goResize
@@ -685,57 +721,6 @@ func g2dKeyUp(cbIdC, code C.int) {
 	msg := &tLMessage{typeId: keyUpType, valA: int(code), nanos: deltaNanos()}
 	msg.props.update(window.dataC)
 	window.wgt.msgs <- msg
-}
-
-func configWindow(window *tWindow) {
-	window.wgt.msgs <- (&tLMessage{typeId: configType, nanos: deltaNanos()})
-}
-
-func createWindow(window *tWindow, config *Configuration) {
-	x := C.int(config.ClientX)
-	y := C.int(config.ClientY)
-	w := C.int(config.ClientWidth)
-	h := C.int(config.ClientHeight)
-	wn := C.int(config.ClientWidthMin)
-	hn := C.int(config.ClientHeightMin)
-	wx := C.int(config.ClientWidthMax)
-	hx := C.int(config.ClientHeightMax)
-	c := toCInt(config.Centered)
-	l := toCInt(config.MouseLocked)
-	b := toCInt(config.Borderless)
-	d := toCInt(config.Dragable)
-	r := toCInt(config.Resizable)
-	f := toCInt(config.Fullscreen)
-	t, errNumC := toTString(config.Title)
-	if errNumC == 0 {
-		var errWin32C C.g2d_ul_t
-		window.cbId = cb.register(window)
-		C.g2d_window_create(&window.dataC, C.int(window.cbId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t, &errNumC, &errWin32C)
-		C.g2d_free(t)
-		if errNumC == 0 {
-			msg := &tLMessage{typeId: createType, nanos: deltaNanos()}
-			msg.props.update(window.dataC)
-			window.wgt.msgs <- msg
-		} else {
-			appendError(toError(errNumC, errWin32C, nil))
-			window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
-		}
-	} else {
-		appendError(toError(errNumC+100, 0, nil))
-		window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
-	}
-}
-
-func showWindow(window *tWindow) {
-	var errNumC C.int
-	var errWin32C C.g2d_ul_t
-	C.g2d_window_show(window.dataC, &errNumC, &errWin32C)
-	if errNumC == 0 {
-		window.wgt.msgs <- (&tLMessage{typeId: showType, nanos: deltaNanos()})
-	} else {
-		appendError(toError(errNumC, errWin32C, nil))
-		window.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
-	}
 }
 
 func initDefaultParams() {
