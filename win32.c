@@ -20,6 +20,11 @@
 
 /* Exported functions from Go are:                          */
 /* g2dProcessMessage                                        */
+/* g2dResize                                                */
+/* g2dKeyDown                                               */
+/* g2dKeyUp                                                 */
+/* g2dClose                                                 */
+
 
 // from wgl.h
 #define WGL_SAMPLE_BUFFERS_ARB            0x2041
@@ -214,12 +219,7 @@ void g2d_free(void *const data) {
 	free(data);
 }
 
-/*
-void g2d_test(int *array) {
-	goDebug(array[0], array[0], 0, 0);
-}
-
-void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, int *const err_num) {
+void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, long long *err1) {
 	LPTSTR const str_new = (LPTSTR)malloc(sizeof(TCHAR) * (length + 1));
 	if (str_new) {
 		if (length > 0)
@@ -229,24 +229,28 @@ void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, int
 			memcpy(str_new, go_cstr, length);
 			#endif
 		str_new[length] = 0;
+	} else {
+		err1[0] = 120;
 	}
-	else
-		err_num[0] = 120;
 	str[0] = (void*)str_new;
+}
+
+/*
+void g2d_test(int *array) {
+	goDebug(array[0], array[0], 0, 0);
 }
 */
 
+#include "win32_keys.h"
 #include "win32_init.h"
 #include "win32_window.h"
 
 /*
 #include "win32_graphics.h"
-#include "win32_keys.h"
 */
 
 void g2d_process_messages() {
 	MSG msg; BOOL ret_code;
-	engine_t *const engine = (engine_t*)data;
 	thread_id = GetCurrentThreadId(); thread_id_set = TRUE;
 	while ((ret_code = GetMessage(&msg, NULL, 0, 0)) > 0) {
 		if (msg.message == WM_APP && msg.wParam == g2d_EVENT) {

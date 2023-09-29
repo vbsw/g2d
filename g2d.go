@@ -8,6 +8,7 @@
 // Package g2d is a framework to create 2D graphic applications.
 package g2d
 
+import "C"
 import (
 	"github.com/vbsw/golib/queue"
 	"sync"
@@ -18,6 +19,7 @@ import (
 const (
 	configState = iota
 	runningState
+	closingState
 	quitState
 )
 
@@ -70,7 +72,7 @@ type Window interface {
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
-	OnDestroy()
+	OnDestroy() error
 }
 
 type Widget struct {
@@ -79,10 +81,27 @@ type Widget struct {
 	MouseX, MouseY            int
 	PrevUpdateNanos           int64
 	CurrEventNanos            int64
+	DeltaUpdateNanos          int64
 	update                    bool
 	Gfx                       Graphics
 	msgs                      chan *tLMessage
 	quitted                   chan bool
+}
+
+type Graphics struct {
+	msgs           chan *tGMessage
+	quitted                   chan bool
+/*
+	rBuffer        *tBuffer
+	wBuffer        *tBuffer
+	buffers        [3]tBuffer
+	entitiesLayers []tEntitiesLayer
+	mutex          sync.Mutex
+	state          int
+	refresh        bool
+	vsync          bool
+*/
+	running bool
 }
 
 type Configuration struct {
@@ -93,6 +112,17 @@ type Configuration struct {
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
 	AutoUpdate                        bool
+	Title                             string
+}
+
+type Properties struct {
+	MouseX, MouseY                    int
+	ClientX, ClientY                  int
+	ClientWidth, ClientHeight         int
+	ClientWidthMin, ClientHeightMin   int
+	ClientWidthMax, ClientHeightMax   int
+	MouseLocked, Borderless, Dragable bool
+	Resizable, Fullscreen             bool
 	Title                             string
 }
 
@@ -109,11 +139,8 @@ type tWindow struct {
 	cbIdStr string
 	abst       Window
 	wgt        *Widget
-/*
 	dataC      unsafe.Pointer
 	autoUpdate bool
-	loopId     int
-*/
 }
 
 type tConfigWindowRequest struct {
@@ -138,18 +165,24 @@ type tLMessage struct {
 	valA     int
 	repeated uint
 	nanos    int64
-/*
 	props    Properties
-*/
 	obj      interface{}
+}
+
+type tGMessage struct {
+	typeId int
+	valA   int
+	valB   int
+	valC   interface{}
+	err    error
 }
 
 func engineProperties() *tEngineProperties {
 	props := new(tEngineProperties)
 	if ErrConv != nil {
-		errConv = engine.ErrConv
+		props.errConv = ErrConv
 	} else {
-		errConv = new(tErrorConvertor)
+		props.errConv = new(tErrorConvertor)
 	}
 	return props
 }
@@ -190,6 +223,12 @@ func newConfiguration() *Configuration {
 	config.AutoUpdate = true
 	config.Title = "g2d - 0.1.0"
 	return config
+}
+
+func nextMessage() interface{} {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return msgs.First()
 }
 
 /*
@@ -246,17 +285,6 @@ func Errors() []error {
 	mutex.Lock()
 	defer mutex.Unlock()
 	return errs
-}
-
-type Properties struct {
-	MouseX, MouseY                    int
-	ClientX, ClientY                  int
-	ClientWidth, ClientHeight         int
-	ClientWidthMin, ClientHeightMin   int
-	ClientWidthMax, ClientHeightMax   int
-	MouseLocked, Borderless, Dragable bool
-	Resizable, Fullscreen             bool
-	Title                             string
 }
 
 type TextureProvider interface {
@@ -387,21 +415,6 @@ func (wgt *Widget) RequestClose() {
 
 func (wgt *Widget) Close() {
 	wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
-}
-
-type Graphics struct {
-	MaxTextureSize int
-	rBuffer        *tBuffer
-	wBuffer        *tBuffer
-	msgs           chan *tGMessage
-	buffers        [3]tBuffer
-	entitiesLayers []tEntitiesLayer
-	mutex          sync.Mutex
-	state          int
-	refresh        bool
-	vsync          bool
-	quitted                   chan bool
-	running bool
 }
 
 func (gfx *Graphics) SetBGColor(r, g, b float32) {
@@ -667,12 +680,6 @@ type tMainLoop struct {
 	wndsUnused []int
 }
 
-func (loop *tMainLoop) nextMessage() interface{} {
-	loop.mutex.Lock()
-	defer loop.mutex.Unlock()
-	return loop.msgs.First()
-}
-
 type tCallback struct {
 	wnds   []*tWindow
 	unused []int
@@ -707,14 +714,6 @@ func (cb *tCallback) unregisterAll() {
 	for i := 0; i < len(cb.wnds) && cb.wnds[i] != nil; i++ {
 		cb.unregister(i)
 	}
-}
-
-type tGMessage struct {
-	typeId int
-	valA   int
-	valB   int
-	valC   interface{}
-	err    error
 }
 
 type tLayer interface {
@@ -1075,7 +1074,7 @@ func deltaNanos() int64 {
 }
 
 func anyAvailable(windows []Window) bool {
-	for (wnd := range windows) {
+	for _, wnd := range windows {
 		if wnd != nil {
 			return true
 		}

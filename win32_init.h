@@ -5,7 +5,7 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-void g2d_init(void **const data, int *const xts, long long *const err1, long long *const err2) {
+void g2d_init(int *const xts, long long *const err1, long long *const err2) {
 	if (!initialized) {
 		/* module */
 		instance = GetModuleHandle(NULL);
@@ -95,11 +95,7 @@ void g2d_init(void **const data, int *const xts, long long *const err1, long lon
 										if (!UnregisterClass(class_name_dummy, instance) && err1[0] == 0) {
 											err1[0] = 1011; err2[0] = (long long)GetLastError();
 										}
-										if (err1[0] == 0) {
-											initialized = TRUE;
-										} else {
-											free(engine);
-										}
+										initialized = (BOOL)(err1[0] == 0);
 									} else {
 										err1[0] = 1007; err2[0] = (long long)GetLastError();
 										wglDeleteContext(dummy_rc); ReleaseDC(dummy_hndl, dummy_dc);

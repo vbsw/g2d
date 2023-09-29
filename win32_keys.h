@@ -155,7 +155,7 @@ static int keycode(const UINT message, const WPARAM wParam, const LPARAM lParam)
 static BOOL key_down_process(window_data_t *const wnd_data, const UINT message, const WPARAM wParam, const LPARAM lParam) {
 	const int code = keycode(message, wParam, lParam);
 	if (code) {
-		g2dKeyDown(wnd_data[0].cb_id, code, (g2d_ui_t)wnd_data[0].key_repeated[code]++);
+		g2dKeyDown(wnd_data[0].cb_id, code, wnd_data[0].key_repeated[code]++);
 		return TRUE;
 	}
 	return FALSE;

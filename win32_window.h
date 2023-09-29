@@ -58,7 +58,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			switch (message) {
 			case WM_SIZE:
 				client_update(wnd_data);
-				goResize(wnd_data[0].cb_id);
+				g2dResize(wnd_data[0].cb_id);
 				result = DefWindowProc(hWnd, message, wParam, lParam);
 				break;
 			case WM_CLOSE:
@@ -83,7 +83,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 }
 
 void g2d_window_create(void **const data, const int cb_id, const int x, const int y, const int w, const int h, const int wn, const int hn, const int wx, const int hx,
-	const int b, const int d, const int r, const int f, const int l, const int c, void *t, int *const err_num, g2d_ul_t *const err_win32) {
+	const int b, const int d, const int r, const int f, const int l, const int c, void *t, long long *const err1, long long *const err2) {
 	window_data_t *const wnd_data = (window_data_t*)malloc(sizeof(window_data_t));
 	if (wnd_data) {
 		ZeroMemory(wnd_data, sizeof(window_data_t));
@@ -122,12 +122,12 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 			if (RegisterClassEx(&cls) != INVALID_ATOM) {
 				windows_count++;
 			} else {
-				err_num[0] = 13; err_win32[0] = (g2d_ul_t)GetLastError(); free(wnd_data); if (windows_count <= 0) PostQuitMessage(0);
+				err1[0] = 13; err2[0] = (long long)GetLastError(); free(wnd_data); if (windows_count <= 0) PostQuitMessage(0);
 			}
 		} else {
 			windows_count++;
 		}
-		if (err_num[0] == 0) {
+		if (err1[0] == 0) {
 			int x, y, w, h; window_metrics(wnd_data, &x, &y, &w, &h);
 			const DWORD style = wnd_data[0].config.style;
 			wnd_data[0].wnd.hndl = CreateWindow(class_name, ensure_title(t), style, x, y, w, h, NULL, NULL, instance, (LPVOID)wnd_data);
@@ -170,53 +170,55 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 							if (wnd_data[0].wnd.ctx.rc) {
 								data[0] = (void*)wnd_data;
 							} else {
-								err_num[0] = 18; err_win32[0] = (g2d_ul_t)GetLastError(); windows_count--;
+								err1[0] = 18; err2[0] = (long long)GetLastError(); windows_count--;
 								ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.ctx.dc); DestroyWindow(wnd_data[0].wnd.hndl);
 								free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); PostQuitMessage(0); }
 							}
 						} else {
-							err_num[0] = 17; err_win32[0] = (g2d_ul_t)GetLastError(); windows_count--;
+							err1[0] = 17; err2[0] = (long long)GetLastError(); windows_count--;
 							ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.ctx.dc); DestroyWindow(wnd_data[0].wnd.hndl);
 							free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); PostQuitMessage(0); }
 						}
 					} else {
-						err_num[0] = 16; err_win32[0] = (g2d_ul_t)GetLastError(); windows_count--;
+						err1[0] = 16; err2[0] = (long long)GetLastError(); windows_count--;
 						ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.ctx.dc); DestroyWindow(wnd_data[0].wnd.hndl);
 						free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); PostQuitMessage(0); }
 					}
 				} else {
-					err_num[0] = 15; windows_count--; DestroyWindow(wnd_data[0].wnd.hndl);
+					err1[0] = 15; windows_count--; DestroyWindow(wnd_data[0].wnd.hndl);
 					free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); PostQuitMessage(0); }
 				}
 			} else {
-				err_num[0] = 14; err_win32[0] = (g2d_ul_t)GetLastError(); windows_count--;
+				err1[0] = 14; err2[0] = (long long)GetLastError(); windows_count--;
 				free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); PostQuitMessage(0); }
 			}
 		}
 	} else {
-		err_num[0] = 121;
+		err1[0] = 121;
 	}
 }
 
 void g2d_window_show(void *data, long long *err1, long long *err2) {
-	window_data_t *const wnd_data = (window_data_t*)data;
-	ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
-}
-
-void g2d_window_destroy(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
 	if (data) {
 		window_data_t *const wnd_data = (window_data_t*)data;
-		if (!wglDeleteContext(wnd_data[0].wnd.ctx.rc) && err_num[0] == 0) {
-			err_num[0] = 20; err_win32[0] = (g2d_ul_t)GetLastError();
+		ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
+	}
+}
+
+void g2d_window_destroy(void *const data, long long *err1, long long *err2) {
+	if (data) {
+		window_data_t *const wnd_data = (window_data_t*)data;
+		if (!wglDeleteContext(wnd_data[0].wnd.ctx.rc) && err1[0] == 0) {
+			err1[0] = 20; err2[0] = (long long)GetLastError();
 		}
 		ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.ctx.dc);
-		if (!DestroyWindow(wnd_data[0].wnd.hndl) && err_num[0] == 0) {
-			err_num[0] = 21; err_win32[0] = (g2d_ul_t)GetLastError();
+		if (!DestroyWindow(wnd_data[0].wnd.hndl) && err1[0] == 0) {
+			err1[0] = 21; err2[0] = (long long)GetLastError();
 		}
 		windows_count--; free(wnd_data);
 		if (windows_count <= 0) { 
-			if (!UnregisterClass(class_name, instance) && err_num[0] == 0) {
-				err_num[0] = 22; err_win32[0] = (g2d_ul_t)GetLastError();
+			if (!UnregisterClass(class_name, instance) && err1[0] == 0) {
+				err1[0] = 22; err2[0] = (long long)GetLastError();
 			}
 			PostQuitMessage(0);
 		}
