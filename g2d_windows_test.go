@@ -8,14 +8,27 @@
 package g2d
 
 import (
+	"errors"
 	"testing"
 )
 
+type testWindow struct {
+	DefaultWindow
+}
+
+func (wnd *testWindow) OnConfig(config *Configuration) error {
+	return errors.New("testA")
+}
+
 func TestInit(t *testing.T) {
-	var engine Engine
-	err := engine.Init()
-	if err != nil {
-		t.Error(err.Error())
+	Init()
+	if Err == nil {
+		Show(new(testWindow))
+		if Err != nil {
+			t.Error(Err.Error())
+		}
+	} else {
+		t.Error(Err.Error())
 	}
 }
 
