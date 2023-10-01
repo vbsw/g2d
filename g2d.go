@@ -231,10 +231,6 @@ func (wgt *Widget) Update() {
 	wgt.msgs <- nil
 }
 
-func (wgt *Widget) RequestClose() {
-	wgt.msgs <- &tLMessage{typeId: quitReqType, nanos: deltaNanos()}
-}
-
 func (wgt *Widget) Close() {
 	wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
 }

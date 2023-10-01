@@ -149,11 +149,11 @@ func (wnd *tWindow) logicThread() {
 			case resizeType:
 				wnd.updateProps(msg)
 				wnd.onResize()
-/*
 			case keyDownType:
 				wnd.onKeyDown(msg.valA, msg.repeated)
 			case keyUpType:
 				wnd.onKeyUp(msg.valA)
+/*
 			case textureType:
 				wnd.onTextureLoaded(msg.valA)
 */
@@ -254,6 +254,20 @@ func (wnd *tWindow) onResize() {
 	}
 }
 
+func (wnd *tWindow) onKeyDown(keyCode int, repeated uint) {
+	err := wnd.abst.OnKeyDown(keyCode, repeated)
+	if err != nil {
+		wnd.onError(err)
+	}
+}
+
+func (wnd *tWindow) onKeyUp(keyCode int) {
+	err := wnd.abst.OnKeyUp(keyCode)
+	if err != nil {
+		wnd.onError(err)
+	}
+}
+
 func (wnd *tWindow) onUpdate() {
 	wnd.wgt.DeltaUpdateNanos = wnd.wgt.CurrEventNanos - wnd.wgt.PrevUpdateNanos
 	err := wnd.abst.OnUpdate()
@@ -342,30 +356,24 @@ func g2dResize(cbIdC C.int) {
 
 //export g2dKeyDown
 func g2dKeyDown(cbIdC, code C.int, repeated C.int) {
-/*
-	window := cb.wnds[int(cbIdC)]
+	wnd := wndCbs[int(cbIdC)]
 	msg := &tLMessage{typeId: keyDownType, valA: int(code), repeated: uint(repeated), nanos: deltaNanos()}
-	msg.props.update(window.dataC)
-	window.wgt.msgs <- msg
-*/
+	msg.props.update(wnd.dataC)
+	wnd.wgt.msgs <- msg
 }
 
 //export g2dKeyUp
 func g2dKeyUp(cbIdC, code C.int) {
-/*
-	window := cb.wnds[int(cbIdC)]
+	wnd := wndCbs[int(cbIdC)]
 	msg := &tLMessage{typeId: keyUpType, valA: int(code), nanos: deltaNanos()}
-	msg.props.update(window.dataC)
-	window.wgt.msgs <- msg
-*/
+	msg.props.update(wnd.dataC)
+	wnd.wgt.msgs <- msg
 }
 
 //export g2dClose
 func g2dClose(cbIdC C.int) {
-/*
-	window := cb.wnds[int(cbIdC)]
-	window.wgt.RequestClose()
-*/
+	wnd := wndCbs[int(cbIdC)]
+	wnd.wgt.msgs <- (&tLMessage{typeId: quitReqType, nanos: deltaNanos()})
 }
 
 func createWindow(wnd *tWindow, config *Configuration) {
@@ -687,20 +695,6 @@ func (window *tWindow) processGMessage(msg *tGMessage) bool {
 		}
 	}
 	return processing
-}
-
-func (window *tWindow) onKeyDown(keyCode int, repeated uint) {
-	err := window.abst.OnKeyDown(keyCode, repeated)
-	if err != nil {
-		window.onError(err)
-	}
-}
-
-func (window *tWindow) onKeyUp(keyCode int) {
-	err := window.abst.OnKeyUp(keyCode)
-	if err != nil {
-		window.onError(err)
-	}
 }
 
 func (window *tWindow) onTextureLoaded(textureId int) {
