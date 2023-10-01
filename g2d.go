@@ -232,7 +232,7 @@ func (wgt *Widget) Update() {
 }
 
 func (wgt *Widget) Close() {
-	wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
+	wgt.msgs <- (&tLMessage{typeId: quitReqType, nanos: deltaNanos()})
 }
 
 /*

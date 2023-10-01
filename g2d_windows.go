@@ -345,35 +345,47 @@ func g2dProcessMessage() {
 
 //export g2dResize
 func g2dResize(cbIdC C.int) {
-	window := wndCbs[int(cbIdC)]
-	msg := &tLMessage{typeId: resizeType, nanos: deltaNanos()}
-	msg.props.update(window.dataC)
-	window.wgt.msgs <- msg
+	wnd := wndCbs[int(cbIdC)]
+	wgt := wnd.wgt
+	if wgt != nil {
+		msg := &tLMessage{typeId: resizeType, nanos: deltaNanos()}
+		msg.props.update(wnd.dataC)
+		wgt.msgs <- msg
+	}
 /*
-	window.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
+	wnd.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
 */
 }
 
 //export g2dKeyDown
 func g2dKeyDown(cbIdC, code C.int, repeated C.int) {
 	wnd := wndCbs[int(cbIdC)]
-	msg := &tLMessage{typeId: keyDownType, valA: int(code), repeated: uint(repeated), nanos: deltaNanos()}
-	msg.props.update(wnd.dataC)
-	wnd.wgt.msgs <- msg
+	wgt := wnd.wgt
+	if wgt != nil {
+		msg := &tLMessage{typeId: keyDownType, valA: int(code), repeated: uint(repeated), nanos: deltaNanos()}
+		msg.props.update(wnd.dataC)
+		wgt.msgs <- msg
+	}
 }
 
 //export g2dKeyUp
 func g2dKeyUp(cbIdC, code C.int) {
 	wnd := wndCbs[int(cbIdC)]
-	msg := &tLMessage{typeId: keyUpType, valA: int(code), nanos: deltaNanos()}
-	msg.props.update(wnd.dataC)
-	wnd.wgt.msgs <- msg
+	wgt := wnd.wgt
+	if wgt != nil {
+		msg := &tLMessage{typeId: keyUpType, valA: int(code), nanos: deltaNanos()}
+		msg.props.update(wnd.dataC)
+		wgt.msgs <- msg
+	}
 }
 
 //export g2dClose
 func g2dClose(cbIdC C.int) {
 	wnd := wndCbs[int(cbIdC)]
-	wnd.wgt.msgs <- (&tLMessage{typeId: quitReqType, nanos: deltaNanos()})
+	wgt := wnd.wgt
+	if wgt != nil {
+		wgt.msgs <- (&tLMessage{typeId: quitReqType, nanos: deltaNanos()})
+	}
 }
 
 func createWindow(wnd *tWindow, config *Configuration) {
@@ -457,7 +469,6 @@ func setErrorSynced(err error) {
 }
 
 func (props *Properties) update(dataC unsafe.Pointer) {
-/*
 	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
 	C.g2d_window_props(dataC, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
 	props.ClientX = int(x)
@@ -473,7 +484,6 @@ func (props *Properties) update(dataC unsafe.Pointer) {
 	props.Resizable = bool(r != 0)
 	props.Fullscreen = bool(f != 0)
 	props.MouseLocked = bool(l != 0)
-*/
 }
 
 func (errConv *tErrorConvertor) ToError(err1, err2 int64, info string) error {

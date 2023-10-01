@@ -18,11 +18,11 @@ extern void g2d_post_quit_msg(long long *err1, long long *err2);
 
 extern void g2d_window_create(void **data, int cb_id, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t, long long *err1, long long *err2);
 extern void g2d_window_show(void *data, long long *err1, long long *err2);
+extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
 extern void g2d_window_destroy(void *data, long long *err1, long long *err2);
 
 /*
 extern void g2d_quit_message_queue();
-extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
 extern void g2d_context_make_current(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_context_release(void *data, int *err_num, g2d_ul_t *err_win32);
 extern void g2d_gfx_init(void *data, int *err_num, char **err_str);
