@@ -25,7 +25,7 @@ func TestInit(t *testing.T) {
 	if Err == nil {
 		Show(new(testWindow))
 		if Err == nil {
-			t.Error("error not available")
+			t.Error("error missing")
 		} else if Err.Error() != "testA" {
 			t.Error("unexpected error:", Err.Error())
 		}
