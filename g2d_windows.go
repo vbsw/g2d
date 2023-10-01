@@ -146,10 +146,10 @@ func (wnd *tWindow) logicThread() {
 				wnd.onCreate()
 			case showType:
 				wnd.onShow()
-/*
 			case resizeType:
 				wnd.updateProps(msg)
 				wnd.onResize()
+/*
 			case keyDownType:
 				wnd.onKeyDown(msg.valA, msg.repeated)
 			case keyUpType:
@@ -175,6 +175,15 @@ func (wnd *tWindow) logicThread() {
 	wnd.wgt.Gfx.entitiesLayers = nil
 */
 	wnd.wgt = nil
+}
+
+func (wnd *tWindow) updateProps(msg *tLMessage) {
+	wnd.wgt.ClientX = msg.props.ClientX
+	wnd.wgt.ClientY = msg.props.ClientY
+	wnd.wgt.ClientWidth = msg.props.ClientWidth
+	wnd.wgt.ClientHeight = msg.props.ClientHeight
+	wnd.wgt.MouseX = msg.props.MouseX
+	wnd.wgt.MouseY = msg.props.MouseY
 }
 
 func (wnd *tWindow) nextLMessage() *tLMessage {
@@ -204,9 +213,7 @@ func (wnd *tWindow) onConfig() {
 		errInfo := "create-request, window " + wnd.cbIdStr
 		postMessage(&tCreateWindowRequest{window: wnd, config: config}, errInfo)
 	} else {
-		setErrorSynced(err)
-		wnd.wgt.CurrEventNanos = deltaNanos()
-		wnd.onQuit()
+		wnd.onError(err)
 	}
 }
 
@@ -224,9 +231,7 @@ func (wnd *tWindow) onCreate() {
 		errInfo := "show-request, window " + wnd.cbIdStr
 		postMessage(&tShowWindowRequest{window: wnd}, errInfo)
 	} else {
-		setErrorSynced(err)
-		wnd.wgt.CurrEventNanos = deltaNanos()
-		wnd.onQuit()
+		wnd.onError(err)
 	}
 }
 
@@ -238,9 +243,14 @@ func (wnd *tWindow) onShow() {
 	wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 */
 	if err != nil {
-		setErrorSynced(err)
-		wnd.wgt.CurrEventNanos = deltaNanos()
-		wnd.onQuit()
+		wnd.onError(err)
+	}
+}
+
+func (wnd *tWindow) onResize() {
+	err := wnd.abst.OnResize()
+	if err != nil {
+		wnd.onError(err)
 	}
 }
 
@@ -252,9 +262,7 @@ func (wnd *tWindow) onUpdate() {
 		//wnd.wgt.Gfx.switchWBuffer()
 		//wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 	} else {
-		setErrorSynced(err)
-		wnd.wgt.CurrEventNanos = deltaNanos()
-		wnd.onQuit()
+		wnd.onError(err)
 	}
 }
 
@@ -268,9 +276,7 @@ func (wnd *tWindow) onQuitReq() {
 			postMessage(&tDestroyWindowRequest{window: wnd}, errInfo)
 		}
 	} else {
-		setErrorSynced(err)
-		wnd.wgt.CurrEventNanos = deltaNanos()
-		wnd.onQuit()
+		wnd.onError(err)
 	}
 }
 
@@ -285,6 +291,12 @@ func (wnd *tWindow) onQuit() {
 	if err != nil {
 		setErrorSynced(err)
 	}
+}
+
+func (wnd *tWindow) onError(err error) {
+	setErrorSynced(err)
+	wnd.wgt.CurrEventNanos = deltaNanos()
+	wnd.onQuit()
 }
 
 //export g2dStartWindows
@@ -302,26 +314,28 @@ func g2dStartWindows() {
 func g2dProcessMessage() {
 	mutex.Lock()
 	defer mutex.Unlock()
-	message := msgs.First()
-	if message != nil {
-		switch msg := message.(type) {
-		case *tCreateWindowRequest:
-			createWindow(msg.window, msg.config)
-		case *tShowWindowRequest:
-			showWindow(msg.window)
-		case *tDestroyWindowRequest:
-			destroyWindow(msg.window)
+	if !quitting {
+		message := msgs.First()
+		if message != nil {
+			switch msg := message.(type) {
+			case *tCreateWindowRequest:
+				createWindow(msg.window, msg.config)
+			case *tShowWindowRequest:
+				showWindow(msg.window)
+			case *tDestroyWindowRequest:
+				destroyWindow(msg.window)
+			}
 		}
 	}
 }
 
 //export g2dResize
 func g2dResize(cbIdC C.int) {
-/*
-	window := cb.wnds[int(cbIdC)]
+	window := wndCbs[int(cbIdC)]
 	msg := &tLMessage{typeId: resizeType, nanos: deltaNanos()}
 	msg.props.update(window.dataC)
 	window.wgt.msgs <- msg
+/*
 	window.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
 */
 }
@@ -673,22 +687,6 @@ func (window *tWindow) processGMessage(msg *tGMessage) bool {
 		}
 	}
 	return processing
-}
-
-func (window *tWindow) updateProps(msg *tLMessage) {
-	window.wgt.ClientX = msg.props.ClientX
-	window.wgt.ClientY = msg.props.ClientY
-	window.wgt.ClientWidth = msg.props.ClientWidth
-	window.wgt.ClientHeight = msg.props.ClientHeight
-	window.wgt.MouseX = msg.props.MouseX
-	window.wgt.MouseY = msg.props.MouseY
-}
-
-func (window *tWindow) onResize() {
-	err := window.abst.OnResize()
-	if err != nil {
-		window.onError(err)
-	}
 }
 
 func (window *tWindow) onKeyDown(keyCode int, repeated uint) {
