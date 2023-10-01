@@ -13,6 +13,7 @@ package g2d
 import "C"
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 	"unsafe"
@@ -47,20 +48,28 @@ func Show(window ...Window) {
 		mutex.Lock()
 		if !initFailed {
 			if initialized {
-				for _, abst := range window {
-					if abst != nil && !quitting {
-						wnd := newWindow(abst)
-						go wnd.logicThread()
-						postConfig(wnd)
-					}
-				}
-				if !running {
+				if running {
 					if !quitting {
+						for _, abst := range window {
+							if abst != nil {
+								wnd := newWindow(abst)
+								go wnd.logicThread()
+								wnd.wgt.msgs <- (&tLMessage{typeId: configType, nanos: deltaNanos()})
+							}
+						}
+					}
+				} else {
+					for _, abst := range window {
+						if abst != nil {
+							wnd := newWindow(abst)
+							wndsToStart = append(wndsToStart, wnd)
+						}
+					}
+					if len(wndsToStart) > 0 {
 						running = true
 						mutex.Unlock()
 						C.g2d_process_messages()
 						mutex.Lock()
-						quitting = true
 						running = false
 					}
 					cleanUp()
@@ -76,21 +85,11 @@ func Show(window ...Window) {
 	}
 }
 
-func postConfig(wnd *tWindow) {
-	var err1, err2 C.longlong
-	C.g2d_post_message(&err1, &err2)
-	if err1 == 0 {
-		msgs.Put(&tConfigWindowRequest{window: wnd})
-	} else {
-		setError(err1, err2, nil, "configuration event to window " + wnd.cbIdStr)
-	}
-}
-
 func postMessage(msg interface{}, errInfo string) {
 	var err1, err2 C.longlong
 	mutex.Lock()
 	defer mutex.Unlock()
-	C.g2d_post_message(&err1, &err2)
+	C.g2d_post_window_msg(&err1, &err2)
 	if err1 == 0 {
 		msgs.Put(msg)
 	} else {
@@ -102,9 +101,11 @@ func cleanUp() {
 	for _, wnd := range wndCbs {
 		if wnd != nil {
 			var err1, err2 C.longlong
-			wgt := wnd.wgt
-			wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
-			<- wgt.quitted
+			if wnd.wgt != nil {
+				wgt := wnd.wgt
+				wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
+				<- wgt.quitted
+			}
 			unregister(wnd.cbId)
 			C.g2d_window_destroy(wnd.dataC, &err1, &err2)
 			if err1 != 0 {
@@ -178,7 +179,7 @@ func (wnd *tWindow) logicThread() {
 
 func (wnd *tWindow) nextLMessage() *tLMessage {
 	var message *tLMessage
-	if wnd.state >= configState && wnd.state < closingState && (wnd.autoUpdate || wnd.wgt.update) {
+	if wnd.state > configState && wnd.state < closingState && (wnd.autoUpdate || wnd.wgt.update) {
 		select {
 		case msg := <-wnd.wgt.msgs:
 			message = msg
@@ -196,7 +197,6 @@ func (wnd *tWindow) nextLMessage() *tLMessage {
 }
 
 func (wnd *tWindow) onConfig() {
-	wnd.wgt.PrevUpdateNanos = wnd.wgt.CurrEventNanos
 	config := newConfiguration()
 	err := wnd.abst.OnConfig(config)
 	wnd.autoUpdate = config.AutoUpdate
@@ -262,6 +262,8 @@ func (wnd *tWindow) onQuitReq() {
 	closeOk, err := wnd.abst.OnClose()
 	if err == nil {
 		if closeOk {
+			wnd.wgt.CurrEventNanos = deltaNanos()
+			wnd.onQuit()
 			errInfo := "destroy-request, window " + wnd.cbIdStr
 			postMessage(&tDestroyWindowRequest{window: wnd}, errInfo)
 		}
@@ -285,13 +287,24 @@ func (wnd *tWindow) onQuit() {
 	}
 }
 
+//export g2dStartWindows
+func g2dStartWindows() {
+	mutex.Lock()
+	defer mutex.Unlock()
+	for _, wnd := range wndsToStart {
+		go wnd.logicThread()
+		wnd.wgt.msgs <- (&tLMessage{typeId: configType, nanos: deltaNanos()})
+	}
+	wndsToStart = wndsToStart[:0]
+}
+
 //export g2dProcessMessage
 func g2dProcessMessage() {
-	message := nextMessage()
+	mutex.Lock()
+	defer mutex.Unlock()
+	message := msgs.First()
 	if message != nil {
 		switch msg := message.(type) {
-		case *tConfigWindowRequest:
-			configWindow(msg.window)
 		case *tCreateWindowRequest:
 			createWindow(msg.window, msg.config)
 		case *tShowWindowRequest:
@@ -339,10 +352,6 @@ func g2dClose(cbIdC C.int) {
 	window := cb.wnds[int(cbIdC)]
 	window.wgt.RequestClose()
 */
-}
-
-func configWindow(wnd *tWindow) {
-	wnd.wgt.msgs <- (&tLMessage{typeId: configType, nanos: deltaNanos()})
 }
 
 func createWindow(wnd *tWindow, config *Configuration) {
@@ -394,7 +403,6 @@ func destroyWindow(wnd *tWindow) {
 	wnd.cbId = -1
 	if err1 != 0 {
 		setError(err1, err2, nil, "window " + wnd.cbIdStr)
-		wnd.wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
 	}
 }
 
@@ -407,21 +415,23 @@ func setError(err1, err2 C.longlong, errStr *C.char, info string) {
 		Err = ErrConv.ToError(int64(err1), int64(err1), info)
 	}
 	if running && !quitting {
-		C.g2d_quit_message_queue()
+		var err1, err2 C.longlong
+		C.g2d_post_quit_msg(&err1, &err2)
 		quitting = true
 	}
 }
 
 func setErrorSynced(err error) {
 	mutex.Lock()
+	defer mutex.Unlock()
 	if Err == nil {
 		Err = err
 	}
 	if running && !quitting {
-		C.g2d_quit_message_queue()
+		var err1, err2 C.longlong
+		C.g2d_post_quit_msg(&err1, &err2)
 		quitting = true
 	}
-	mutex.Unlock()
 }
 
 func (props *Properties) update(dataC unsafe.Pointer) {
@@ -475,7 +485,17 @@ func toTString(str string) (unsafe.Pointer, C.longlong) {
 	return strT, err1
 }
 
+//export goDebug
+func goDebug(a, b C.int, c, d C.longlong) {
+	fmt.Println(a, b, c, d)
+}
+
 /*
+//export goDebugMessage
+func goDebugMessage(code C.longlong, strC C.g2d_lpcstr) {
+	fmt.Println("Msg:", C.GoString(strC), code)
+}
+
 import (
 	"github.com/vbsw/golib/cdata"
 	"github.com/vbsw/g2d/ogfl"
@@ -970,10 +990,5 @@ func getType(myvar interface{}) string {
 	} else {
 		return t.Name()
 	}
-}
-
-//export goDebug
-func goDebug(a, b C.int, c, d C.g2d_ul_t) {
-	fmt.Println(a, b, c, d)
 }
 */

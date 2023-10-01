@@ -9,6 +9,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <stdio.h>
 #include <gl/GL.h>
 #include "g2d.h"
 
@@ -19,6 +20,7 @@
 #include "_cgo_export.h"
 
 /* Exported functions from Go are:                          */
+/* g2dStartWindows                                          */
 /* g2dProcessMessage                                        */
 /* g2dResize                                                */
 /* g2dKeyDown                                               */
@@ -166,14 +168,14 @@ typedef struct {
 	float projection_mat[4*4];
 } window_data_t;
 
-static const WPARAM g2d_EVENT = (WPARAM)"g2d";
+static const WPARAM g2d_WINDOW_EVENT = (WPARAM)"g2dw";
+static const WPARAM g2d_QUIT_EVENT = (WPARAM)"g2dq";
 static LPCTSTR const class_name = TEXT("g2d");
 static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
 
 static BOOL initialized = FALSE;
 static HINSTANCE instance = NULL;
 static DWORD thread_id;
-static BOOL thread_id_set = FALSE;
 static int windows_count = 0;
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
@@ -241,6 +243,7 @@ void g2d_test(int *array) {
 }
 */
 
+#include "win32_debug.h"
 #include "win32_keys.h"
 #include "win32_init.h"
 #include "win32_window.h"
@@ -251,16 +254,19 @@ void g2d_test(int *array) {
 
 void g2d_process_messages() {
 	MSG msg; BOOL ret_code;
-	thread_id = GetCurrentThreadId(); thread_id_set = TRUE;
+	thread_id = GetCurrentThreadId();
+	g2dStartWindows();
 	while ((ret_code = GetMessage(&msg, NULL, 0, 0)) > 0) {
-		if (msg.message == WM_APP && msg.wParam == g2d_EVENT) {
-			// g2dProcessMessage();
+		if (msg.message == WM_APP) {
+			if (msg.wParam == g2d_WINDOW_EVENT)
+				g2dProcessMessage();
+			else if (msg.wParam == g2d_QUIT_EVENT)
+				break;
 		} else {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
 	}
-	thread_id_set = FALSE;
 }
 
 void g2d_clean_up_messages() {
@@ -268,23 +274,24 @@ void g2d_clean_up_messages() {
 	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE));
 }
 
-void g2d_post_message(long long *const err1, long long *const err2) {
-	if (thread_id_set) {
-		if (!PostThreadMessage(thread_id, WM_APP, g2d_EVENT, 0)) {
-			err1[0] = 82; err2[0] = (long long)GetLastError();
-		}
-	} else {
-		if (!PostMessage(NULL, WM_APP, g2d_EVENT, 0)) {
-			err1[0] = 82; err2[0] = (long long)GetLastError();
-		}
+void g2d_post_window_msg(long long *const err1, long long *const err2) {
+	if (!PostThreadMessage(thread_id, WM_APP, g2d_WINDOW_EVENT, 0)) {
+		err1[0] = 82; err2[0] = (long long)GetLastError();
 	}
 }
 
-void g2d_quit_message_queue() {
-	PostQuitMessage(0);
+void g2d_post_quit_msg(long long *const err1, long long *const err2) {
+	if (!PostThreadMessage(thread_id, WM_APP, g2d_QUIT_EVENT, 0)) {
+		err1[0] = 82; err2[0] = (long long)GetLastError();
+	}
 }
 
 /*
+void g2d_quit_message_queue() {
+	goDebug(0, 123, 0, 0);
+	PostQuitMessage(0);
+}
+
 void g2d_context_make_current(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (!wglMakeCurrent(wnd_data[0].wnd.ctx.dc, wnd_data[0].wnd.ctx.rc)) {

@@ -50,6 +50,7 @@ var (
 	initFailed  bool
 	wndCbs     []*tWindow
 	wndCbsNext []int
+	wndsToStart []*tWindow
 	msgs       queue.Queue
 	wndsActive sync.WaitGroup 
 
@@ -225,10 +226,17 @@ func newConfiguration() *Configuration {
 	return config
 }
 
-func nextMessage() interface{} {
-	mutex.Lock()
-	defer mutex.Unlock()
-	return msgs.First()
+func (wgt *Widget) Update() {
+	wgt.update = true
+	wgt.msgs <- nil
+}
+
+func (wgt *Widget) RequestClose() {
+	wgt.msgs <- &tLMessage{typeId: quitReqType, nanos: deltaNanos()}
+}
+
+func (wgt *Widget) Close() {
+	wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
 }
 
 /*
@@ -359,62 +367,6 @@ func (loader *ImageLoader) RGBABytes() ([]byte, int, int, error) {
 		}
 	}
 	return bytes, width, height, err
-}
-
-type DefaultWindow struct {
-}
-
-func (_ *DefaultWindow) OnConfig(config *Configuration) error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnCreate(widget *Widget) error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnUpdate() error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnClose() (bool, error) {
-	return true, nil
-}
-
-func (_ *DefaultWindow) OnShow() error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnResize() error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnKeyDown(keyCode int, repeated uint) error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnKeyUp(keyCode int) error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnTextureLoaded(textureId int) error {
-	return nil
-}
-
-func (_ *DefaultWindow) OnDestroy() {
-}
-
-func (wgt *Widget) Update() {
-	wgt.update = true
-	wgt.msgs <- nil
-}
-
-func (wgt *Widget) RequestClose() {
-	msg := &tLMessage{typeId: quitReqType, nanos: deltaNanos()}
-	wgt.msgs <- msg
-}
-
-func (wgt *Widget) Close() {
-	wgt.msgs <- (&tLMessage{typeId: quitType, nanos: deltaNanos()})
 }
 
 func (gfx *Graphics) SetBGColor(r, g, b float32) {
@@ -1066,6 +1018,49 @@ func clearErrors() {
 	mutex.Unlock()
 }
 */
+
+type DefaultWindow struct {
+}
+
+func (_ *DefaultWindow) OnConfig(config *Configuration) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnCreate(widget *Widget) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnUpdate() error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnClose() (bool, error) {
+	return true, nil
+}
+
+func (_ *DefaultWindow) OnShow() error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnResize() error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnKeyDown(keyCode int, repeated uint) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnKeyUp(keyCode int) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnTextureLoaded(textureId int) error {
+	return nil
+}
+
+func (_ *DefaultWindow) OnDestroy() error {
+	return nil
+}
 
 func deltaNanos() int64 {
 	timeNow := time.Now()
