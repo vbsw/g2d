@@ -129,10 +129,8 @@ func newWindow(abst Window) *tWindow {
 	wnd.cbIdStr = strconv.FormatInt(int64(wnd.cbId), 10)
 	wnd.wgt.Gfx.msgs = make(chan *tGMessage, 1000)
 	wnd.wgt.Gfx.quitted = make(chan bool, 1)
-/*
 	wnd.wgt.Gfx.rBuffer = &wnd.wgt.Gfx.buffers[0]
 	wnd.wgt.Gfx.wBuffer = &wnd.wgt.Gfx.buffers[0]
-*/
 	return wnd
 }
 
@@ -168,9 +166,9 @@ func (wnd *tWindow) logicThread() {
 			}
 		}
 	}
-/*
 	wnd.wgt.Gfx.rBuffer = nil
 	wnd.wgt.Gfx.wBuffer = nil
+/*
 	wnd.wgt.Gfx.buffers[0].layers = nil
 	wnd.wgt.Gfx.buffers[1].layers = nil
 	wnd.wgt.Gfx.buffers[2].layers = nil
@@ -227,7 +225,7 @@ func (wnd *tWindow) onCreate() {
 		wnd.wgt.Gfx.running = true
 		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 		go wnd.graphicsThread()
-//		wnd.wgt.Gfx.switchWBuffer()
+		wnd.wgt.Gfx.switchWBuffer()
 		errInfo := "show-request, window " + wnd.cbIdStr
 		postMessage(&tShowWindowRequest{window: wnd}, errInfo)
 	} else {
@@ -239,7 +237,7 @@ func (wnd *tWindow) onShow() {
 	wnd.wgt.PrevUpdateNanos = wnd.wgt.CurrEventNanos
 	err := wnd.abst.OnShow()
 	if err == nil {
-//		wnd.wgt.Gfx.switchWBuffer()
+		wnd.wgt.Gfx.switchWBuffer()
 		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 	} else {
 		wnd.onLError(err)
@@ -272,7 +270,7 @@ func (wnd *tWindow) onUpdate() {
 	err := wnd.abst.OnUpdate()
 	wnd.wgt.PrevUpdateNanos = wnd.wgt.CurrEventNanos
 	if err == nil {
-		//wnd.wgt.Gfx.switchWBuffer()
+		wnd.wgt.Gfx.switchWBuffer()
 		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 	} else {
 		wnd.onLError(err)
@@ -318,21 +316,19 @@ func (wnd *tWindow) graphicsThread() {
 	runtime.LockOSThread()
 	C.g2d_context_make_current(wnd.dataC, &err1, &err2)
 	if err1 == 0 {
-		C.g2d_gfx_set_swap_interval(1)
-		//C.g2d_gfx_init(wnd.dataC, &err1, &errStrC)
+		C.g2d_gfx_init(wnd.dataC, C.int(wnd.wgt.Gfx.swapInterval), &err1, &err2, &errStrC)
 		if err1 == 0 {
-			//C.g2d_gfx_set_view_size(wnd.dataC, 640, 480)
 			for wnd.wgt.Gfx.running {
 				msg := wnd.nextGMessage()
 				if msg != nil {
 					switch msg.typeId {
-/*
-					case vsyncType:
+					case refreshType:
+						wnd.drawGraphics()
+					case swapIntervType:
 						C.g2d_gfx_set_swap_interval(C.int(msg.valA))
 					case resizeType:
 						C.g2d_gfx_set_view_size(wnd.dataC, C.int(msg.valA), C.int(msg.valB))
-					case refreshType:
-						wnd.drawGraphics()
+/*
 					case imageType:
 						texBytes, ok := msg.valC.([]byte)
 						if ok {
@@ -383,10 +379,10 @@ func (wnd *tWindow) nextGMessage() *tGMessage {
 
 func (wnd *tWindow) drawGraphics() {
 	var err1, err2 C.longlong
-/*
 	wnd.wgt.Gfx.switchRBuffer()
 	buffer := wnd.wgt.Gfx.rBuffer
 	C.g2d_gfx_clear_bg(buffer.bgR, buffer.bgG, buffer.bgB)
+/*
 	for _, layer := range wnd.wgt.Gfx.rBuffer.layers {
 		err := layer.draw(wnd.dataC)
 		if err != nil {
@@ -448,10 +444,8 @@ func g2dResize(cbIdC C.int) {
 		msg := &tLMessage{typeId: resizeType, nanos: deltaNanos()}
 		msg.props.update(wnd.dataC)
 		wgt.msgs <- msg
+		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
 	}
-/*
-	wnd.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
-*/
 }
 
 //export g2dKeyDown

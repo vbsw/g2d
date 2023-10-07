@@ -299,10 +299,5 @@ void g2d_context_release(void *const data, long long *const err1, long long *con
 	}
 }
 
-void g2d_gfx_set_view_size(void *const data, const int w, const int h) {
-	window_data_t *const wnd_data = (window_data_t*)data;
-	glViewport((WORD)0, (WORD)0, (WORD)w, (WORD)h);
-}
-
 /* #if defined(VBSW_G2D_WIN32) */
 #endif

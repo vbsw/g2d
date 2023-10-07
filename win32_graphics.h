@@ -388,9 +388,11 @@ static void image_init(window_data_t *const wnd_data, int *const err_num, char *
 		}
 	}
 }
+*/
 
-void g2d_gfx_init(void *const data, int *const err_num, char **const err_str) {
+void g2d_gfx_init(void *const data, const int si, long long *const err1, long long *const err2, char **const err_str) {
 	GLuint objs[6]; window_data_t *const wnd_data = (window_data_t*)data;
+/*
 	glGenVertexArrays(2, objs); glGenBuffers(4, &objs[2]);
 	wnd_data[0].rect_prog.vao = objs[0];
 	wnd_data[0].rect_prog.vbo = objs[2];
@@ -407,8 +409,10 @@ void g2d_gfx_init(void *const data, int *const err_num, char **const err_str) {
 			memcpy(&wnd_data[0].projection_mat, projection_mat, sizeof(float)*(4*4));
 		}
 	}
-}
 */
+	if (err1[0] == 0)
+		wglSwapIntervalEXT(si);
+}
 
 void g2d_gfx_clear_bg(const float r, const float g, const float b) {
 	glClearColor((GLclampf)r, (GLclampf)g, (GLclampf)b, 0.0);
@@ -417,6 +421,15 @@ void g2d_gfx_clear_bg(const float r, const float g, const float b) {
 
 void g2d_gfx_set_swap_interval(const int interval) {
 	wglSwapIntervalEXT(interval);
+}
+
+void g2d_gfx_set_view_size(void *const data, const int w, const int h) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	glViewport((WORD)0, (WORD)0, (WORD)w, (WORD)h);
+/*
+	wnd_data[0].projection_mat[0] = 2.0f / (float)w;
+	wnd_data[0].projection_mat[5] = -2.0f / (float)h;
+*/
 }
 
 void g2d_gfx_swap_buffers(void *const data, long long *const err1, long long *const err2) {
@@ -557,13 +570,6 @@ void g2d_gfx_draw_image(void *const data, const char *const enabled, const float
 			draw_elements(limit * 6, 1318, 1319, 1320, err_num);
 		}
 	}
-}
-
-void g2d_gfx_set_view_size(void *const data, const int w, const int h) {
-	window_data_t *const wnd_data = (window_data_t*)data;
-	glViewport((WORD)0, (WORD)0, (WORD)w, (WORD)h);
-	wnd_data[0].projection_mat[0] = 2.0f / (float)w;
-	wnd_data[0].projection_mat[5] = -2.0f / (float)h;
 }
 
 void g2d_gfx_gen_tex(void *const data, const void *const tex, const int w, const int h, int *const tex_id, int *const err_num) {

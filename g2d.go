@@ -35,10 +35,12 @@ const (
 	quitType
 	leaveType
 	refreshType
-	vsyncType
+	swapIntervType
 	imageType
 	textureType
 )
+
+var fsm = [56]int{0, 1, 2, 0, 10, 2, 2, 1, 3, 1, 2, 0, 3, 4, 1, 0, 6, 5, 1, 2, 0, 4, 1, 0, 6, 7, 0, 2, 13, 8, 0, 1, 9, 7, 0, 2, 9, 5, 1, 2, 10, 11, 0, 1, 9, 12, 0, 2, 13, 11, 0, 1, 13, 2, 2, 1}
 
 var (
 	ErrConv     ErrorConvertor
@@ -76,6 +78,10 @@ type Window interface {
 	OnDestroy() error
 }
 
+type Drawable interface {
+	SetBGColor(r, g, b float32)
+}
+
 type Widget struct {
 	ClientX, ClientY          int
 	ClientWidth, ClientHeight int
@@ -92,16 +98,16 @@ type Widget struct {
 type Graphics struct {
 	msgs           chan *tGMessage
 	quitted                   chan bool
-/*
 	rBuffer        *tBuffer
 	wBuffer        *tBuffer
 	buffers        [3]tBuffer
+/*
 	entitiesLayers []tEntitiesLayer
-	mutex          sync.Mutex
-	state          int
 */
+	mutex          sync.Mutex
+	bufferState          int
 	refresh        bool
-	vsync          bool
+	swapInterval          int
 	running bool
 }
 
@@ -178,6 +184,11 @@ type tGMessage struct {
 	err    error
 }
 
+type tBuffer struct {
+	bgR, bgG, bgB C.float
+//	layers        []tLayer
+}
+
 func engineProperties() *tEngineProperties {
 	props := new(tEngineProperties)
 	if ErrConv != nil {
@@ -235,6 +246,59 @@ func (wgt *Widget) Close() {
 	wgt.msgs <- (&tLMessage{typeId: quitReqType, nanos: deltaNanos()})
 }
 
+func (gfx *Graphics) SetVSync(vsync bool) {
+	if gfx.running {
+		if vsync {
+			gfx.swapInterval = 1
+			gfx.msgs <- &tGMessage{typeId: swapIntervType, valA: 1}
+		} else {
+			gfx.swapInterval = 0
+			gfx.msgs <- &tGMessage{typeId: swapIntervType, valA: 0}
+		}
+	} else {
+		if vsync {
+			gfx.swapInterval = 1
+		} else {
+			gfx.swapInterval = 0
+		}
+	}
+}
+
+func (gfx *Graphics) SetBGColor(r, g, b float32) {
+	gfx.wBuffer.bgR, gfx.wBuffer.bgG, gfx.wBuffer.bgB = C.float(r), C.float(g), C.float(b)
+}
+
+func (gfx *Graphics) switchRBuffer() {
+	gfx.mutex.Lock()
+	indexCurr := gfx.bufferState * 4
+	gfx.bufferState = fsm[indexCurr]
+	indexNext := gfx.bufferState * 4
+	gfx.rBuffer = &gfx.buffers[fsm[indexNext+2]]
+	gfx.mutex.Unlock()
+}
+
+func (gfx *Graphics) switchWBuffer() {
+	gfx.mutex.Lock()
+	indexCurr := gfx.bufferState * 4
+	gfx.bufferState = fsm[indexCurr+1]
+	indexNext := gfx.bufferState * 4
+	gfx.wBuffer = &gfx.buffers[fsm[indexNext+3]]
+	gfx.mutex.Unlock()
+	gfx.wBuffer.set(&gfx.buffers[fsm[indexCurr+3]])
+}
+
+func (buffer *tBuffer) set(other *tBuffer) {
+	buffer.bgR, buffer.bgG, buffer.bgB = other.bgR, other.bgG, other.bgB
+/*
+	for i, layer := range buffer.layers {
+		layer.set(other.layers[i])
+	}
+	for _, otherLayer := range other.layers[len(buffer.layers):] {
+		buffer.layers = append(buffer.layers, otherLayer.clone())
+	}
+*/
+}
+
 /*
 
 
@@ -243,8 +307,6 @@ import (
 	"time"
 	"unsafe"
 )
-
-var fsm = [56]int{0, 1, 2, 0, 10, 2, 2, 1, 3, 1, 2, 0, 3, 4, 1, 0, 6, 5, 1, 2, 0, 4, 1, 0, 6, 7, 0, 2, 13, 8, 0, 1, 9, 7, 0, 2, 9, 5, 1, 2, 10, 11, 0, 1, 9, 12, 0, 2, 13, 11, 0, 1, 13, 2, 2, 1}
 
 type Graphics struct {
 	MaxTextureSize int
@@ -365,19 +427,6 @@ func (loader *ImageLoader) RGBABytes() ([]byte, int, int, error) {
 	return bytes, width, height, err
 }
 
-func (gfx *Graphics) SetBGColor(r, g, b float32) {
-	gfx.wBuffer.bgR, gfx.wBuffer.bgG, gfx.wBuffer.bgB = C.float(r), C.float(g), C.float(b)
-}
-
-func (gfx *Graphics) SetVSync(vsync bool) {
-	gfx.vsync = vsync
-	if vsync {
-		gfx.msgs <- &tGMessage{typeId: vsyncType, valA: 1}
-	} else {
-		gfx.msgs <- &tGMessage{typeId: vsyncType, valA: 0}
-	}
-}
-
 func (gfx *Graphics) LoadTexture(texture TextureProvider) {
 	go func() {
 		bytes, w, h, err := texture.RGBABytes()
@@ -409,25 +458,6 @@ func (gfx *Graphics) NewImage(layer int) *Image {
 	index := gfx.wBuffer.layers[layer].newImageIndex()
 	rect := gfx.entitiesLayers[layer].newImageEntity(&gfx.wBuffer, layer, index)
 	return rect
-}
-
-func (gfx *Graphics) switchRBuffer() {
-	gfx.mutex.Lock()
-	indexCurr := gfx.state * 4
-	gfx.state = fsm[indexCurr]
-	indexNext := gfx.state * 4
-	gfx.rBuffer = &gfx.buffers[fsm[indexNext+2]]
-	gfx.mutex.Unlock()
-}
-
-func (gfx *Graphics) switchWBuffer() {
-	gfx.mutex.Lock()
-	indexCurr := gfx.state * 4
-	gfx.state = fsm[indexCurr+1]
-	indexNext := gfx.state * 4
-	gfx.wBuffer = &gfx.buffers[fsm[indexNext+3]]
-	gfx.mutex.Unlock()
-	gfx.wBuffer.set(&gfx.buffers[fsm[indexCurr+3]])
 }
 
 type Rect struct {
@@ -592,23 +622,6 @@ func (rect *Image) Release() {
 	rect.entityLayer = nil
 }
 
-
-
-
-type tBuffer struct {
-	bgR, bgG, bgB C.float
-	layers        []tLayer
-}
-
-func (buffer *tBuffer) set(other *tBuffer) {
-	buffer.bgR, buffer.bgG, buffer.bgB = other.bgR, other.bgG, other.bgB
-	for i, layer := range buffer.layers {
-		layer.set(other.layers[i])
-	}
-	for _, otherLayer := range other.layers[len(buffer.layers):] {
-		buffer.layers = append(buffer.layers, otherLayer.clone())
-	}
-}
 
 type tErrorGenerator interface {
 	ToError(g2dErrNum, win32ErrNum uint64, info string) error
