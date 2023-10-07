@@ -21,14 +21,15 @@ extern void g2d_window_show(void *data, long long *err1, long long *err2);
 extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
 extern void g2d_window_destroy(void *data, long long *err1, long long *err2);
 
+extern void g2d_context_make_current(void *data, long long *err1, long long *err2);
+extern void g2d_context_release(void *data, long long *err1, long long *err2);
+extern void g2d_gfx_init(void *data, long long *err1, long long *err2);
+extern void g2d_gfx_set_swap_interval(int interval);
+extern void g2d_gfx_swap_buffers(void *data, long long *err1, long long *err2);
+
 /*
 extern void g2d_quit_message_queue();
-extern void g2d_context_make_current(void *data, int *err_num, g2d_ul_t *err_win32);
-extern void g2d_context_release(void *data, int *err_num, g2d_ul_t *err_win32);
-extern void g2d_gfx_init(void *data, int *err_num, char **err_str);
 extern void g2d_gfx_clear_bg(float r, float g, float b);
-extern void g2d_gfx_swap_buffers(void *data, int *err_num, g2d_ul_t *err_win32);
-extern void g2d_gfx_set_swap_interval(int interval);
 extern void g2d_gfx_draw_rect(void *data, const char *enabled, const float *rects, int length, int active, int *err_num, char **err_str);
 extern void g2d_gfx_draw_image(void *data, const char *enabled, const float *rects, int length, int active, int tex_id, int *err_num, char **err_str);
 extern void g2d_gfx_set_view_size(void *data, int w, int h);

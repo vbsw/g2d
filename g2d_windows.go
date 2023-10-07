@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"runtime"
 	"time"
 	"unsafe"
 )
@@ -126,8 +127,9 @@ func newWindow(abst Window) *tWindow {
 	wnd.wgt.quitted = make(chan bool, 1)
 	wnd.cbId = register(wnd)
 	wnd.cbIdStr = strconv.FormatInt(int64(wnd.cbId), 10)
+	wnd.wgt.Gfx.msgs = make(chan *tGMessage, 1000)
+	wnd.wgt.Gfx.quitted = make(chan bool, 1)
 /*
-	wnd.wgt.Gfx.msgs = make(chan *tGMessage, 1024)
 	wnd.wgt.Gfx.rBuffer = &wnd.wgt.Gfx.buffers[0]
 	wnd.wgt.Gfx.wBuffer = &wnd.wgt.Gfx.buffers[0]
 */
@@ -213,7 +215,7 @@ func (wnd *tWindow) onConfig() {
 		errInfo := "create-request, window " + wnd.cbIdStr
 		postMessage(&tCreateWindowRequest{window: wnd, config: config}, errInfo)
 	} else {
-		wnd.onError(err)
+		wnd.onLError(err)
 	}
 }
 
@@ -222,49 +224,46 @@ func (wnd *tWindow) onCreate() {
 	err := wnd.abst.OnCreate(wnd.wgt)
 	if err == nil {
 		wnd.state = runningState
-/*
-		wnd.wgt.Gfx.switchWBuffer()
 		wnd.wgt.Gfx.running = true
 		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 		go wnd.graphicsThread()
-*/
+//		wnd.wgt.Gfx.switchWBuffer()
 		errInfo := "show-request, window " + wnd.cbIdStr
 		postMessage(&tShowWindowRequest{window: wnd}, errInfo)
 	} else {
-		wnd.onError(err)
+		wnd.onLError(err)
 	}
 }
 
 func (wnd *tWindow) onShow() {
 	wnd.wgt.PrevUpdateNanos = wnd.wgt.CurrEventNanos
 	err := wnd.abst.OnShow()
-/*
-	wnd.wgt.Gfx.switchWBuffer()
-	wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
-*/
-	if err != nil {
-		wnd.onError(err)
+	if err == nil {
+//		wnd.wgt.Gfx.switchWBuffer()
+		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
+	} else {
+		wnd.onLError(err)
 	}
 }
 
 func (wnd *tWindow) onResize() {
 	err := wnd.abst.OnResize()
 	if err != nil {
-		wnd.onError(err)
+		wnd.onLError(err)
 	}
 }
 
 func (wnd *tWindow) onKeyDown(keyCode int, repeated uint) {
 	err := wnd.abst.OnKeyDown(keyCode, repeated)
 	if err != nil {
-		wnd.onError(err)
+		wnd.onLError(err)
 	}
 }
 
 func (wnd *tWindow) onKeyUp(keyCode int) {
 	err := wnd.abst.OnKeyUp(keyCode)
 	if err != nil {
-		wnd.onError(err)
+		wnd.onLError(err)
 	}
 }
 
@@ -274,9 +273,9 @@ func (wnd *tWindow) onUpdate() {
 	wnd.wgt.PrevUpdateNanos = wnd.wgt.CurrEventNanos
 	if err == nil {
 		//wnd.wgt.Gfx.switchWBuffer()
-		//wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
+		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: refreshType}
 	} else {
-		wnd.onError(err)
+		wnd.onLError(err)
 	}
 }
 
@@ -290,7 +289,7 @@ func (wnd *tWindow) onQuitReq() {
 			postMessage(&tDestroyWindowRequest{window: wnd}, errInfo)
 		}
 	} else {
-		wnd.onError(err)
+		wnd.onLError(err)
 	}
 }
 
@@ -307,10 +306,108 @@ func (wnd *tWindow) onQuit() {
 	}
 }
 
-func (wnd *tWindow) onError(err error) {
+func (wnd *tWindow) onLError(err error) {
 	setErrorSynced(err)
 	wnd.wgt.CurrEventNanos = deltaNanos()
 	wnd.onQuit()
+}
+
+func (wnd *tWindow) graphicsThread() {
+	var err1, err2 C.longlong
+	var errStrC *C.char
+	runtime.LockOSThread()
+	C.g2d_context_make_current(wnd.dataC, &err1, &err2)
+	if err1 == 0 {
+		C.g2d_gfx_set_swap_interval(1)
+		//C.g2d_gfx_init(wnd.dataC, &err1, &errStrC)
+		if err1 == 0 {
+			//C.g2d_gfx_set_view_size(wnd.dataC, 640, 480)
+			for wnd.wgt.Gfx.running {
+				msg := wnd.nextGMessage()
+				if msg != nil {
+					switch msg.typeId {
+/*
+					case vsyncType:
+						C.g2d_gfx_set_swap_interval(C.int(msg.valA))
+					case resizeType:
+						C.g2d_gfx_set_view_size(wnd.dataC, C.int(msg.valA), C.int(msg.valB))
+					case refreshType:
+						wnd.drawGraphics()
+					case imageType:
+						texBytes, ok := msg.valC.([]byte)
+						if ok {
+							wnd.loadTexture(texBytes, msg.valA, msg.valB)
+						} else {
+							appendError(msg.err)
+							processing = wnd.processGMessage(&tGMessage{typeId: quitType})
+						}
+*/
+					case quitType:
+						var err1, err2 C.longlong
+						C.g2d_context_release(wnd.dataC, &err1, &err2)
+						if (err1 == 0) {
+							wnd.wgt.Gfx.quitted <- true
+							wnd.wgt.Gfx.running = false
+						}
+					}
+				}
+			}
+		}
+	}
+	if (err1 != 0) {
+		wnd.onGError(err1, err2, errStrC)
+	}
+}
+
+func (wnd *tWindow) nextGMessage() *tGMessage {
+	var message *tGMessage
+	if wnd.wgt.Gfx.refresh {
+		select {
+		case msg := <-wnd.wgt.Gfx.msgs:
+			if msg.typeId != refreshType {
+				message = msg
+			}
+		default:
+			wnd.wgt.Gfx.refresh = false
+			message = &tGMessage{typeId: refreshType}
+		}
+	} else {
+		message = <-wnd.wgt.Gfx.msgs
+		if message.typeId == refreshType {
+			wnd.wgt.Gfx.refresh = true
+			message = nil
+		}
+	}
+	return message
+}
+
+func (wnd *tWindow) drawGraphics() {
+	var err1, err2 C.longlong
+/*
+	wnd.wgt.Gfx.switchRBuffer()
+	buffer := wnd.wgt.Gfx.rBuffer
+	C.g2d_gfx_clear_bg(buffer.bgR, buffer.bgG, buffer.bgB)
+	for _, layer := range wnd.wgt.Gfx.rBuffer.layers {
+		err := layer.draw(wnd.dataC)
+		if err != nil {
+			appendError(err)
+			wnd.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+		}
+	}
+*/
+	C.g2d_gfx_swap_buffers(wnd.dataC, &err1, &err2)
+	if err1 != 0 {
+		wnd.onGError(err1, err2, nil)
+	}
+}
+
+func (wnd *tWindow) onGError(err1, err2 C.longlong, errStrC *C.char) {
+	mutex.Lock()
+	wnd.wgt.Gfx.quitted <- true
+	wnd.wgt.Gfx.running = false
+	setError(err1, err2, errStrC, "window " + wnd.cbIdStr)
+	C.g2d_context_release(wnd.dataC, &err1, &err2)
+	mutex.Unlock()
 }
 
 //export g2dStartWindows
@@ -440,11 +537,11 @@ func destroyWindow(wnd *tWindow) {
 	}
 }
 
-func setError(err1, err2 C.longlong, errStr *C.char, info string) {
+func setError(err1, err2 C.longlong, errStrC *C.char, info string) {
 	if Err == nil {
-		if errStr != nil {
-			info = C.GoString(errStr)
-			C.g2d_free(unsafe.Pointer(errStr))
+		if errStrC != nil {
+			info = C.GoString(errStrC)
+			C.g2d_free(unsafe.Pointer(errStrC))
 		}
 		Err = ErrConv.ToError(int64(err1), int64(err1), info)
 	}
@@ -647,91 +744,10 @@ func Init(params ...interface{}) {
 	}
 }
 
-func (window *tWindow) graphicsThread() {
-	var errNumC C.int
-	var errWin32C C.g2d_ul_t
-	runtime.LockOSThread()
-	C.g2d_context_make_current(window.dataC, &errNumC, &errWin32C)
-	if errNumC == 0 {
-		var errStrC *C.char
-		C.g2d_gfx_init(window.dataC, &errNumC, &errStrC)
-		if errNumC == 0 {
-			processing := true
-			C.g2d_gfx_set_view_size(window.dataC, 640, 480)
-			for processing {
-				processing = window.processGMessage(window.nextGMessage())
-			}
-		} else {
-			appendError(toError(errNumC, errWin32C, errStrC))
-			window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
-		}
-	} else {
-		appendError(toError(errNumC, errWin32C, nil))
-		window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
-	}
-}
-
-func (window *tWindow) processGMessage(msg *tGMessage) bool {
-	processing := true
-	if msg != nil {
-		if msg.err == nil {
-			var errNumC C.int
-			var errWin32C C.g2d_ul_t
-			if msg.typeId == vsyncType {
-				C.g2d_gfx_set_swap_interval(C.int(msg.valA))
-			} else if msg.typeId == resizeType {
-				C.g2d_gfx_set_view_size(window.dataC, C.int(msg.valA), C.int(msg.valB))
-			} else if msg.typeId == refreshType {
-				window.drawGraphics()
-			} else if msg.typeId == imageType {
-				texBytes, ok := msg.valC.([]byte)
-				if ok {
-					window.loadTexture(texBytes, msg.valA, msg.valB)
-				} else {
-					appendError(msg.err)
-					processing = window.processGMessage(&tGMessage{typeId: quitType})
-				}
-			} else if msg.typeId == quitType {
-				C.g2d_context_release(window.dataC, &errNumC, &errWin32C)
-				if errNumC != 0 {
-					appendError(toError(errNumC, errWin32C, nil))
-				}
-				window.wgt.msgs <- &tLMessage{typeId: leaveType, nanos: deltaNanos()}
-				processing = false
-			}
-		} else {
-			appendError(msg.err)
-			processing = window.processGMessage(&tGMessage{typeId: quitType})
-		}
-	}
-	return processing
-}
-
 func (window *tWindow) onTextureLoaded(textureId int) {
 	err := window.abst.OnTextureLoaded(textureId)
 	if err != nil {
-		window.onError(err)
-	}
-}
-
-func (window *tWindow) drawGraphics() {
-	var errNumC C.int
-	var errWin32C C.g2d_ul_t
-	window.wgt.Gfx.switchRBuffer()
-	buffer := window.wgt.Gfx.rBuffer
-	C.g2d_gfx_clear_bg(buffer.bgR, buffer.bgG, buffer.bgB)
-	for _, layer := range window.wgt.Gfx.rBuffer.layers {
-		err := layer.draw(window.dataC)
-		if err != nil {
-			appendError(err)
-			window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
-		}
-	}
-	C.g2d_gfx_swap_buffers(window.dataC, &errNumC, &errWin32C)
-	if errNumC != 0 {
-		window.state = 2
-		appendError(toError(errNumC, errWin32C, nil))
-		window.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+		window.onLError(err)
 	}
 }
 
@@ -771,31 +787,6 @@ func (layer *tImageLayer) draw(dataC unsafe.Pointer) error {
 		}
 	}
 	return nil
-}
-
-func (window *tWindow) nextGMessage() *tGMessage {
-	var message *tGMessage
-	if window.wgt.Gfx.refresh {
-		select {
-		case msg := <-window.wgt.Gfx.msgs:
-			if msg.typeId != refreshType {
-				message = msg
-			}
-		default:
-			//window.wgt.Gfx.refresh = false
-			message = &tGMessage{typeId: refreshType}
-		}
-	} else {
-		message = <-window.wgt.Gfx.msgs
-		if message.typeId == refreshType {
-			window.wgt.Gfx.refresh = true
-			message = nil
-		}
-	}
-	if window.state == 2 && message.typeId != quitType {
-		message = nil
-	}
-	return message
 }
 
 func initDefaultParams() {

@@ -247,10 +247,7 @@ void g2d_test(int *array) {
 #include "win32_keys.h"
 #include "win32_init.h"
 #include "win32_window.h"
-
-/*
 #include "win32_graphics.h"
-*/
 
 void g2d_process_messages() {
 	MSG msg; BOOL ret_code;
@@ -286,26 +283,26 @@ void g2d_post_quit_msg(long long *const err1, long long *const err2) {
 	}
 }
 
-/*
-void g2d_quit_message_queue() {
-	goDebug(0, 123, 0, 0);
-	PostQuitMessage(0);
-}
-
-void g2d_context_make_current(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+void g2d_context_make_current(void *const data, long long *const err1, long long *const err2) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (!wglMakeCurrent(wnd_data[0].wnd.ctx.dc, wnd_data[0].wnd.ctx.rc)) {
-		err_num[0] = 56; err_win32[0] = (g2d_ul_t)GetLastError();
+		err1[0] = 56; err2[0] = (long long)GetLastError();
 	}
 }
 
-void g2d_context_release(void *const data, int *const err_num, g2d_ul_t *const err_win32) {
+void g2d_context_release(void *const data, long long *const err1, long long *const err2) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	if (wnd_data[0].wnd.ctx.rc == wglGetCurrentContext() && !wglMakeCurrent(NULL, NULL)) {
-		err_num[0] = 19; err_win32[0] = (g2d_ul_t)GetLastError();
+	if (wnd_data[0].wnd.ctx.rc == wglGetCurrentContext()) {
+		if (!wglMakeCurrent(NULL, NULL)) {
+			err1[0] = 19; err2[0] = (long long)GetLastError();
+		}
 	}
 }
-*/
+
+void g2d_gfx_set_view_size(void *const data, const int w, const int h) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	glViewport((WORD)0, (WORD)0, (WORD)w, (WORD)h);
+}
 
 /* #if defined(VBSW_G2D_WIN32) */
 #endif

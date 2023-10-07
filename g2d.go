@@ -99,9 +99,9 @@ type Graphics struct {
 	entitiesLayers []tEntitiesLayer
 	mutex          sync.Mutex
 	state          int
+*/
 	refresh        bool
 	vsync          bool
-*/
 	running bool
 }
 

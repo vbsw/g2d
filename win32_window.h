@@ -35,7 +35,7 @@ static void style_update(window_data_t *const wnd_data) {
 }
 
 static void client_update(window_data_t *const wnd_data) {
-	POINT point = { 0, 0 };
+	POINT point = {0, 0};
 	RECT rect = {0, 0, 0, 0};
 	ClientToScreen(wnd_data[0].wnd.hndl, &point);
 	GetClientRect(wnd_data[0].wnd.hndl, &rect);
