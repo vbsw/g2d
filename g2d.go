@@ -40,6 +40,13 @@ const (
 	textureType
 )
 
+const (
+	chunksCap = 1024 * 1024 - 32
+	entitiesCap = 64
+	entityValuesCount = 20
+	layerEntitesCount = 1024 - 32
+)
+
 var fsm = [56]int{0, 1, 2, 0, 10, 2, 2, 1, 3, 1, 2, 0, 3, 4, 1, 0, 6, 5, 1, 2, 0, 4, 1, 0, 6, 7, 0, 2, 13, 8, 0, 1, 9, 7, 0, 2, 9, 5, 1, 2, 10, 11, 0, 1, 9, 12, 0, 2, 13, 11, 0, 1, 13, 2, 2, 1}
 
 var (
@@ -78,10 +85,6 @@ type Window interface {
 	OnDestroy() error
 }
 
-type Drawable interface {
-	SetBGColor(r, g, b float32)
-}
-
 type Widget struct {
 	ClientX, ClientY          int
 	ClientWidth, ClientHeight int
@@ -96,14 +99,12 @@ type Widget struct {
 }
 
 type Graphics struct {
+	tEntities
 	msgs           chan *tGMessage
 	quitted                   chan bool
 	rBuffer        *tBuffer
 	wBuffer        *tBuffer
 	buffers        [3]tBuffer
-/*
-	entitiesLayers []tEntitiesLayer
-*/
 	mutex          sync.Mutex
 	bufferState          int
 	refresh        bool
@@ -131,6 +132,18 @@ type Properties struct {
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen             bool
 	Title                             string
+}
+
+type Entity struct {
+	buffer    **tBuffer
+	layer, offset int
+	chunk, index int
+}
+
+type tEntities struct {
+	chunks [][]Entity
+	unused [][]int
+	active []int
 }
 
 type tEngineProperties struct {
@@ -185,8 +198,13 @@ type tGMessage struct {
 }
 
 type tBuffer struct {
+	layers [][]C.float
+	enabled     [][]C.char
+	unused      [][]int
+	active      []int
+	enabledC []unsafe.Pointer
+	layersC []unsafe.Pointer
 	bgR, bgG, bgB C.float
-//	layers        []tLayer
 }
 
 func engineProperties() *tEngineProperties {
@@ -268,6 +286,61 @@ func (gfx *Graphics) SetBGColor(r, g, b float32) {
 	gfx.wBuffer.bgR, gfx.wBuffer.bgG, gfx.wBuffer.bgB = C.float(r), C.float(g), C.float(b)
 }
 
+func (gfx *Graphics) CreateLayers(count int, initCapacities ...int) {
+	if count > 0 {
+		layers := make([][]C.float, count)
+		enabled := make([][]C.char, count)
+		unused := make([][]int, count)
+		active := make([]int, count)
+		layersC := make([]unsafe.Pointer, count)
+		enabledC := make([]unsafe.Pointer, count)
+		for i := 0; i< count; i++ {
+			var initCapacity int
+			if i < len(initCapacities) && initCapacities[i] > 0 {
+				initCapacity = initCapacities[i]
+			} else {
+				initCapacity = layerEntitesCount
+			}
+			layers[i] = make([]C.float, initCapacity * entityValuesCount)
+			enabled[i] = make([]C.char, initCapacity)
+			unused[i] = make([]int, 0, initCapacity)
+			layersC[i] = unsafe.Pointer(&layers[i][0])
+			enabledC[i] = unsafe.Pointer(&enabled[i][0])
+		}
+		if gfx.wBuffer.layers == nil {
+			gfx.wBuffer.layers = layers
+			gfx.wBuffer.enabled = enabled
+			gfx.wBuffer.unused = unused
+			gfx.wBuffer.active = active
+			gfx.wBuffer.layersC = layersC
+			gfx.wBuffer.enabledC = enabledC
+		} else {
+			gfx.wBuffer.layers = append(gfx.wBuffer.layers, layers...)
+			gfx.wBuffer.enabled = append(gfx.wBuffer.enabled, enabled...)
+			gfx.wBuffer.unused = append(gfx.wBuffer.unused, unused...)
+			gfx.wBuffer.active = append(gfx.wBuffer.active, active...)
+			gfx.wBuffer.layersC = append(gfx.wBuffer.layersC, layersC...)
+			gfx.wBuffer.enabledC = append(gfx.wBuffer.enabledC, enabledC...)
+		}
+	}
+}
+
+func (gfx *Graphics) NewEntity(layer int) *Entity {
+	entity, chunkIndex, entityIndex := gfx.newEntity()
+	offset := gfx.wBuffer.newEntity(layer)
+	entity.init(&gfx.wBuffer, layer, offset, chunkIndex, entityIndex)
+	return entity
+}
+
+func (gfx *Graphics) Release(entity *Entity) {
+	dataIndex := entity.offset / entityValuesCount
+	(*entity.buffer).enabled[entity.layer][dataIndex] = 0
+	(*entity.buffer).unused[entity.layer] = append((*entity.buffer).unused[entity.layer], dataIndex)
+	(*entity.buffer).active[entity.layer]--
+	entity.buffer = nil
+	gfx.unused[entity.chunk] = append(gfx.unused[entity.chunk], entity.index)
+}
+
 func (gfx *Graphics) switchRBuffer() {
 	gfx.mutex.Lock()
 	indexCurr := gfx.bufferState * 4
@@ -289,14 +362,142 @@ func (gfx *Graphics) switchWBuffer() {
 
 func (buffer *tBuffer) set(other *tBuffer) {
 	buffer.bgR, buffer.bgG, buffer.bgB = other.bgR, other.bgG, other.bgB
-/*
-	for i, layer := range buffer.layers {
-		layer.set(other.layers[i])
+	for i, otherLayer := range other.layers {
+		if len(buffer.layers) < i {
+			if len(buffer.layers[i]) < len(otherLayer) {
+				if cap(buffer.layers[i]) < len(otherLayer) {
+					buffer.layers[i] = make([]C.float, len(otherLayer), cap(otherLayer))
+					buffer.enabled[i] = make([]C.char, len(otherLayer), cap(otherLayer))
+					buffer.unused[i] = make([]int, len(other.unused[i]), cap(otherLayer))
+					buffer.layersC[i] = unsafe.Pointer(&buffer.layers[i][0])
+					buffer.enabledC[i] = unsafe.Pointer(&buffer.enabled[i][0])
+				} else {
+					buffer.layers[i] = buffer.layers[i][:len(otherLayer)]
+					buffer.enabled[i] = buffer.enabled[i][:len(otherLayer)]
+					buffer.unused[i] = buffer.unused[i][:len(other.unused[i])]
+				}
+			}
+		} else {
+			buffer.layers = append(buffer.layers, make([]C.float, len(otherLayer), cap(otherLayer)))
+			buffer.enabled = append(buffer.enabled, make([]C.char, len(otherLayer), cap(otherLayer)))
+			buffer.unused = append(buffer.unused, make([]int, len(other.unused[i]), cap(otherLayer)))
+			buffer.active = append(buffer.active, 0)
+			buffer.layersC = append(buffer.layersC, unsafe.Pointer(&buffer.layers[i][0]))
+			buffer.enabledC = append(buffer.enabledC, unsafe.Pointer(&buffer.enabled[i][0]))
+		}
+		copy(buffer.layers[i], otherLayer)
+		copy(buffer.enabled[i], other.enabled[i])
+		copy(buffer.unused[i], other.unused[i])
+		buffer.active[i] = other.active[i]
 	}
-	for _, otherLayer := range other.layers[len(buffer.layers):] {
-		buffer.layers = append(buffer.layers, otherLayer.clone())
+}
+
+func (buffer *tBuffer) newEntity(layer int) int {
+	var index int
+	if len(buffer.layers[layer]) <= buffer.active[layer] {
+		layers := make([]C.float, len(buffer.layers) * 2)
+		enabled := make([]C.char, len(buffer.enabled) * 2)
+		unused := make([]int, 0, len(buffer.enabled) * 2)
+		copy(layers, buffer.layers[layer])
+		copy(enabled, buffer.enabled[layer])
+		buffer.layers[layer] = layers
+		buffer.enabled[layer] = enabled
+		buffer.unused[layer] = unused
+		buffer.layersC[layer] = unsafe.Pointer(&layers[0])
+		buffer.enabledC[layer] = unsafe.Pointer(&enabled[0])
+		index = buffer.active[layer]
+	} else if len(buffer.unused[layer]) > 0 {
+		lastIndex := len(buffer.unused[layer])-1
+		index = buffer.unused[layer][lastIndex]
+		buffer.unused[layer] = buffer.unused[layer][:lastIndex]
 	}
-*/
+	buffer.enabled[layer][index] = 1
+	buffer.active[layer]++
+	return index * entityValuesCount
+}
+
+func (entity *Entity) RGBA() (float32, float32, float32, float32) {
+	offset := entity.offset
+	layer := (*entity.buffer).layers[entity.layer]
+	return float32(layer[offset+4]), float32(layer[offset+5]), float32(layer[offset+6]), float32(layer[offset+7])
+}
+
+func (entity *Entity) SetRGBA(r, g, b, a float32) {
+	offset := entity.offset
+	layer := (*entity.buffer).layers[entity.layer]
+	layer[offset+4] = C.float(r)
+	layer[offset+5] = C.float(g)
+	layer[offset+6] = C.float(b)
+	layer[offset+7] = C.float(a)
+}
+
+func (entity *Entity) XYWH() (float32, float32, float32, float32) {
+	offset := entity.offset
+	layer := (*entity.buffer).layers[entity.layer]
+	return float32(layer[offset+0]), float32(layer[offset+1]), float32(layer[offset+2]), float32(layer[offset+3])
+}
+
+func (entity *Entity) SetXY(x, y float32) {
+	offset := entity.offset
+	layer := (*entity.buffer).layers[entity.layer]
+	layer[offset+0] = C.float(x)
+	layer[offset+1] = C.float(y)
+}
+
+func (entity *Entity) SetWH(width, height float32) {
+	offset := entity.offset
+	layer := (*entity.buffer).layers[entity.layer]
+	layer[offset+2] = C.float(width)
+	layer[offset+3] = C.float(height)
+}
+
+func (entity *Entity) SetXYWH(x, y, width, height float32) {
+	offset := entity.offset
+	layer := (*entity.buffer).layers[entity.layer]
+	layer[offset+0] = C.float(x)
+	layer[offset+1] = C.float(y)
+	layer[offset+2] = C.float(width)
+	layer[offset+3] = C.float(height)
+}
+
+func (entity *Entity) init(buffer **tBuffer, layer, offset, chunkIndex, entityIndex int) {
+	entity.buffer = buffer
+	entity.layer = layer
+	entity.offset = offset
+	entity.chunk = chunkIndex
+	entity.index = entityIndex
+}
+
+func (entities *tEntities) initEntities() {
+	entities.chunks = make([][]Entity, 1, entitiesCap)
+	entities.unused = make([][]int, 1, entitiesCap)
+	entities.active = make([]int, 1, entitiesCap)
+	entities.chunks[0] = make([]Entity, chunksCap)
+	entities.unused[0] = make([]int, 0, chunksCap)
+}
+
+func (entities *tEntities) newEntity() (*Entity, int, int) {
+	for i, active := range entities.active {
+		if active < chunksCap {
+			var index int
+			if len(entities.unused) == 0 {
+				index = active
+			} else {
+				unusedIndex := len(entities.unused) - 1
+				index = entities.unused[i][unusedIndex]
+				entities.unused[i] = entities.unused[i][:unusedIndex]
+			}
+			entities.active[i]++
+			entity := &entities.chunks[i][index]
+			return entity, i, index
+		}
+	}
+	chunks := make([]Entity, chunksCap)
+	unused := make([]int, 0, chunksCap)
+	entities.chunks = append(entities.chunks, chunks)
+	entities.unused = append(entities.unused, unused)
+	entities.active = append(entities.active, 1)
+	return &chunks[0], len(entities.active) - 1, 0
 }
 
 /*
@@ -899,12 +1100,6 @@ func (layer *tImageLayer) set(other tLayer) {
 
 
 
-
-type tEntitiesLayer interface {
-	newRectEntity(buffer **tBuffer, layer, index int) *Rect
-	newImageEntity(buffer **tBuffer, layer, index int) *Image
-	release(chunk, index int)
-}
 
 type tBaseEntitiesLayer struct {
 	unused [][]int

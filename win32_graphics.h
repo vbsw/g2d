@@ -7,12 +7,43 @@
 
 /* orthographic projection */
 
-/*
 static const float projection_mat[4*4] = { 2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, -1.0f, 1.0f, 0.0f, 1.0f };
+
+/*
+#version 130
+in vec2 positionIn;
+in vec4 colorIn;
+out vec4 fragementColor;
+uniform mat4 projection = mat4(1.0);
+
+void main() {
+	gl_Position = projection * vec4(positionIn, 1.0, 1.0);
+	fragementColor = colorIn;
+}
+
+#version 130
+in vec4 fragementColor;
+out vec4 color;
+void main() {
+	color = fragementColor;
+}
 
 static LPCSTR const vs_rect_str = "#version 130\nin vec2 positionIn; in vec4 colorIn; out vec4 fragementColor; uniform mat4 projection = mat4(1.0); void main() { gl_Position = projection * vec4(positionIn, 1.0, 1.0); fragementColor = colorIn; }";
 static LPCSTR const fs_rect_str = "#version 130\nin vec4 fragementColor; out vec4 color; void main() { color = fragementColor; }";
 
+#version 130
+in vec2 positionIn;
+in vec4 colorIn;
+in vec2 texCoordIn;
+out vec4 fragementColor;
+out vec2 fragementTexCoord;
+uniform mat4 projection = mat4(1.0);
+
+void main() {
+	gl_Position = projection * vec4(positionIn, 1.0, 1.0);
+	fragementColor = colorIn;
+	fragementTexCoord = texCoordIn;
+}
 
 static LPCSTR const vs_image_str = "#version 130\n\
 in vec2 positionIn; \
@@ -25,6 +56,18 @@ void main() { \
 gl_Position = projection * vec4(positionIn, 1.0, 1.0); \
 fragementColor = colorIn; \
 fragementTexCoord = texCoordIn; }";
+
+
+#version 130
+in vec4 fragementColor;
+in vec2 fragementTexCoord;
+out vec4 color;
+uniform sampler2D textureIn;
+void main() {
+	color = fragementColor;
+	color = texture(textureIn, fragementTexCoord);
+}
+
 
 static LPCSTR const fs_image_str = "#version 130\n\
 in vec4 fragementColor; \
@@ -400,16 +443,17 @@ void g2d_gfx_init(void *const data, const int si, long long *const err1, long lo
 	wnd_data[0].image_prog.vao = objs[1];
 	wnd_data[0].image_prog.vbo = objs[4];
 	wnd_data[0].image_prog.ebo = objs[5];
-	rect_init(wnd_data, err_num, err_str);
-	if (err_num[0] == 0) {
-		image_init(wnd_data, err_num, err_str);
-		if (err_num[0] == 0) {
+	rect_init(wnd_data, err1, err_str);
+	if (err1[0] == 0) {
+		image_init(wnd_data, err1, err_str);
+		if (err1[0] == 0) {
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			memcpy(&wnd_data[0].projection_mat, projection_mat, sizeof(float)*(4*4));
 		}
 	}
 */
+	memcpy(&wnd_data[0].projection_mat, projection_mat, sizeof(float)*(4*4));
 	if (err1[0] == 0)
 		wglSwapIntervalEXT(si);
 }
@@ -426,10 +470,8 @@ void g2d_gfx_set_swap_interval(const int interval) {
 void g2d_gfx_set_view_size(void *const data, const int w, const int h) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	glViewport((WORD)0, (WORD)0, (WORD)w, (WORD)h);
-/*
 	wnd_data[0].projection_mat[0] = 2.0f / (float)w;
 	wnd_data[0].projection_mat[5] = -2.0f / (float)h;
-*/
 }
 
 void g2d_gfx_swap_buffers(void *const data, long long *const err1, long long *const err2) {

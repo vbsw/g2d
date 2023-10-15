@@ -131,6 +131,7 @@ func newWindow(abst Window) *tWindow {
 	wnd.wgt.Gfx.quitted = make(chan bool, 1)
 	wnd.wgt.Gfx.rBuffer = &wnd.wgt.Gfx.buffers[0]
 	wnd.wgt.Gfx.wBuffer = &wnd.wgt.Gfx.buffers[0]
+	wnd.wgt.Gfx.initEntities()
 	return wnd
 }
 
