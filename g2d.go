@@ -43,7 +43,7 @@ const (
 const (
 	chunksCap = 1024 * 1024 - 32
 	entitiesCap = 64
-	entityValuesCount = 20
+	entityValuesCount = 8
 	layerEntitesCount = 1024 - 32
 )
 
@@ -204,6 +204,7 @@ type tBuffer struct {
 	active      []int
 	enabledC []unsafe.Pointer
 	layersC []unsafe.Pointer
+	sizes []C.int
 	bgR, bgG, bgB C.float
 }
 
@@ -294,6 +295,7 @@ func (gfx *Graphics) CreateLayers(count int, initCapacities ...int) {
 		active := make([]int, count)
 		layersC := make([]unsafe.Pointer, count)
 		enabledC := make([]unsafe.Pointer, count)
+		sizes := make([]C.int, count)
 		for i := 0; i< count; i++ {
 			var initCapacity int
 			if i < len(initCapacities) && initCapacities[i] > 0 {
@@ -306,6 +308,7 @@ func (gfx *Graphics) CreateLayers(count int, initCapacities ...int) {
 			unused[i] = make([]int, 0, initCapacity)
 			layersC[i] = unsafe.Pointer(&layers[i][0])
 			enabledC[i] = unsafe.Pointer(&enabled[i][0])
+			sizes[i] = C.int(initCapacity)
 		}
 		if gfx.wBuffer.layers == nil {
 			gfx.wBuffer.layers = layers
@@ -314,6 +317,7 @@ func (gfx *Graphics) CreateLayers(count int, initCapacities ...int) {
 			gfx.wBuffer.active = active
 			gfx.wBuffer.layersC = layersC
 			gfx.wBuffer.enabledC = enabledC
+			gfx.wBuffer.sizes = sizes
 		} else {
 			gfx.wBuffer.layers = append(gfx.wBuffer.layers, layers...)
 			gfx.wBuffer.enabled = append(gfx.wBuffer.enabled, enabled...)
@@ -321,6 +325,7 @@ func (gfx *Graphics) CreateLayers(count int, initCapacities ...int) {
 			gfx.wBuffer.active = append(gfx.wBuffer.active, active...)
 			gfx.wBuffer.layersC = append(gfx.wBuffer.layersC, layersC...)
 			gfx.wBuffer.enabledC = append(gfx.wBuffer.enabledC, enabledC...)
+			gfx.wBuffer.sizes = append(gfx.wBuffer.sizes, sizes...)
 		}
 	}
 }
@@ -377,6 +382,7 @@ func (buffer *tBuffer) set(other *tBuffer) {
 					buffer.unused[i] = buffer.unused[i][:len(other.unused[i])]
 				}
 			}
+			buffer.sizes[i] = other.sizes[i]
 		} else {
 			buffer.layers = append(buffer.layers, make([]C.float, len(otherLayer), cap(otherLayer)))
 			buffer.enabled = append(buffer.enabled, make([]C.char, len(otherLayer), cap(otherLayer)))
@@ -384,6 +390,7 @@ func (buffer *tBuffer) set(other *tBuffer) {
 			buffer.active = append(buffer.active, 0)
 			buffer.layersC = append(buffer.layersC, unsafe.Pointer(&buffer.layers[i][0]))
 			buffer.enabledC = append(buffer.enabledC, unsafe.Pointer(&buffer.enabled[i][0]))
+			buffer.sizes = append(buffer.sizes, other.sizes[i])
 		}
 		copy(buffer.layers[i], otherLayer)
 		copy(buffer.enabled[i], other.enabled[i])
@@ -406,6 +413,7 @@ func (buffer *tBuffer) newEntity(layer int) int {
 		buffer.layersC[layer] = unsafe.Pointer(&layers[0])
 		buffer.enabledC[layer] = unsafe.Pointer(&enabled[0])
 		index = buffer.active[layer]
+		buffer.sizes[layer] *= 2
 	} else if len(buffer.unused[layer]) > 0 {
 		lastIndex := len(buffer.unused[layer])-1
 		index = buffer.unused[layer][lastIndex]
