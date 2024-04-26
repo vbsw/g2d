@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/vbsw/g2d/win32/oglf.svg)](https://pkg.go.dev/github.com/vbsw/g2d/win32/oglf) [![Go Report Card](https://goreportcard.com/badge/github.com/vbsw/g2d/win32/oglf)](https://goreportcard.com/report/github.com/vbsw/g2d/win32/oglf) [![Stability: Experimental](https://masterminds.github.io/stability/experimental.svg)](https://masterminds.github.io/stability/experimental.html)
 
 ## About
-oglf is a package for Go to load OpenGL functions. oglf is published on https://github.com/vbsw/g2d/win32/oglf.
+oglf is a package for Go to load OpenGL functions using win32. oglf is published on https://github.com/vbsw/g2d/win32/oglf.
 
 ## Copyright
 Copyright 2024, Vitali Baumtrok (vbsw@mailbox.org).

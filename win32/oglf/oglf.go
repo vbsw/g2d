@@ -5,34 +5,47 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-// Package oglf loads OpenGL functions.
+// Package oglf is an OpenGL function loader for win32.
 package oglf
 
 // #cgo CFLAGS: -DUNICODE
-// #cgo LDFLAGS: -luser32
+// #cgo LDFLAGS: -luser32 -lgdi32
 // #include "oglf.h"
 import "C"
 import (
 	"errors"
+	"github.com/vbsw/golib/cdata"
 	"strconv"
 	"unsafe"
 )
 
-// CData is for use with github.com/vbsw/golib/cdata.
-type CData struct {
+// tCData is for use with cdata.
+type tCData struct {
 }
 
-// ErrorConv converts error numbers/strings to error.
-type ErrorConv struct {
+// tErrorConv converts error numbers/strings to error.
+type tErrorConv struct {
 }
 
 // CInitFunc returns a function to initialize C data.
-func (data *CData) CInitFunc() unsafe.Pointer {
+func (data *tCData) CInitFunc() unsafe.Pointer {
 	return C.vbsw_oglf_init
 }
 
 // SetCData sets initialized C data. (unused)
-func (data *CData) SetCData(unsafe.Pointer) {
+func (data *tCData) SetCData(unsafe.Pointer) {
+}
+
+// NewCData returns a new instance of OpenGL function loader.
+// In cdata.Init first pass (pass = 0) initializes the loader,
+// second pass (pass = 1) destroys it.
+func NewCData() cdata.CData {
+	return new(tCData)
+}
+
+// NewErrorConv returns a new instance of error convertor.
+func NewErrorConv() cdata.ErrorConv {
+	return new(tErrorConv)
 }
 
 // ToError returns error numbers/string as error.
