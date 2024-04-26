@@ -14,7 +14,7 @@
 /* from glcorearb.h */
 #define GL_MAX_TEXTURE_IMAGE_UNITS        0x8872
 
-#define NLTX_ID "vbsw.g2d.analytics"
+#define ANALYTICS_ID "vbsw.g2d.analytics"
 
 /* from github.com/vbsw/golib/cdata/cdata.c */
 typedef void (*cdata_set_func_t)(cdata_t *cdata, void *data, const char *id);
@@ -31,13 +31,13 @@ void vbsw_nltx_init(const int pass, cdata_t *const cdata) {
 			GLint i_val = 0;
 			glGetIntegerv(GL_MAX_TEXTURE_SIZE, &i_val); nltx[0].max_tex_size = (int)i_val;
 			glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &i_val); nltx[0].max_tex_units = (int)i_val;
-			set(cdata, (void*)nltx, NLTX_ID);
+			set(cdata, (void*)nltx, ANALYTICS_ID);
 		} else {
 			cdata[0].err1 = 20;
 		}
 	} else if (pass < 0) {
 		cdata_get_func_t const get = (cdata_get_func_t)cdata[0].get_func;
-		nltx_t *const nltx = (nltx_t*)get(cdata, NLTX_ID);
+		nltx_t *const nltx = (nltx_t*)get(cdata, ANALYTICS_ID);
 		if (nltx)
 			free(nltx);
 	}
