@@ -5,18 +5,23 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-// Package oglf is an OpenGL function loader for win32.
-package oglf
+// Package loader is an OpenGL function loader for win32.
+package loader
 
 // #cgo CFLAGS: -DUNICODE
 // #cgo LDFLAGS: -luser32 -lgdi32
-// #include "oglf.h"
+// #include "loader.h"
 import "C"
 import (
 	"errors"
 	"github.com/vbsw/golib/cdata"
 	"strconv"
 	"unsafe"
+)
+
+var (
+	data tCData
+	conv tErrorConv
 )
 
 // tCData is for use with cdata.
@@ -29,23 +34,23 @@ type tErrorConv struct {
 
 // CInitFunc returns a function to initialize C data.
 func (data *tCData) CInitFunc() unsafe.Pointer {
-	return C.vbsw_oglf_init
+	return C.vbsw_loader_init
 }
 
 // SetCData sets initialized C data. (unused)
 func (data *tCData) SetCData(unsafe.Pointer) {
 }
 
-// NewCData returns a new instance of OpenGL function loader.
+// CData returns an instance of OpenGL function loader.
 // In cdata.Init first pass (pass = 0) initializes the loader,
 // second pass (pass = 1) destroys it.
-func NewCData() cdata.CData {
-	return new(tCData)
+func CData() cdata.CData {
+	return &data
 }
 
-// NewErrorConv returns a new instance of error convertor.
-func NewErrorConv() cdata.ErrorConv {
-	return new(tErrorConv)
+// ErrorConv returns an instance of error convertor.
+func ErrorConv() cdata.ErrorConv {
+	return &conv
 }
 
 // ToError returns error numbers/string as error.
@@ -53,25 +58,25 @@ func (errConv *tErrorConv) ToError(err1, err2 int64, info string) error {
 	if err1 >= 1000000 && err1 < 1000100 {
 		var errStr string
 		if err1 == 1000000 {
-			errStr = "vbsw.g2d.oglf GetModuleHandle failed"
+			errStr = "vbsw.g2d.loader GetModuleHandle failed"
 		} else if err1 == 1000001 {
-			errStr = "vbsw.g2d.oglf RegisterClassEx failed"
+			errStr = "vbsw.g2d.loader RegisterClassEx failed"
 		} else if err1 == 1000002 {
-			errStr = "vbsw.g2d.oglf CreateWindow failed"
+			errStr = "vbsw.g2d.loader CreateWindow failed"
 		} else if err1 == 1000003 {
-			errStr = "vbsw.g2d.oglf GetDC failed"
+			errStr = "vbsw.g2d.loader GetDC failed"
 		} else if err1 == 1000004 {
-			errStr = "vbsw.g2d.oglf ChoosePixelFormat failed"
+			errStr = "vbsw.g2d.loader ChoosePixelFormat failed"
 		} else if err1 == 1000005 {
-			errStr = "vbsw.g2d.oglf SetPixelFormat failed"
+			errStr = "vbsw.g2d.loader SetPixelFormat failed"
 		} else if err1 == 1000006 {
-			errStr = "vbsw.g2d.oglf wglCreateContext failed"
+			errStr = "vbsw.g2d.loader wglCreateContext failed"
 		} else if err1 == 1000007 {
-			errStr = "vbsw.g2d.oglf wglMakeCurrent failed"
+			errStr = "vbsw.g2d.loader wglMakeCurrent failed"
 		} else if err1 == 1000008 {
-			errStr = "vbsw.g2d.oglf get cdata failed"
+			errStr = "vbsw.g2d.loader get cdata failed"
 		} else {
-			errStr = "vbsw.g2d.oglf failed"
+			errStr = "vbsw.g2d.loader failed"
 		}
 		errStr = errStr + " (" + strconv.FormatInt(err1, 10)
 		if err2 == 0 {

@@ -18,54 +18,47 @@ import (
 	"unsafe"
 )
 
-// Analytics contains OpenGL information.
-type Analytics struct {
+var (
 	MaxTexSize  int
 	MaxTexUnits int
-}
+	data tCData
+	conv tErrorConv
+)
 
 // tCData is for use with cdata.
 type tCData struct {
-	analytics *Analytics
 }
 
 // tErrorConv is the error converter for use with cdata.
 type tErrorConv struct {
 }
 
-// NewAnalytics returns a new instance of Analytics.
-func NewAnalytics() *Analytics {
-	return new(Analytics)
+// CData returns an instance of OpenGL analytics.
+// In cdata.Init first pass (pass = 0) initializes analytics.
+func CData() cdata.CData {
+	return &data
 }
 
-// NewCData returns a wrapper for Analytics.
-// In cdata.Init first pass (pass = 0) initializes Analytics.
-func NewCData(nltx *Analytics) cdata.CData {
-	nltxData := new(tCData)
-	nltxData.analytics = nltx
-	return nltxData
-}
-
-// NewErrorConv returns a new instance of error convertor.
-func NewErrorConv() cdata.ErrorConv {
-	return new(tErrorConv)
+// ErrorConv returns a new instance of error convertor.
+func ErrorConv() cdata.ErrorConv {
+	return &conv
 }
 
 // CInitFunc returns a function to initialize C data.
-func (nltxData *tCData) CInitFunc() unsafe.Pointer {
+func (*tCData) CInitFunc() unsafe.Pointer {
 	return C.vbsw_nltx_init
 }
 
 // SetCData sets initialized C data.
-func (nltxData *tCData) SetCData(data unsafe.Pointer) {
+func (*tCData) SetCData(data unsafe.Pointer) {
 	if data != nil {
 		var mts, mtu C.int
 		C.vbsw_nltx_result_and_free(data, &mts, &mtu)
-		nltxData.analytics.MaxTexSize = int(mts)
-		nltxData.analytics.MaxTexUnits = int(mtu)
+		MaxTexSize = int(mts)
+		MaxTexUnits = int(mtu)
 	} else {
-		nltxData.analytics.MaxTexSize = 0
-		nltxData.analytics.MaxTexUnits = 0
+		MaxTexSize = 0
+		MaxTexUnits = 0
 	}
 }
 

@@ -5,26 +5,26 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-#include "oglf.h"
+#include "loader.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#define OGFL_ID "vbsw.g2d.oglf"
-#define CLASS_NAME TEXT("oglf_dummy")
+#define OGFL_ID "vbsw.g2d.loader"
+#define CLASS_NAME TEXT("loader_dummy")
 
 /* from github.com/vbsw/golib/cdata/cdata.c */
 typedef void (*cdata_set_func_t)(cdata_t *cdata, void *data, const char *id);
 typedef void* (*cdata_get_func_t)(cdata_t *cdata, const char *id);
 
 /* for external usage */
-typedef void* (oglf_load_func_t) (void *obj, const char *name, long long *err2);
-typedef struct { oglf_load_func_t *load_func; void *obj; } oglf_t;
+typedef void* (loader_load_func_t) (void *obj, const char *name, long long *err2);
+typedef struct { loader_load_func_t *load_func; void *obj; } loader_t;
 
 /* for internal usage */
 typedef struct { HINSTANCE instance; HWND hndl; HDC dc; HGLRC rc; } obj_t;
 
-static void* oglf_load(void *const obj, const char *const name, long long *const err2) {
+static void* loader_load(void *const obj, const char *const name, long long *const err2) {
 	// wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions).
 	PROC const proc = wglGetProcAddress(name);
 	const DWORD last_error = GetLastError();
@@ -36,7 +36,7 @@ static void* oglf_load(void *const obj, const char *const name, long long *const
 	}
 }
 
-void vbsw_oglf_init(const int pass, cdata_t *const cdata) {
+void vbsw_loader_init(const int pass, cdata_t *const cdata) {
 	if (pass == 0) {
 		HINSTANCE const instance = GetModuleHandle(NULL);
 		if (instance) {
@@ -71,17 +71,17 @@ void vbsw_oglf_init(const int pass, cdata_t *const cdata) {
 								HGLRC const dummy_rc = wglCreateContext(dummy_dc);
 								if (dummy_rc) {
 									if (wglMakeCurrent(dummy_dc, dummy_rc)) {
-										oglf_t *const oglf = (oglf_t*)malloc(sizeof(oglf_t) + sizeof(obj_t));
-										if (oglf) {
+										loader_t *const loader = (loader_t*)malloc(sizeof(loader_t) + sizeof(obj_t));
+										if (loader) {
 											cdata_set_func_t const set = (cdata_set_func_t)cdata[0].set_func;
-											obj_t *const obj = (obj_t*)((size_t)oglf + sizeof(oglf_t));
-											oglf[0].load_func = oglf_load;
-											oglf[0].obj = (void*)obj;
+											obj_t *const obj = (obj_t*)((size_t)loader + sizeof(loader_t));
+											loader[0].load_func = loader_load;
+											loader[0].obj = (void*)obj;
 											obj[0].instance = instance;
 											obj[0].hndl = dummy_hndl;
 											obj[0].dc = dummy_dc;
 											obj[0].rc = dummy_rc;
-											set(cdata, (void*)oglf, OGFL_ID);
+											set(cdata, (void*)loader, OGFL_ID);
 										} else {
 											cdata[0].err1 = 10;
 											wglMakeCurrent(NULL, NULL);
@@ -121,14 +121,14 @@ void vbsw_oglf_init(const int pass, cdata_t *const cdata) {
 		}
 	} else if (pass < 0 || pass == 1) {
 		cdata_get_func_t const get = (cdata_get_func_t)cdata[0].get_func;
-		oglf_t *const oglf = (oglf_t*)get(cdata, OGFL_ID);
-		if (oglf) {
-			obj_t *const obj = (obj_t*)oglf[0].obj;
+		loader_t *const loader = (loader_t*)get(cdata, OGFL_ID);
+		if (loader) {
+			obj_t *const obj = (obj_t*)loader[0].obj;
 			if (wglGetCurrentContext() == obj[0].rc)
 				wglMakeCurrent(NULL, NULL);
 			wglDeleteContext(obj[0].rc); ReleaseDC(obj[0].hndl, obj[0].dc);
 			DestroyWindow(obj[0].hndl); UnregisterClass(CLASS_NAME, obj[0].instance);
-			free(oglf);
+			free(loader);
 		} else if (pass == 1) {
 			cdata[0].err1 = 1000008;
 		}

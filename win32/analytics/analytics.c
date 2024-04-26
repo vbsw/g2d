@@ -12,7 +12,7 @@
 /* from glcorearb.h */
 #define GL_MAX_TEXTURE_IMAGE_UNITS        0x8872
 
-#define OGFL_ID      "vbsw.g2d.oglf"
+#define LOADER_ID    "vbsw.g2d.loader"
 #define ANALYTICS_ID "vbsw.g2d.analytics"
 
 /* from github.com/vbsw/golib/cdata/cdata.c */
@@ -25,7 +25,7 @@ typedef struct { int max_tex_size; int max_tex_units; } nltx_t;
 void vbsw_nltx_init(const int pass, cdata_t *const cdata) {
 	if (pass == 0) {
 		cdata_get_func_t const get = (cdata_get_func_t)cdata[0].get_func;
-		if (get(cdata, OGFL_ID)) {
+		if (get(cdata, LOADER_ID)) {
 			nltx_t *const nltx = (nltx_t*)malloc(sizeof(nltx_t));
 			if (nltx) {
 				cdata_set_func_t const set = (cdata_set_func_t)cdata[0].set_func;
