@@ -21,8 +21,8 @@ import (
 var (
 	MaxTexSize  int
 	MaxTexUnits int
-	data tCData
-	conv tErrorConv
+	data        tCData
+	conv        tErrorConv
 )
 
 // tCData is for use with cdata.
