@@ -8,8 +8,7 @@
 // Package analytics reads OpenGL info.
 package analytics
 
-// #cgo CFLAGS: -DUNICODE
-// #cgo LDFLAGS: -luser32 -lOpenGL32
+// #cgo LDFLAGS: -lOpenGL32
 // #include "analytics.h"
 import "C"
 import (
@@ -19,28 +18,37 @@ import (
 	"unsafe"
 )
 
-const unknownError = "unknown error"
-
 // Analytics contains OpenGL information.
 type Analytics struct {
 	MaxTexSize  int
 	MaxTexUnits int
 }
 
-// ErrorConv converts error numbers/strings to error.
-type ErrorConv struct {
-}
-
-// tCData implements CData interface (see github.com/vbsw/golib/cdata).
+// tCData is for use with cdata.
 type tCData struct {
 	analytics *Analytics
 }
 
-// NewCData returns initializer for Analytics.
+// tErrorConv is the error converter for use with cdata.
+type tErrorConv struct {
+}
+
+// NewAnalytics returns a new instance of Analytics.
+func NewAnalytics() *Analytics {
+	return new(Analytics)
+}
+
+// NewCData returns a wrapper for Analytics.
+// In cdata.Init first pass (pass = 0) initializes Analytics.
 func NewCData(nltx *Analytics) cdata.CData {
 	nltxData := new(tCData)
 	nltxData.analytics = nltx
 	return nltxData
+}
+
+// NewErrorConv returns a new instance of error convertor.
+func NewErrorConv() cdata.ErrorConv {
+	return new(tErrorConv)
 }
 
 // CInitFunc returns a function to initialize C data.
@@ -62,9 +70,14 @@ func (nltxData *tCData) SetCData(data unsafe.Pointer) {
 }
 
 // ToError returns error numbers/string as error.
-func (errConv *ErrorConv) ToError(err1, err2 int64, info string) error {
+func (errConv *tErrorConv) ToError(err1, err2 int64, info string) error {
 	if err1 >= 1000100 && err1 < 1000200 {
-		errStr := "g2d analytics failed"
+		var errStr string
+		if err1 == 1000100 {
+			errStr = "vbsw.g2d.analytics requires vbsw.g2d.oglf"
+		} else {
+			errStr = "vbsw.g2d.analytics failed"
+		}
 		errStr = errStr + " (" + strconv.FormatInt(err1, 10)
 		if err2 == 0 {
 			errStr = errStr + ")"
