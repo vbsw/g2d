@@ -9,7 +9,6 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <gl/GL.h>
 
 #define OGFL_ID "vbsw.g2d.oglf"
 #define CLASS_NAME TEXT("oglf_dummy")
