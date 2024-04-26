@@ -85,6 +85,7 @@ void vbsw_oglf_init(const int pass, cdata_t *const cdata) {
 											set(cdata, (void*)oglf, OGFL_ID);
 										} else {
 											cdata[0].err1 = 10;
+											wglMakeCurrent(NULL, NULL);
 											wglDeleteContext(dummy_rc); ReleaseDC(dummy_hndl, dummy_dc);
 											DestroyWindow(dummy_hndl); UnregisterClass(CLASS_NAME, instance);
 										}
