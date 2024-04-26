@@ -20,11 +20,11 @@ import (
 
 const unknownError = "unknown error"
 
-// CData is to be used with github.com/vbsw/golib/cdata.
+// CData is for use with github.com/vbsw/golib/cdata.
 type CData struct {
 }
 
-// ErrorConv converts error numbers and strings to an error.
+// ErrorConv converts error numbers and strings to error.
 type ErrorConv struct {
 }
 
@@ -37,7 +37,7 @@ func (data *CData) CInitFunc() unsafe.Pointer {
 func (data *CData) SetCData(unsafe.Pointer) {
 }
 
-// ToError returns given error numbers and string as error.
+// ToError returns error numbers and string as error.
 func (errConv *ErrorConv) ToError(err1, err2 int64, info string) error {
 	var errStr string
 	if err1 > 0 {
