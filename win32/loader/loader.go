@@ -24,11 +24,11 @@ var (
 	conv tErrorConv
 )
 
-// tCData is for use with cdata.
+// tCData is the initialization for C.
 type tCData struct {
 }
 
-// tErrorConv is the error converter for use with cdata.
+// tErrorConv is the error converter.
 type tErrorConv struct {
 }
 

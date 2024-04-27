@@ -12,8 +12,8 @@
 /* from glcorearb.h */
 #define GL_MAX_TEXTURE_IMAGE_UNITS        0x8872
 
-#define LOADER_ID    "vbsw.g2d.loader"
-#define ANALYTICS_ID "vbsw.g2d.analytics"
+#define LOADER_ID    "g2d.loader"
+#define ANALYTICS_ID "g2d.analytics"
 
 /* from github.com/vbsw/golib/cdata/cdata.c */
 typedef void (*cdata_set_func_t)(cdata_t *cdata, void *data, const char *id);

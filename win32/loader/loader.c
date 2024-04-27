@@ -10,7 +10,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#define LOADER_ID "vbsw.g2d.loader"
+#define LOADER_ID "g2d.loader"
 #define CLASS_NAME TEXT("vbsw_g2d_loader_dummy")
 
 /* from github.com/vbsw/golib/cdata/cdata.c */

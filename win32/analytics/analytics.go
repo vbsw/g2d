@@ -25,15 +25,15 @@ var (
 	conv        tErrorConv
 )
 
-// tCData is for use with cdata.
+// tCData is the initialization for C.
 type tCData struct {
 }
 
-// tErrorConv is the error converter for use with cdata.
+// tErrorConv is the error converter.
 type tErrorConv struct {
 }
 
-// CData returns an instance of OpenGL analytics.
+// CData returns an object to initialize this package.
 // In cdata.Init first pass (pass = 0) initializes analytics.
 func CData() cdata.CData {
 	return &data
