@@ -46,14 +46,14 @@ func ErrorConv() cdata.ErrorConv {
 
 // CInitFunc returns a function to initialize C data.
 func (*tCData) CInitFunc() unsafe.Pointer {
-	return C.vbsw_nltx_init
+	return C.g2d_analytics_init
 }
 
 // SetCData sets initialized C data.
 func (*tCData) SetCData(data unsafe.Pointer) {
 	if data != nil {
 		var mts, mtu C.int
-		C.vbsw_nltx_result_and_free(data, &mts, &mtu)
+		C.g2d_analytics_result_and_free(data, &mts, &mtu)
 		MaxTexSize = int(mts)
 		MaxTexUnits = int(mtu)
 	} else {
@@ -67,7 +67,7 @@ func (errConv *tErrorConv) ToError(err1, err2 int64, info string) error {
 	if err1 >= 1000100 && err1 < 1000200 {
 		var errStr string
 		if err1 == 1000100 {
-			errStr = "vbsw.g2d.analytics requires vbsw.g2d.oglf"
+			errStr = "vbsw.g2d.analytics requires vbsw.g2d.loader"
 		} else {
 			errStr = "vbsw.g2d.analytics failed"
 		}

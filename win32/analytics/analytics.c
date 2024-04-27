@@ -22,7 +22,7 @@ typedef void* (*cdata_get_func_t)(cdata_t *cdata, const char *id);
 /* for internal usage */
 typedef struct { int max_tex_size; int max_tex_units; } nltx_t;
 
-void vbsw_nltx_init(const int pass, cdata_t *const cdata) {
+void g2d_analytics_init(const int pass, cdata_t *const cdata) {
 	if (pass == 0) {
 		cdata_get_func_t const get = (cdata_get_func_t)cdata[0].get_func;
 		if (get(cdata, LOADER_ID)) {
@@ -47,7 +47,7 @@ void vbsw_nltx_init(const int pass, cdata_t *const cdata) {
 	}
 }
 
-void vbsw_nltx_result_and_free(void *const data, int *const mts, int *const mtu) {
+void g2d_analytics_result_and_free(void *const data, int *const mts, int *const mtu) {
 	if (data) {
 		nltx_t *const nltx = (nltx_t*)data;
 		mts[0] = nltx[0].max_tex_size;

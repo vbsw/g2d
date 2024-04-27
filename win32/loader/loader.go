@@ -34,7 +34,7 @@ type tErrorConv struct {
 
 // CInitFunc returns a function to initialize C data.
 func (data *tCData) CInitFunc() unsafe.Pointer {
-	return C.vbsw_loader_init
+	return C.g2d_loader_init
 }
 
 // SetCData sets initialized C data. (unused)
@@ -74,7 +74,7 @@ func (errConv *tErrorConv) ToError(err1, err2 int64, info string) error {
 		} else if err1 == 1000007 {
 			errStr = "vbsw.g2d.loader wglMakeCurrent failed"
 		} else if err1 == 1000008 {
-			errStr = "vbsw.g2d.loader get cdata failed"
+			errStr = "vbsw.g2d.loader cdata.get failed"
 		} else {
 			errStr = "vbsw.g2d.loader failed"
 		}
