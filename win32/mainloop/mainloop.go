@@ -23,6 +23,7 @@ var (
 	running bool
 )
 
+// Event is the interface to abstract event execution.
 type Event interface {
 	OnEvent()
 }
@@ -37,7 +38,7 @@ func Run() {
 	mutex.Unlock()
 }
 
-// Post posts the event to the message queue.
+// Post posts the event to the message queue. Returns an error code.
 func Post(event Event) int64 {
 	var err C.longlong
 	mutex.Lock()
@@ -51,7 +52,7 @@ func Post(event Event) int64 {
 	return int64(err)
 }
 
-// Quit stops the main loop. Unprecessed events are dropped.
+// Quit stops the main loop. Unprocessed events are dropped. Returns an error code.
 func Quit() int64 {
 	var err C.longlong
 	C.g2d_mainloop_post_quit(&err)

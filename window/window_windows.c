@@ -5,16 +5,15 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-#if defined(G2D_GFX_WIN32)
+#if defined(G2D_WINDOW_WIN32)
 
 #define OGFL_CDATA_ID "vbsw.g2d.ogfl"
 #define WINDOW_CDATA_ID "vbsw.g2d.window"
-#define RECTS_CDATA_ID "vbsw.g2d.gfx.rects"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <gl/GL.h>
-#include "gfx.h"
+#include "window.h"
 
 /* Go functions can not be passed to c directly.            */
 /* They can only be called from c.                          */
@@ -31,16 +30,27 @@ typedef void* (*cdata_get_func_t)(cdata_t *cdata, const char *id);
 typedef void* (ogfl_load_func_t) (void *obj, const char *name, long long *err);
 typedef struct { ogfl_load_func_t *load_func; void *obj; } oglf_t;
 
-void g2d_gfx_rects_init(const int pass, cdata_t *const cdata) {
+typedef void* (ogfl_load_func_t) (void *obj, const char *name, long long *err);
+typedef struct { ogfl_load_func_t *load_func; void *obj; } window_t;
+typedef struct { HINSTANCE instance; HWND hndl; HDC dc; HGLRC rc; } window_obj_t;
+
+void g2d_window_init(const int pass, cdata_t *const cdata) {
 	cdata_set_func_t const set = (cdata_set_func_t)cdata[0].set_func;
 	cdata_get_func_t const get = (cdata_get_func_t)cdata[0].get_func;
 	if (pass == 0) {
-		void **const functions = (void**)malloc(sizeof(void*)*37);
-		if (functions) {
+		HINSTANCE const instance = GetModuleHandle(NULL);
+		if (instance) {
+			window_t *const wnd = (window_t*)malloc(sizeof(window_t) + sizeof(window_obj_t));
+
 			long long err; int i;
-			oglf_t *const ogfl = (oglf_t*)get(cdata, OGFL_CDATA_ID);
-			void *const og_obj = ogfl[0].obj;
-			ogfl_load_func_t *const og_load = ogfl[0].load_func;
+			window_t *const ogfl = (window_t*)get(cdata, OGFL_CDATA_ID);
+			if (wnd) {
+				void *const og_obj = ogfl[0].obj;
+				ogfl_load_func_t *const og_load = ogfl[0].load_func;
+			} else {
+				cdata[0].err1 = 20;
+			}
+
 			/* wgl functions */
 			functions[0] = og_load(og_obj, "wglChoosePixelFormatARB", &err);
 			functions[1] = og_load(og_obj, "wglCreateContextAttribsARB", &err);
@@ -81,27 +91,16 @@ void g2d_gfx_rects_init(const int pass, cdata_t *const cdata) {
 			functions[35] = og_load(og_obj, "glGenerateMipmap", &err);
 			functions[36] = og_load(og_obj, "glActiveTexture", &err);
 
-			set(cdata, RECTS_CDATA_ID, (void*)functions);
+			set(cdata, WINDOW_CDATA_ID, (void*)functions);
 		} else {
-			cdata[0].err1 = 20;
+			cdata[0].err1 = 1200;
 		}
-	} else if (pass == 1) {
-		void *const functions = get(cdata, RECTS_CDATA_ID);
-		if (functions)
-			free(functions);
-		else
-			cdata[0].err1 = 21;
 	} else if (pass < 0) {
-		void *const functions = get(cdata, RECTS_CDATA_ID);
-		if (functions)
-			free(functions);
+		window_t *const wnd = (window_t*)get(cdata, WINDOW_CDATA_ID);
+		if (wnd)
+			free(wnd);
 	}
 }
 
-/*
-void g2d_gfx_rects_init(void **const data, int *const err_num, g2d_ul_t *const err_win32, char **const err_str) {
-}
-*/
-
-/* #if defined(G2D_GFX_WIN32) */
+/* #if defined(G2D_WINDOW_WIN32) */
 #endif

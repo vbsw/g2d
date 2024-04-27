@@ -80,48 +80,6 @@ color = texture(textureIn, fragementTexCoord); \
 }";
 
 
-static GLuint shader_create(const GLenum shader_type, LPCSTR shader, const int err_a, const int err_b, int *const err_num, char **const err_str) {
-	const GLuint id = glCreateShader(shader_type);
-	if (id) {
-		GLint compiled; glShaderSource(id, 1, &shader, NULL); glCompileShader(id);
-		glGetShaderiv(id, GL_COMPILE_STATUS, &compiled);
-		if (compiled == GL_FALSE) {
-			GLsizei err_len; err_num[0] = err_b; glGetShaderiv(id, GL_INFO_LOG_LENGTH, &err_len);
-			if (err_len > 0) {
-				err_str[0] = (char*)malloc(err_len);
-				if (err_str[0])
-					glGetShaderInfoLog(id, err_len, &err_len, (GLchar*)err_str[0]);
-			}
-			glDeleteShader(id);
-		}
-	} else {
-		err_num[0] = err_a;
-	}
-	return id;
-}
-
-static void shader_attach(const GLuint prog_id, const GLuint shader_id, const int err_a, const int err_b, int *const err_num) {
-	glAttachShader(prog_id, shader_id);
-	const GLenum err_enum = glGetError();
-	if (err_enum == GL_INVALID_VALUE) {
-		err_num[0] = err_a;
-	} else if (err_enum == GL_INVALID_OPERATION) {
-		err_num[0] = err_b;
-	}
-}
-
-static void program_check(const GLuint prog_id, const GLenum status, const int err, int *const err_num, char **const err_str) {
-	GLint success; glGetProgramiv(prog_id, status, &success);
-	if (success == GL_FALSE) {
-		GLsizei err_len; glGetProgramiv(prog_id, GL_INFO_LOG_LENGTH, &err_len); err_num[0] = err;
-		if (err_len > 0) {
-			err_str[0] = (char*)malloc(err_len);
-			if (err_str[0])
-				glGetProgramInfoLog(prog_id, err_len, &err_len, err_str[0]);
-		}
-	}
-}
-
 static void prog_use(const GLuint id, const int err_a, const int err_b, int *const err_num) {
 	glUseProgram(id);
 	const GLenum err_enum = glGetError();
@@ -433,8 +391,163 @@ static void image_init(window_data_t *const wnd_data, int *const err_num, char *
 }
 */
 
+static void program_check(const GLuint prog_id, const GLenum status, const int err, int *const err1, char **const err_str) {
+	GLint success; glGetProgramiv(prog_id, status, &success);
+	if (success == GL_FALSE) {
+		GLsizei err_len; glGetProgramiv(prog_id, GL_INFO_LOG_LENGTH, &err_len); err1[0] = err;
+		if (err_len > 0) {
+			err_str[0] = (char*)malloc(err_len);
+			if (err_str[0])
+				glGetProgramInfoLog(prog_id, err_len, &err_len, err_str[0]);
+		}
+	}
+}
+
+static void shader_attach(const GLuint prog_id, const GLuint shader_id, const int err_a, const int err_b, int *const err1) {
+	glAttachShader(prog_id, shader_id);
+	const GLenum err_enum = glGetError();
+	if (err_enum == GL_INVALID_VALUE) {
+		err1[0] = err_a;
+	} else if (err_enum == GL_INVALID_OPERATION) {
+		err1[0] = err_b;
+	}
+}
+
+static GLuint shader_create(const GLenum shader_type, LPCSTR shader, const int err_a, const int err_b, int *const err_num, char **const err_str) {
+	const GLuint id = glCreateShader(shader_type);
+	if (id) {
+		GLint compiled; glShaderSource(id, 1, &shader, NULL); glCompileShader(id);
+		glGetShaderiv(id, GL_COMPILE_STATUS, &compiled);
+		if (compiled == GL_FALSE) {
+			GLsizei err_len; err_num[0] = err_b; glGetShaderiv(id, GL_INFO_LOG_LENGTH, &err_len);
+			if (err_len > 0) {
+				err_str[0] = (char*)malloc(err_len);
+				if (err_str[0])
+					glGetShaderInfoLog(id, err_len, &err_len, (GLchar*)err_str[0]);
+			}
+			glDeleteShader(id);
+		}
+	} else {
+		err_num[0] = err_a;
+	}
+	return id;
+}
+
+static void rect_init(window_data_t *const wnd_data, long long *const err1, char **const err_str) {
+	if (err1[0] == 0) {
+		const GLuint vs_id = shader_create(GL_VERTEX_SHADER, vs_rect_str, 1000, 1001, err1, err_str);
+		if (err1[0] == 0) {
+			const GLuint fs_id = shader_create(GL_FRAGMENT_SHADER, fs_rect_str, 1002, 1003, err1, err_str);
+			if (err1[0] == 0) {
+				const size_t size = 16000;
+				wnd_data[0].rect_prog.max_size = (GLuint)size;
+				wnd_data[0].rect_prog.id = rect_prog_create(vs_id, fs_id, err1, err_str);
+				wnd_data[0].rect_prog.pos_att = att_location(wnd_data[0].rect_prog.id, "positionIn", 1010, err1);
+				wnd_data[0].rect_prog.col_att = att_location(wnd_data[0].rect_prog.id, "colorIn", 1011, err1);
+				wnd_data[0].rect_prog.proj_unif = unf_location(wnd_data[0].rect_prog.id, "projection", 1012, 1013, err1);
+				bind_vao(wnd_data[0].rect_prog.vao, 1014, err1);
+				enable_attr(wnd_data[0].rect_prog.pos_att, 1015, 1016, err1);
+				enable_attr(wnd_data[0].rect_prog.col_att, 1017, 1018, err1);
+				bind_vbo(wnd_data[0].rect_prog.vbo, 1019, 1020, err1);
+				buffer_data(GL_ARRAY_BUFFER, sizeof(float) * size * 4 * (2+4), NULL, GL_DYNAMIC_DRAW, 1021, 1022, 1023, 1024, err1);
+				vertex_att_pointer(wnd_data[0].rect_prog.pos_att, 2, sizeof(float) * (2+4), (void*)(sizeof(float) * 0), 1025, 1026, 1027, err1);
+				vertex_att_pointer(wnd_data[0].rect_prog.col_att, 4, sizeof(float) * (2+4), (void*)(sizeof(float) * 2), 1028, 1029, 1030, err1);
+				bind_ebo(wnd_data[0].rect_prog.ebo, 1031, 1032, err1);
+				if (err1[0] == 0) {
+					unsigned int *indices = (unsigned int*)malloc(sizeof(unsigned int) * size * (2+4));
+					if (indices) {
+						wnd_data[0].rect_prog.buffer = (float*)malloc(sizeof(float) * size * 4 * (2+4));
+						if (wnd_data[0].rect_prog.buffer) {
+							size_t i;
+							for (i = 0; i < size; i++) {
+								const size_t offs = i * (3+3);
+								const size_t index = i * 4;
+								indices[offs] = index; indices[offs+1] = index+1; indices[offs+2] = index+2; indices[offs+3] = index+2; indices[offs+4] = index+1; indices[offs+5] = index+3;
+							}
+							buffer_data(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * size * (3+3), indices, GL_STATIC_DRAW, 1035, 1036, 1037, 1038, err1);
+						} else {
+							err1[0] = 1034;
+						}
+						free((void*)indices);
+					} else {
+						err1[0] = 1033;
+					}
+				}
+				glDeleteShader(fs_id);
+			}
+			glDeleteShader(vs_id);
+		}
+	}
+}
+
 void g2d_gfx_init(void *const data, const int si, long long *const err1, long long *const err2, char **const err_str) {
-	GLuint objs[6]; window_data_t *const wnd_data = (window_data_t*)data;
+	GLuint objs[3]; window_data_t *const wnd_data = (window_data_t*)data;
+	glGenVertexArrays(1, objs); glGenBuffers(2, &objs[1]);
+	wnd_data[0].prog.vao = objs[0];
+	wnd_data[0].prog.vbo = objs[1];
+	wnd_data[0].prog.ebo = objs[2];
+	const GLuint vs_id = shader_create(GL_VERTEX_SHADER, vs_rect_str, 1000, 1001, err1, err_str);
+	if (err1[0] == 0) {
+		const GLuint fs_id = shader_create(GL_FRAGMENT_SHADER, fs_rect_str, 1002, 1003, err1, err_str);
+		if (err1[0] == 0) {
+			wnd_data[0].prog.id = glCreateProgram();
+			if (id) {
+				shader_attach(id, vs_id, 1105, 1106, err1);
+				if (err1[0] == 0) {
+					shader_attach(id, fs_id, 1107, 1108, err1);
+					if (err1[0] == 0) {
+						glLinkProgram(id);
+						program_check(id, GL_LINK_STATUS, 1109, err1, err_str);
+					}
+				}
+			} else {
+				err1[0] = 1104;
+			}
+
+
+
+
+
+
+			const size_t size = 16000;
+			wnd_data[0].prog.max_size = (GLuint)size;
+			wnd_data[0].prog.id = rect_prog_create(vs_id, fs_id, err1, err_str);
+			wnd_data[0].prog.pos_att = att_location(wnd_data[0].prog.id, "positionIn", 1010, err1);
+			wnd_data[0].prog.col_att = att_location(wnd_data[0].prog.id, "colorIn", 1011, err1);
+			wnd_data[0].prog.proj_unif = unf_location(wnd_data[0].prog.id, "projection", 1012, 1013, err1);
+			bind_vao(wnd_data[0].prog.vao, 1014, err1);
+			enable_attr(wnd_data[0].prog.pos_att, 1015, 1016, err1);
+			enable_attr(wnd_data[0].prog.col_att, 1017, 1018, err1);
+			bind_vbo(wnd_data[0].prog.vbo, 1019, 1020, err1);
+			buffer_data(GL_ARRAY_BUFFER, sizeof(float) * size * 4 * (2+4), NULL, GL_DYNAMIC_DRAW, 1021, 1022, 1023, 1024, err1);
+			vertex_att_pointer(wnd_data[0].prog.pos_att, 2, sizeof(float) * (2+4), (void*)(sizeof(float) * 0), 1025, 1026, 1027, err1);
+			vertex_att_pointer(wnd_data[0].prog.col_att, 4, sizeof(float) * (2+4), (void*)(sizeof(float) * 2), 1028, 1029, 1030, err1);
+			bind_ebo(wnd_data[0].prog.ebo, 1031, 1032, err1);
+			if (err1[0] == 0) {
+				unsigned int *indices = (unsigned int*)malloc(sizeof(unsigned int) * size * (2+4));
+				if (indices) {
+					wnd_data[0].prog.buffer = (float*)malloc(sizeof(float) * size * 4 * (2+4));
+					if (wnd_data[0].prog.buffer) {
+						size_t i;
+						for (i = 0; i < size; i++) {
+							const size_t offs = i * (3+3);
+							const size_t index = i * 4;
+							indices[offs] = index; indices[offs+1] = index+1; indices[offs+2] = index+2; indices[offs+3] = index+2; indices[offs+4] = index+1; indices[offs+5] = index+3;
+						}
+						buffer_data(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * size * (3+3), indices, GL_STATIC_DRAW, 1035, 1036, 1037, 1038, err1);
+					} else {
+						err1[0] = 1034;
+					}
+					free((void*)indices);
+				} else {
+					err1[0] = 1033;
+				}
+			}
+			glDeleteShader(fs_id);
+		}
+		glDeleteShader(vs_id);
+	}
+
 /*
 	glGenVertexArrays(2, objs); glGenBuffers(4, &objs[2]);
 	wnd_data[0].rect_prog.vao = objs[0];
