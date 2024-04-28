@@ -8,8 +8,17 @@
 package g2d
 
 import (
+	"errors"
 	"testing"
 )
+
+type testWindow struct {
+	WindowDummy
+}
+
+func (wnd *testWindow) OnConfig(config *Configuration) error {
+	return errors.New("testA")
+}
 
 func TestInit(t *testing.T) {
 	Init()
@@ -18,6 +27,13 @@ func TestInit(t *testing.T) {
 			t.Error("MaxTexSize not initialized")
 		} else if MaxTexUnits <= 0 {
 			t.Error("MaxTexUnits not initialized")
+		} else {
+			MainLoop(new(testWindow))
+			if Err == nil {
+				t.Error("error missing")
+			} else if Err.SysInfo != "testA" {
+				t.Error("unexpected error:", Err.SysInfo)
+			}
 		}
 	} else {
 		t.Error(Err.Str)

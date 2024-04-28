@@ -39,6 +39,9 @@ type Widget struct {
 	quitted chan bool
 }
 
+type WindowDummy struct {
+}
+
 type tWindow struct {
 	state      int
 	cbId       int
@@ -92,9 +95,9 @@ func (wnd *tWindow) logicThread() {
 						wnd.onUpdate()
 					case quitReqType:
 						wnd.onQuitReq()
-					case quitType:
-						wnd.onQuit()
 				*/
+			case quitType:
+				wnd.onQuit()
 			}
 		}
 	}
@@ -158,4 +161,44 @@ func (wnd *tWindow) onLogicError(err error) {
 	setErrorSynced(toError(4000, 0, int64(wnd.cbId), err.Error(), nil))
 	wnd.wgt.NanosCurr = time.Nanos()
 	wnd.onQuit()
+}
+
+func (_ *WindowDummy) OnConfig(config *Configuration) error {
+	return nil
+}
+
+func (_ *WindowDummy) OnCreate(widget *Widget) error {
+	return nil
+}
+
+func (_ *WindowDummy) OnUpdate() error {
+	return nil
+}
+
+func (_ *WindowDummy) OnClose() (bool, error) {
+	return true, nil
+}
+
+func (_ *WindowDummy) OnShow() error {
+	return nil
+}
+
+func (_ *WindowDummy) OnResize() error {
+	return nil
+}
+
+func (_ *WindowDummy) OnKeyDown(keyCode int, repeated uint) error {
+	return nil
+}
+
+func (_ *WindowDummy) OnKeyUp(keyCode int) error {
+	return nil
+}
+
+func (_ *WindowDummy) OnTextureLoaded(textureId int) error {
+	return nil
+}
+
+func (_ *WindowDummy) OnDestroy() error {
+	return nil
 }
