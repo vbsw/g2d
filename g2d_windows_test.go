@@ -13,7 +13,13 @@ import (
 
 func TestInit(t *testing.T) {
 	Init()
-	if Err != nil {
+	if Err == nil {
+		if MaxTexSize <= 0 {
+			t.Error("MaxTexSize not initialized")
+		} else if MaxTexUnits <= 0 {
+			t.Error("MaxTexUnits not initialized")
+		}
+	} else {
 		t.Error(Err.Str)
 	}
 }
