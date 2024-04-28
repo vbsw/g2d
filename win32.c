@@ -118,6 +118,66 @@ typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei co
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
+typedef struct {
+	HDC dc;
+	HGLRC rc;
+} context_t;
+
+typedef struct {
+	HWND hndl;
+	context_t ctx;
+} window_t;
+
+typedef struct {
+	int x, y, width, height;
+} client_t;
+
+typedef struct {
+	int width_min, height_min, width_max, height_max;
+	int borderless, dragable, fullscreen, resizable, locked;
+	DWORD style;
+} config_t;
+
+typedef struct {
+	int dragging, dragging_cust, locked;
+	int minimized, maximized, resizing;
+	int focus, shown;
+} state_t;
+
+typedef struct {
+	GLuint id, vao, vbo, ebo, max_size;
+	GLint pos_att, col_att, proj_unif;
+	float *buffer;
+} rect_program_t;
+
+typedef struct {
+	GLuint id, vao, vbo, ebo, max_size;
+	GLint pos_att, col_att, tex_att, proj_unif, tex_unif;
+	float *buffer;
+} image_program_t;
+
+typedef struct {
+	GLuint id, vao, vbo, ebo, max_size;
+	GLint pos_att, col_att, proj_unif;
+	float *buffer;
+} program_t;
+
+typedef struct {
+	window_t wnd;
+	client_t client;
+	client_t client_bak;
+	config_t config;
+	state_t state;
+	int key_repeated[255];
+	int cb_id;
+	program_t prog;
+/*
+	rect_program_t rect_prog;
+	image_program_t image_prog;
+*/
+	float projection_mat[4*4];
+} window_data_t;
+
 static const WPARAM g2d_CUSTOM_EVENT  = (WPARAM)"g2dc";
 static const WPARAM g2d_QUIT_EVENT    = (WPARAM)"g2dq";
 static LPCTSTR const class_name       = TEXT("g2d");
@@ -190,6 +250,7 @@ void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, lon
 
 #include "win32_init.h"
 #include "win32_mainloop.h"
+#include "win32_window.h"
 
 /* #if defined(VBSW_G2D_WIN32) */
 #endif

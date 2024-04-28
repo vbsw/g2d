@@ -13,21 +13,16 @@ extern void g2d_to_tstr(void **str, void *go_cstr, size_t length, long long *err
 extern void g2d_init(int *n1, int *n2, long long *err1, long long *err2);
 
 extern void g2d_mainloop_process_messages();
-extern void g2d_mainloop_post_custom(long long *err2);
-extern void g2d_mainloop_post_quit(long long *err2);
+extern void g2d_mainloop_post_custom(long long *err1, long long *err2);
+extern void g2d_mainloop_post_quit(long long *err1, long long *err2);
 extern void g2d_mainloop_clean_up();
-
-/*
-extern void g2d_process_messages();
-extern void g2d_clean_up_messages();
-extern void g2d_post_window_msg(long long *err1, long long *err2);
-extern void g2d_post_quit_msg(long long *err1, long long *err2);
 
 extern void g2d_window_create(void **data, int cb_id, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t, long long *err1, long long *err2);
 extern void g2d_window_show(void *data, long long *err1, long long *err2);
 extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
 extern void g2d_window_destroy(void *data, long long *err1, long long *err2);
 
+/*
 extern void g2d_context_make_current(void *data, long long *err1, long long *err2);
 extern void g2d_context_release(void *data, long long *err1, long long *err2);
 extern void g2d_gfx_init(void *data, int si, long long *err1, long long *err2, char **err_str);

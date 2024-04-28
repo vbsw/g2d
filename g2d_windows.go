@@ -11,6 +11,9 @@ package g2d
 // #cgo LDFLAGS: -luser32 -lgdi32 -lOpenGL32
 // #include "g2d.h"
 import "C"
+import (
+	"unsafe"
+)
 
 func Init() {
 	mutex.Lock()
@@ -24,7 +27,7 @@ func Init() {
 			quitting = false
 		} else {
 			initFailed = true
-			Err = toError(int64(err1), int64(err2), 0, "")
+			Err = toError(int64(err1), int64(err2), 0, "", nil)
 		}
 		mutex.Unlock()
 	} else {
@@ -69,32 +72,54 @@ func MainLoop(window ...Window) {
 	}
 }
 
-func launchWindow(window Window) {
-	/*
-	   wnd := new(tWindow)
-	   wnd.state = configState
-	   wnd.abst = window
-	   wnd.wgt = new(Widget)
-	   wnd.wgt.msgs = make(chan *tLogicMessage, 1000)
-	   wnd.wgt.quitted = make(chan bool, 1)
-	   wnd.cbId = register(wnd)
-	   wnd.cbIdStr = strconv.FormatInt(int64(wnd.cbId), 10)
-
-	   wnd.wgt.Gfx.msgs = make(chan *tGMessage, 1000)
-	   wnd.wgt.Gfx.quitted = make(chan bool, 1)
-	   wnd.wgt.Gfx.rBuffer = &wnd.wgt.Gfx.buffers[0]
-	   wnd.wgt.Gfx.wBuffer = &wnd.wgt.Gfx.buffers[0]
-	   wnd.wgt.Gfx.initEntities()
-
-	   go wnd.logicThread()
-	   wnd.wgt.msgs <- (&tLogicMessage{typeId: configType, nanos: nanosDelta()})
-	*/
+func Show(window ...Window) {
+	mutex.Lock()
+	if !initFailed {
+		if initialized {
+			if !quitting {
+				for _, windw := range window {
+					if windw != nil {
+						launchWindow(windw)
+					}
+				}
+			}
+			mutex.Unlock()
+		} else {
+			mutex.Unlock()
+			panic("g2d not initialized")
+		}
+	} else {
+		mutex.Unlock()
+	}
 }
 
-func quitMainLoop() int64 {
-	var err2 C.longlong
-	C.g2d_mainloop_post_quit(&err2)
-	return int64(err2)
+func launchWindow(window Window) {
+	wnd := newWindowWrapper(window)
+	go wnd.logicThread()
+	wnd.wgt.msgs <- (&tLogicMessage{typeId: configType, nanos: time.Nanos()})
+}
+
+func quitMainLoop(err1Ev, wndId int64) {
+	if running && !quitting {
+		var err1, err2 C.longlong
+		C.g2d_mainloop_post_quit(&err1, &err2)
+		quitting = true
+		if err1 != 0 && Err != nil {
+			Err = toError(err1Ev, int64(err2), wndId, "", nil)
+		}
+	}
+}
+
+func toTString(str string) (unsafe.Pointer, C.longlong) {
+	var strT unsafe.Pointer
+	var err1 C.longlong
+	if len(str) > 0 {
+		bytes := *(*[]byte)(unsafe.Pointer(&str))
+		C.g2d_to_tstr(&strT, unsafe.Pointer(&bytes[0]), C.size_t(len(str)), &err1)
+	} else {
+		C.g2d_to_tstr(&strT, nil, C.size_t(len(str)), &err1)
+	}
+	return strT, err1
 }
 
 //export g2dMainLoopInit

@@ -25,15 +25,19 @@ void g2d_mainloop_process_messages() {
 	}
 }
 
-void g2d_mainloop_post_custom(long long *const err2) {
-	if (!PostThreadMessage(thread_id, WM_APP, g2d_CUSTOM_EVENT, 0))
+void g2d_mainloop_post_custom(long long *const err1, long long *const err2) {
+	if (!PostThreadMessage(thread_id, WM_APP, g2d_CUSTOM_EVENT, 0)) {
+		err1[0] = 3999;
 		err2[0] = (long long)GetLastError();
+	}
 }
 
-void g2d_mainloop_post_quit(long long *const err2) {
-	stop = TRUE;
-	if (!PostThreadMessage(thread_id, WM_APP, g2d_QUIT_EVENT, 0))
+void g2d_mainloop_post_quit(long long *const err1, long long *const err2) {
+	if (!PostThreadMessage(thread_id, WM_APP, g2d_QUIT_EVENT, 0)) {
+		err1[0] = 3999;
 		err2[0] = (long long)GetLastError();
+	}
+	stop = TRUE;
 }
 
 void g2d_mainloop_clean_up() {

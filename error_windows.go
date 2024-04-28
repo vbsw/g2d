@@ -7,9 +7,16 @@
 
 package g2d
 
-import "strconv"
+// #include "g2d.h"
+import "C"
+import (
+	"strconv"
+	"unsafe"
+)
 
-var Err *Error
+var (
+	Err *Error
+)
 
 type Error struct {
 	AllocErr, InitErr, RunErr int64
@@ -17,9 +24,29 @@ type Error struct {
 	Str, SysInfo              string
 }
 
-func toError(err1, err2, wndId int64, sysInfo string) *Error {
+func setError(err *Error) {
+	if Err == nil {
+		Err = err
+	}
+	quitMainLoop(0, 0)
+}
+
+func setErrorSynced(err *Error) {
+	mutex.Lock()
+	if Err == nil {
+		Err = err
+	}
+	quitMainLoop(0, 0)
+	mutex.Unlock()
+}
+
+func toError(err1, err2, wndId int64, sysInfo string, sysInfoC *C.char) *Error {
 	if err1 > 0 {
 		var err *Error
+		if len(sysInfo) == 0 && sysInfoC != nil {
+			sysInfo = C.GoString(sysInfoC)
+			C.g2d_free(unsafe.Pointer(sysInfoC))
+		}
 		if err1 < 2000 {
 			err = &Error{AllocErr: err1, SysErr: err2, WndId: wndId, SysInfo: sysInfo}
 		} else if err1 < 3000 {

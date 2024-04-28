@@ -8,8 +8,33 @@
 // Package g2d is a framework to create 2D graphic applications.
 package g2d
 
+import "C"
 import (
 	"sync"
+)
+
+const (
+	configState = iota
+	runningState
+	closingState
+	quitState
+)
+
+const (
+	configType = iota
+	createType
+	showType
+	resizeType
+	keyDownType
+	keyUpType
+	updateType
+	quitReqType
+	quitType
+	leaveType
+	refreshType
+	swapIntervType
+	imageType
+	textureType
 )
 
 var (
@@ -30,7 +55,7 @@ type Configuration struct {
 	Title                             string
 }
 
-func newConfiguration(defaultTitle string) *Configuration {
+func newConfiguration() *Configuration {
 	config := new(Configuration)
 	config.ClientX = 50
 	config.ClientY = 50
@@ -47,6 +72,13 @@ func newConfiguration(defaultTitle string) *Configuration {
 	config.Fullscreen = false
 	config.Centered = true
 	config.AutoUpdate = true
-	config.Title = defaultTitle
+	config.Title = "g2d - 0.1.0"
 	return config
+}
+
+func toIntC(b bool) C.int {
+	if b {
+		return C.int(1)
+	}
+	return C.int(0)
 }

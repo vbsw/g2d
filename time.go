@@ -7,9 +7,13 @@
 
 package g2d
 
-import stdtime "time"
+import (
+	stdtime "time"
+)
 
-var time tTime
+var (
+	time tTime
+)
 
 type tTime struct {
 	start stdtime.Time
