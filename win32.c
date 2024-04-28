@@ -1,5 +1,5 @@
 /*
- *          Copyright 2023, Vitali Baumtrok.
+ *          Copyright 2024, Vitali Baumtrok.
  * Distributed under the Boost Software License, Version 1.0.
  *     (See accompanying file LICENSE or copy at
  *        http://www.boost.org/LICENSE_1_0.txt)
@@ -20,13 +20,13 @@
 #include "_cgo_export.h"
 
 /* Exported functions from Go are:                          */
-/* g2dStartWindows                                          */
-/* g2dProcessMessage                                        */
+/* g2dMainLoopInit                                          */
+/* g2dMainLoopProcessCustomEvents                           */
+
 /* g2dResize                                                */
 /* g2dKeyDown                                               */
 /* g2dKeyUp                                                 */
 /* g2dClose                                                 */
-
 
 // from wgl.h
 #define WGL_SAMPLE_BUFFERS_ARB            0x2041
@@ -118,15 +118,16 @@ typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei co
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
-static const WPARAM g2d_WINDOW_EVENT = (WPARAM)"g2dc";
-static const WPARAM g2d_QUIT_EVENT = (WPARAM)"g2dq";
-static LPCTSTR const class_name = TEXT("g2d");
+static const WPARAM g2d_CUSTOM_EVENT  = (WPARAM)"g2dc";
+static const WPARAM g2d_QUIT_EVENT    = (WPARAM)"g2dq";
+static LPCTSTR const class_name       = TEXT("g2d");
 static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
 
-static BOOL initialized = FALSE;
+static BOOL initialized   = FALSE;
 static HINSTANCE instance = NULL;
-static DWORD thread_id;
-static int windows_count = 0;
+static int windows_count  = 0;
+static DWORD thread_id    = 0;
+static BOOL stop          = FALSE;
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
@@ -188,6 +189,7 @@ void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, lon
 }
 
 #include "win32_init.h"
+#include "win32_mainloop.h"
 
 /* #if defined(VBSW_G2D_WIN32) */
 #endif

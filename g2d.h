@@ -11,8 +11,13 @@ extern void g2d_free(void *data);
 extern void g2d_to_tstr(void **str, void *go_cstr, size_t length, long long *err1);
 
 extern void g2d_init(int *n1, int *n2, long long *err1, long long *err2);
-/*
 
+extern void g2d_mainloop_process_messages();
+extern void g2d_mainloop_post_custom(long long *err2);
+extern void g2d_mainloop_post_quit(long long *err2);
+extern void g2d_mainloop_clean_up();
+
+/*
 extern void g2d_process_messages();
 extern void g2d_clean_up_messages();
 extern void g2d_post_window_msg(long long *err1, long long *err2);
