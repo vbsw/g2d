@@ -101,3 +101,23 @@ func (req *tCreateWindowRequest) OnEvent() {
 		setError(toError(int64(err1), int64(err2), int64(wnd.cbId), "", nil))
 	}
 }
+
+func (req *tShowWindowRequest) OnEvent() {
+	var err1, err2 C.longlong
+	C.g2d_window_show(req.window.dataC, &err1, &err2)
+	if err1 == 0 {
+		req.window.wgt.msgs <- (&tLogicMessage{typeId: showType, nanos: time.Nanos()})
+	} else {
+		setError(toError(int64(err1), int64(err2), int64(req.window.cbId), "", nil))
+	}
+}
+
+func (req *tDestroyWindowRequest) OnEvent() {
+	var err1, err2 C.longlong
+	C.g2d_window_destroy(req.window.dataC, &err1, &err2)
+	unregister(req.window.cbId)
+	req.window.cbId = -1
+	if err1 != 0 {
+		setError(toError(int64(err1), int64(err2), int64(req.window.cbId), "", nil))
+	}
+}
