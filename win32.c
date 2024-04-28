@@ -250,6 +250,7 @@ void g2d_to_tstr(void **const str, void *const go_cstr, const size_t length, lon
 
 #include "win32_init.h"
 #include "win32_mainloop.h"
+#include "win32_keys.h"
 #include "win32_window.h"
 
 /* #if defined(VBSW_G2D_WIN32) */

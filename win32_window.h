@@ -55,7 +55,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 	} else {
 		window_data_t *const wnd_data = (window_data_t*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 		if (wnd_data) {
-/*
 			switch (message) {
 			case WM_SIZE:
 				client_update(wnd_data);
@@ -76,7 +75,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);
 			}
-*/
 		} else {
 			result = DefWindowProc(hWnd, message, wParam, lParam);
 		}
