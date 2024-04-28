@@ -1,5 +1,5 @@
 /*
- *          Copyright 2022, Vitali Baumtrok.
+ *          Copyright 2024, Vitali Baumtrok.
  * Distributed under the Boost Software License, Version 1.0.
  *     (See accompanying file LICENSE or copy at
  *        http://www.boost.org/LICENSE_1_0.txt)
@@ -12,8 +12,8 @@ import (
 )
 
 func TestInit(t *testing.T) {
-	err := initC()
-	if err != nil {
-		t.Error(err.Error())
+	Init()
+	if Err != nil {
+		t.Error(Err.Str)
 	}
 }
