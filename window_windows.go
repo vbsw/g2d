@@ -69,6 +69,15 @@ func newWindowWrapper(window Window) *tWindow {
 	return wnd
 }
 
+func (wgt *Widget) Update() {
+	wgt.update = true
+	wgt.msgs <- nil
+}
+
+func (wgt *Widget) Close() {
+	wgt.msgs <- (&tLogicMessage{typeId: quitReqType, nanos: time.Nanos()})
+}
+
 func (wnd *tWindow) logicThread() {
 	for wnd.state != quitState {
 		msg := wnd.nextLogicMessage()
@@ -77,25 +86,25 @@ func (wnd *tWindow) logicThread() {
 			switch msg.typeId {
 			case configType:
 				wnd.onConfig()
-					case createType:
-						wnd.onCreate()
-					case showType:
-						wnd.onShow()
-					case resizeType:
-						wnd.updateProps(msg)
-						wnd.onResize()
-					case keyDownType:
-						wnd.onKeyDown(msg.valA, msg.repeated)
-					case keyUpType:
-						wnd.onKeyUp(msg.valA)
+			case createType:
+				wnd.onCreate()
+			case showType:
+				wnd.onShow()
+			case resizeType:
+				wnd.updateProps(msg)
+				wnd.onResize()
+			case keyDownType:
+				wnd.onKeyDown(msg.valA, msg.repeated)
+			case keyUpType:
+				wnd.onKeyUp(msg.valA)
 				/*
 					case textureType:
 						wnd.onTextureLoaded(msg.valA)
 				*/
-					case updateType:
-						wnd.onUpdate()
-					case quitReqType:
-						wnd.onQuitReq()
+			case updateType:
+				wnd.onUpdate()
+			case quitReqType:
+				wnd.onQuitReq()
 			case quitType:
 				wnd.onQuit()
 			}
@@ -145,7 +154,7 @@ func (wnd *tWindow) onConfig() {
 	err := wnd.abst.OnConfig(config)
 	wnd.autoUpdate = config.AutoUpdate
 	if err == nil {
-		postEvent(&tCreateWindowRequest{window: wnd, config: config}, 3998, int64(wnd.cbId))
+		toMainLoop.postMsg(&tCreateWindowRequest{window: wnd, config: config})
 	} else {
 		wnd.onLogicError(err)
 	}
@@ -156,13 +165,13 @@ func (wnd *tWindow) onCreate() {
 	err := wnd.abst.OnCreate(wnd.wgt)
 	if err == nil {
 		wnd.state = runningState
-/*
-		wnd.wgt.Gfx.running = true
-		wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
-		go wnd.graphicsThread()
-		wnd.wgt.Gfx.switchWBuffer()
-*/
-		postEvent(&tShowWindowRequest{window: wnd}, 3997, int64(wnd.cbId))
+		/*
+			wnd.wgt.Gfx.running = true
+			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
+			go wnd.graphicsThread()
+			wnd.wgt.Gfx.switchWBuffer()
+		*/
+		toMainLoop.postMsg(&tShowWindowRequest{window: wnd})
 	} else {
 		wnd.onLogicError(err)
 	}
@@ -172,10 +181,10 @@ func (wnd *tWindow) onShow() {
 	wnd.wgt.NanosPrev = wnd.wgt.NanosCurr
 	err := wnd.abst.OnShow()
 	if err == nil {
-/*
-		wnd.wgt.Gfx.switchWBuffer()
-		wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
-*/
+		/*
+			wnd.wgt.Gfx.switchWBuffer()
+			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
+		*/
 	} else {
 		wnd.onLogicError(err)
 	}
@@ -207,10 +216,10 @@ func (wnd *tWindow) onUpdate() {
 	err := wnd.abst.OnUpdate()
 	wnd.wgt.NanosPrev = wnd.wgt.NanosCurr
 	if err == nil {
-/*
-		wnd.wgt.Gfx.switchWBuffer()
-		wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
-*/
+		/*
+			wnd.wgt.Gfx.switchWBuffer()
+			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
+		*/
 	} else {
 		wnd.onLogicError(err)
 	}
@@ -222,7 +231,7 @@ func (wnd *tWindow) onQuitReq() {
 		if closeOk {
 			wnd.wgt.NanosCurr = time.Nanos()
 			wnd.onQuit()
-			postEvent(&tDestroyWindowRequest{window: wnd}, 3996, int64(wnd.cbId))
+			toMainLoop.postMsg(&tDestroyWindowRequest{window: wnd})
 		}
 	} else {
 		wnd.onLogicError(err)

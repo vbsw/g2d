@@ -41,22 +41,17 @@ func MainLoop(window ...Window) {
 	if !initFailed {
 		if initialized {
 			if !running {
-				var windowValid bool
 				Err = nil
 				time.Reset()
-				for _, windw := range window {
-					if windw != nil {
-						windowValid = true
-						launchWindow(windw)
-					}
-				}
-				if windowValid {
+				if hasAny(window) {
+					running = true
+					toMainLoop.reset()
+					Show(window...)
 					mutex.Unlock()
 					C.g2d_mainloop_process_messages()
 					mutex.Lock()
 					running = false
-					C.g2d_mainloop_clean_up()
-					events = events[:0]
+					cleanUp()
 				}
 				mutex.Unlock()
 			} else {
@@ -72,24 +67,38 @@ func MainLoop(window ...Window) {
 	}
 }
 
-func Show(window ...Window) {
-	mutex.Lock()
-	if !initFailed {
-		if initialized {
-			if !quitting {
-				for _, windw := range window {
-					if windw != nil {
-						launchWindow(windw)
-					}
-				}
-			}
-			mutex.Unlock()
-		} else {
-			mutex.Unlock()
-			panic("g2d not initialized")
+func hasAny(windows []Window) bool {
+	for _, window := range windows {
+		if window != nil {
+			return true
 		}
-	} else {
-		mutex.Unlock()
+	}
+	return false
+}
+
+func cleanUp() {
+	for _, wnd := range wndCbs {
+		if wnd != nil {
+			var err1, err2 C.longlong
+			if wnd.wgt != nil {
+				wgt := wnd.wgt
+				wgt.msgs <- (&tLogicMessage{typeId: quitType, nanos: time.Nanos()})
+				<-wgt.quitted
+			}
+			unregister(wnd.cbId)
+			C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+			if err1 != 0 {
+				setError(toError(int64(err1), 0, int64(wnd.cbId), "", nil))
+			}
+		}
+	}
+	toMainLoop.quitMessageThread()
+	C.g2d_mainloop_clean_up()
+}
+
+func Show(window ...Window) {
+	if hasAny(window) {
+		toMainLoop.postMsg(&tLaunchWindowRequest{windows: window})
 	}
 }
 
@@ -124,25 +133,14 @@ func toTString(str string) (unsafe.Pointer, C.longlong) {
 
 //export g2dMainLoopInit
 func g2dMainLoopInit() {
-	mutex.Lock()
-	running = true
-	switchEvents()
-	mutex.Unlock()
-	for _, event := range eventsOn {
-		event.OnEvent()
-	}
+	go toMainLoop.messageThread()
 }
 
-//export g2dMainLoopProcessCustomEvents
-func g2dMainLoopProcessCustomEvents(additional *C.int) {
-	mutex.Lock()
-	switchEvents()
-	mutex.Unlock()
-	for _, event := range eventsOn {
-		event.OnEvent()
-	}
-	if len(eventsOn) > 1 {
-		*additional = C.int(len(eventsOn) - 1)
+//export g2dProcessToMainLoopMessages
+func g2dProcessToMainLoopMessages() {
+	messages := toMainLoop.messages()
+	for _, message := range messages {
+		message.processRequest()
 	}
 }
 

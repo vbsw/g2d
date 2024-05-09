@@ -21,7 +21,7 @@
 
 /* Exported functions from Go are:                          */
 /* g2dMainLoopInit                                          */
-/* g2dMainLoopProcessCustomEvents                           */
+/* g2dProcessToMainLoopMessages                             */
 
 /* g2dResize                                                */
 /* g2dKeyDown                                               */

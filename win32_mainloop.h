@@ -6,16 +6,13 @@
  */
 
 void g2d_mainloop_process_messages() {
-	MSG msg; BOOL ret_code; int skip = 0; stop = FALSE;
+	MSG msg; BOOL ret_code; stop = FALSE;
 	thread_id = GetCurrentThreadId();
 	g2dMainLoopInit();
 	while (!stop && (ret_code = GetMessage(&msg, NULL, 0, 0)) > 0) {
 		if (msg.message == WM_APP) {
 			if (msg.wParam == g2d_CUSTOM_EVENT)
-				if (skip == 0)
-					g2dMainLoopProcessCustomEvents(&skip);
-				else
-					skip--;
+				g2dProcessToMainLoopMessages();
 			else if (msg.wParam == g2d_QUIT_EVENT)
 				break;
 		} else {
