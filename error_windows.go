@@ -77,20 +77,23 @@ func (err *Error) createInfo() {
 				err.Str = "g2d runtime failed"
 				err.Str += " (" + strconv.FormatInt(err.RunErr, 10)
 			} else {
-				err.Str = "custom"
-				err.Str += " (" + strconv.FormatInt(err.RunErr, 10)
+				err.Str = err.SysInfo
 			}
 		} else {
 			err.Str = "unknown"
 			err.Str += " (" + strconv.FormatInt(err.UnkErr, 10)
 		}
 		if err.SysErr == 0 {
-			err.Str = err.Str + ")"
+			if err.RunErr > 0 && err.RunErr < 4000 {
+				err.Str = err.Str + ")"
+			}
 		} else {
 			err.Str = err.Str + ", " + strconv.FormatInt(err.SysErr, 10) + ")"
 		}
 		if len(err.SysInfo) != 0 {
-			err.Str = err.Str + "; " + err.SysInfo
+			if err.RunErr > 0 && err.RunErr < 4000 {
+				err.Str = err.Str + "; " + err.SysInfo
+			}
 		}
 	}
 }
