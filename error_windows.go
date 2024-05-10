@@ -53,6 +53,8 @@ func toError(err1, err2, wndId int64, sysInfo string, sysInfoC *C.char) *Error {
 			err = &Error{InitErr: err1, SysErr: err2, WndId: wndId, SysInfo: sysInfo}
 		} else if err1 < 4000 {
 			err = &Error{RunErr: err1, SysErr: err2, WndId: wndId, SysInfo: sysInfo}
+		} else if err1 < 5000 {
+			err = &Error{RunErr: err1, SysErr: err2, WndId: wndId, SysInfo: sysInfo}
 		} else {
 			err = &Error{UnkErr: err1, SysErr: err2, WndId: wndId, SysInfo: sysInfo}
 		}
@@ -71,8 +73,13 @@ func (err *Error) createInfo() {
 			err.Str = "g2d initialization failed"
 			err.Str += " (" + strconv.FormatInt(err.InitErr, 10)
 		} else if err.RunErr != 0 {
-			err.Str = "g2d runtime failed"
-			err.Str += " (" + strconv.FormatInt(err.RunErr, 10)
+			if err.RunErr < 4000 {
+				err.Str = "g2d runtime failed"
+				err.Str += " (" + strconv.FormatInt(err.RunErr, 10)
+			} else {
+				err.Str = "custom"
+				err.Str += " (" + strconv.FormatInt(err.RunErr, 10)
+			}
 		} else {
 			err.Str = "unknown"
 			err.Str += " (" + strconv.FormatInt(err.UnkErr, 10)

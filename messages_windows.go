@@ -29,6 +29,7 @@ type tToMainLoop struct {
 	posted     []tMainLoopRequest
 	processing []tMainLoopRequest
 	nextAvail  chan bool
+	quitted    chan bool
 	mutex      sync.Mutex
 	quitting   bool
 	errAvail   bool
@@ -73,6 +74,7 @@ func (toMainLoop *tToMainLoop) reset() {
 	toMainLoop.buffered = toMainLoop.buffered[:0]
 	toMainLoop.posted = toMainLoop.posted[:0]
 	toMainLoop.nextAvail = make(chan bool, 1000)
+	toMainLoop.quitted = make(chan bool, 1)
 	toMainLoop.quitting = false
 	toMainLoop.errAvail = false
 }
@@ -117,6 +119,7 @@ func (toMainLoop *tToMainLoop) messageThread() {
 			toMainLoop.mutex.Unlock()
 		}
 	}
+	toMainLoop.quitted <- true
 }
 
 func (toMainLoop *tToMainLoop) postMsg(msg tMainLoopRequest) {
@@ -146,6 +149,7 @@ func (toMainLoop *tToMainLoop) quitMessageThread() {
 	toMainLoop.quitting = true
 	toMainLoop.nextAvail <- true
 	toMainLoop.mutex.Unlock()
+	<-toMainLoop.quitted
 }
 
 func (req *tLaunchWindowRequest) processRequest() {

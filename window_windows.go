@@ -156,7 +156,7 @@ func (wnd *tWindow) onConfig() {
 	if err == nil {
 		toMainLoop.postMsg(&tCreateWindowRequest{window: wnd, config: config})
 	} else {
-		wnd.onLogicError(err)
+		wnd.onLogicError(4999, err)
 	}
 }
 
@@ -173,7 +173,7 @@ func (wnd *tWindow) onCreate() {
 		*/
 		toMainLoop.postMsg(&tShowWindowRequest{window: wnd})
 	} else {
-		wnd.onLogicError(err)
+		wnd.onLogicError(4999, err)
 	}
 }
 
@@ -186,28 +186,28 @@ func (wnd *tWindow) onShow() {
 			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
 		*/
 	} else {
-		wnd.onLogicError(err)
+		wnd.onLogicError(4999, err)
 	}
 }
 
 func (wnd *tWindow) onResize() {
 	err := wnd.abst.OnResize()
 	if err != nil {
-		wnd.onLogicError(err)
+		wnd.onLogicError(4999, err)
 	}
 }
 
 func (wnd *tWindow) onKeyDown(keyCode int, repeated uint) {
 	err := wnd.abst.OnKeyDown(keyCode, repeated)
 	if err != nil {
-		wnd.onLogicError(err)
+		wnd.onLogicError(4999, err)
 	}
 }
 
 func (wnd *tWindow) onKeyUp(keyCode int) {
 	err := wnd.abst.OnKeyUp(keyCode)
 	if err != nil {
-		wnd.onLogicError(err)
+		wnd.onLogicError(4999, err)
 	}
 }
 
@@ -221,7 +221,7 @@ func (wnd *tWindow) onUpdate() {
 			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
 		*/
 	} else {
-		wnd.onLogicError(err)
+		wnd.onLogicError(4999, err)
 	}
 }
 
@@ -234,7 +234,7 @@ func (wnd *tWindow) onQuitReq() {
 			toMainLoop.postMsg(&tDestroyWindowRequest{window: wnd})
 		}
 	} else {
-		wnd.onLogicError(err)
+		wnd.onLogicError(4999, err)
 	}
 }
 
@@ -253,8 +253,8 @@ func (wnd *tWindow) onQuit() {
 	}
 }
 
-func (wnd *tWindow) onLogicError(err error) {
-	setErrorSynced(toError(4000, 0, int64(wnd.cbId), err.Error(), nil))
+func (wnd *tWindow) onLogicError(err1 int64, err error) {
+	toMainLoop.postErr(toError(err1, 0, int64(wnd.cbId), err.Error(), nil))
 	wnd.wgt.NanosCurr = time.Nanos()
 	wnd.onQuit()
 }
