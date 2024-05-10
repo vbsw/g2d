@@ -20,6 +20,7 @@ type Window interface {
 	OnResize() error
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
+	OnMove() error
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
@@ -97,6 +98,9 @@ func (wnd *tWindow) logicThread() {
 				wnd.onKeyDown(msg.valA, msg.repeated)
 			case keyUpType:
 				wnd.onKeyUp(msg.valA)
+			case moveType:
+				wnd.updateProps(msg)
+				wnd.onMove()
 				/*
 					case textureType:
 						wnd.onTextureLoaded(msg.valA)
@@ -211,6 +215,13 @@ func (wnd *tWindow) onKeyUp(keyCode int) {
 	}
 }
 
+func (wnd *tWindow) onMove() {
+	err := wnd.abst.OnMove()
+	if err != nil {
+		wnd.onLogicError(4999, err)
+	}
+}
+
 func (wnd *tWindow) onUpdate() {
 	wnd.wgt.NanosDelta = wnd.wgt.NanosCurr - wnd.wgt.NanosPrev
 	err := wnd.abst.OnUpdate()
@@ -288,6 +299,10 @@ func (_ *WindowDummy) OnKeyDown(keyCode int, repeated uint) error {
 }
 
 func (_ *WindowDummy) OnKeyUp(keyCode int) error {
+	return nil
+}
+
+func (_ *WindowDummy) OnMove() error {
 	return nil
 }
 

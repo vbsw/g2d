@@ -56,6 +56,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 		window_data_t *const wnd_data = (window_data_t*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 		if (wnd_data) {
 			switch (message) {
+			case WM_MOVE:
+				client_update(wnd_data);
+				result = DefWindowProc(hWnd, message, wParam, lParam);
+				g2dOnMove(wnd_data[0].cb_id);
+				break;
 			case WM_SIZE:
 				client_update(wnd_data);
 				g2dResize(wnd_data[0].cb_id);

@@ -147,42 +147,48 @@ func g2dProcessToMainLoopMessages() {
 //export g2dResize
 func g2dResize(cbIdC C.int) {
 	wnd := wndCbs[int(cbIdC)]
-	wgt := wnd.wgt
-	if wgt != nil {
+	if wnd.wgt != nil {
 		msg := &tLogicMessage{typeId: resizeType, nanos: time.Nanos()}
 		msg.props.update(wnd.dataC)
-		wgt.msgs <- msg
-		//wnd.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
+		wnd.wgt.msgs <- msg
+		//wnd.wnd.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
 	}
 }
 
 //export g2dKeyDown
 func g2dKeyDown(cbIdC, code C.int, repeated C.int) {
 	wnd := wndCbs[int(cbIdC)]
-	wgt := wnd.wgt
-	if wgt != nil {
+	if wnd.wgt != nil {
 		msg := &tLogicMessage{typeId: keyDownType, valA: int(code), repeated: uint(repeated), nanos: time.Nanos()}
 		msg.props.update(wnd.dataC)
-		wgt.msgs <- msg
+		wnd.wgt.msgs <- msg
 	}
 }
 
 //export g2dKeyUp
 func g2dKeyUp(cbIdC, code C.int) {
 	wnd := wndCbs[int(cbIdC)]
-	wgt := wnd.wgt
-	if wgt != nil {
+	if wnd.wgt != nil {
 		msg := &tLogicMessage{typeId: keyUpType, valA: int(code), nanos: time.Nanos()}
 		msg.props.update(wnd.dataC)
-		wgt.msgs <- msg
+		wnd.wgt.msgs <- msg
+	}
+}
+
+//export g2dOnMove
+func g2dOnMove(cbIdC C.int) {
+	wnd := wndCbs[int(cbIdC)]
+	if wnd.wgt != nil {
+		msg := &tLogicMessage{typeId: moveType, nanos: time.Nanos()}
+		msg.props.update(wnd.dataC)
+		wnd.wgt.msgs <- msg
 	}
 }
 
 //export g2dClose
 func g2dClose(cbIdC C.int) {
 	wnd := wndCbs[int(cbIdC)]
-	wgt := wnd.wgt
-	if wgt != nil {
-		wgt.msgs <- (&tLogicMessage{typeId: quitReqType, nanos: time.Nanos()})
+	if wnd.wgt != nil {
+		wnd.wgt.msgs <- (&tLogicMessage{typeId: quitReqType, nanos: time.Nanos()})
 	}
 }

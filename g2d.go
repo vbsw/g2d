@@ -27,6 +27,7 @@ const (
 	resizeType
 	keyDownType
 	keyUpType
+	moveType
 	updateType
 	quitReqType
 	quitType
