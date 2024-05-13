@@ -202,3 +202,23 @@ func g2dMouseMoved(cbIdC C.int) {
 		wnd.wgt.msgs <- msg
 	}
 }
+
+//export g2dButtonDown
+func g2dButtonDown(cbIdC, code, doubleClick C.int) {
+	wnd := wndCbs[int(cbIdC)]
+	if wnd.wgt != nil {
+		msg := &tLogicMessage{typeId: buttonDownType, valA: int(code), repeated: uint(doubleClick), nanos: time.Nanos()}
+		msg.props.update(wnd.dataC)
+		wnd.wgt.msgs <- msg
+	}
+}
+
+//export g2dButtonUp
+func g2dButtonUp(cbIdC, code, doubleClick C.int) {
+	wnd := wndCbs[int(cbIdC)]
+	if wnd.wgt != nil {
+		msg := &tLogicMessage{typeId: buttonUpType, valA: int(code), repeated: uint(doubleClick), nanos: time.Nanos()}
+		msg.props.update(wnd.dataC)
+		wnd.wgt.msgs <- msg
+	}
+}

@@ -29,6 +29,8 @@ const (
 	keyDownType
 	keyUpType
 	msMoveType
+	buttonDownType
+	buttonUpType
 	updateType
 	quitReqType
 	quitType

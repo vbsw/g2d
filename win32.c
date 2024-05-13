@@ -19,15 +19,6 @@
 /* _cgo_export.h is generated automatically by cgo.         */
 #include "_cgo_export.h"
 
-/* Exported functions from Go are:                          */
-/* g2dMainLoopInit                                          */
-/* g2dProcessToMainLoopMessages                             */
-/* g2dWindowMoved                                           */
-/* g2dWindowResized                                         */
-/* g2dClose                                                 */
-/* g2dKeyDown                                               */
-/* g2dKeyUp                                                 */
-
 // from wgl.h
 #define WGL_SAMPLE_BUFFERS_ARB            0x2041
 #define WGL_SAMPLES_ARB                   0x2042
@@ -134,6 +125,7 @@ typedef struct {
 
 typedef struct {
 	int x, y;
+	int double_clicked[5];
 } mouse_t;
 
 typedef struct {

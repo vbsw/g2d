@@ -22,6 +22,8 @@ type Window interface {
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
 	OnMouseMoved() error
+	OnButtonDown(buttonCode int, doubleClicked bool) error
+	OnButtonUp(buttonCode int, doubleClicked bool) error
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
@@ -105,6 +107,10 @@ func (wnd *tWindow) logicThread() {
 			case msMoveType:
 				wnd.updateProps(msg)
 				wnd.onMouseMoved()
+			case buttonDownType:
+				wnd.onButtonDown(msg.valA, msg.repeated == 1)
+			case buttonUpType:
+				wnd.onButtonUp(msg.valA, msg.repeated == 1)
 				/*
 					case textureType:
 						wnd.onTextureLoaded(msg.valA)
@@ -233,6 +239,20 @@ func (wnd *tWindow) onMouseMoved() {
 	}
 }
 
+func (wnd *tWindow) onButtonDown(buttonCode int, doubleClicked bool) {
+	err := wnd.abst.OnButtonDown(buttonCode, doubleClicked)
+	if err != nil {
+		wnd.onLogicError(4999, err)
+	}
+}
+
+func (wnd *tWindow) onButtonUp(buttonCode int, doubleClicked bool) {
+	err := wnd.abst.OnButtonUp(buttonCode, doubleClicked)
+	if err != nil {
+		wnd.onLogicError(4999, err)
+	}
+}
+
 func (wnd *tWindow) onUpdate() {
 	wnd.wgt.NanosDelta = wnd.wgt.NanosCurr - wnd.wgt.NanosPrev
 	err := wnd.abst.OnUpdate()
@@ -318,6 +338,14 @@ func (_ *WindowDummy) OnKeyUp(keyCode int) error {
 }
 
 func (_ *WindowDummy) OnMouseMoved() error {
+	return nil
+}
+
+func (_ *WindowDummy) OnButtonDown(buttonCode int, doubleClicked bool) error {
+	return nil
+}
+
+func (_ *WindowDummy) OnButtonUp(buttonCode int, doubleClicked bool) error {
 	return nil
 }
 

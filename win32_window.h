@@ -45,6 +45,18 @@ static void client_update(window_data_t *const wnd_data) {
 	wnd_data[0].client.height = (int)(rect.bottom - rect.top);
 }
 
+static void button_down(window_data_t *const wnd_data, const int button_idx, const int double_click) {
+	g2dButtonDown(wnd_data[0].cb_id, button_idx, double_click);
+	wnd_data[0].mouse.double_clicked[button_idx] = double_click;
+	SetCapture(wnd_data[0].wnd.hndl);
+}
+
+static void button_up(window_data_t *const wnd_data, const int button_idx) {
+	g2dButtonUp(wnd_data[0].cb_id, button_idx, wnd_data[0].mouse.double_clicked[button_idx]);
+	wnd_data[0].mouse.double_clicked[button_idx] = 0;
+	ReleaseCapture();
+}
+
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	LRESULT result = 0;
 	if (message == WM_NCCREATE) {
@@ -93,6 +105,51 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 				if (config.locked && !state.locked && state.focus)
 					update_clip_cursor();
 */
+				break;
+			case WM_LBUTTONDOWN:
+				button_down(wnd_data, 0, 0);
+				break;
+			case WM_LBUTTONUP:
+				button_up(wnd_data, 0);
+				break;
+			case WM_LBUTTONDBLCLK:
+				button_down(wnd_data, 0, 1);
+				break;
+			case WM_RBUTTONDOWN:
+				button_down(wnd_data, 1, 0);
+				break;
+			case WM_RBUTTONUP:
+				button_up(wnd_data, 1);
+				break;
+			case WM_RBUTTONDBLCLK:
+				button_down(wnd_data, 1, 1);
+				break;
+			case WM_MBUTTONDOWN:
+				button_down(wnd_data, 2, 0);
+				break;
+			case WM_MBUTTONUP:
+				button_up(wnd_data, 2);
+				break;
+			case WM_MBUTTONDBLCLK:
+				button_down(wnd_data, 2, 1);
+				break;
+			case WM_XBUTTONDOWN:
+				if (HIWORD(wParam) == XBUTTON1)
+					button_down(wnd_data, 3, 0);
+				else if (HIWORD(wParam) == XBUTTON2)
+					button_down(wnd_data, 4, 0);
+				break;
+			case WM_XBUTTONUP:
+				if (HIWORD(wParam) == XBUTTON1)
+					button_up(wnd_data, 3);
+				else if (HIWORD(wParam) == XBUTTON2)
+					button_up(wnd_data, 4);
+				break;
+			case WM_XBUTTONDBLCLK:
+				if (HIWORD(wParam) == XBUTTON1)
+					button_down(wnd_data, 3, 1);
+				else if (HIWORD(wParam) == XBUTTON2)
+					button_down(wnd_data, 4, 1);
 				break;
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);
