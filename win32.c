@@ -22,11 +22,11 @@
 /* Exported functions from Go are:                          */
 /* g2dMainLoopInit                                          */
 /* g2dProcessToMainLoopMessages                             */
-
-/* g2dResize                                                */
+/* g2dWindowMoved                                           */
+/* g2dWindowResized                                         */
+/* g2dClose                                                 */
 /* g2dKeyDown                                               */
 /* g2dKeyUp                                                 */
-/* g2dClose                                                 */
 
 // from wgl.h
 #define WGL_SAMPLE_BUFFERS_ARB            0x2041
@@ -133,6 +133,10 @@ typedef struct {
 } client_t;
 
 typedef struct {
+	int x, y;
+} mouse_t;
+
+typedef struct {
 	int width_min, height_min, width_max, height_max;
 	int borderless, dragable, fullscreen, resizable, locked;
 	DWORD style;
@@ -166,6 +170,7 @@ typedef struct {
 	window_t wnd;
 	client_t client;
 	client_t client_bak;
+	mouse_t mouse;
 	config_t config;
 	state_t state;
 	int key_repeated[255];

@@ -25,8 +25,10 @@ type Properties struct {
 }
 
 func (props *Properties) update(dataC unsafe.Pointer) {
-	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
-	C.g2d_window_props(dataC, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
+	var mx, my, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
+	C.g2d_window_props(dataC, &mx, &my, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
+	props.MouseX = int(mx)
+	props.MouseY = int(my)
 	props.ClientX = int(x)
 	props.ClientY = int(y)
 	props.ClientWidth = int(w)

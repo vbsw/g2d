@@ -17,10 +17,11 @@ type Window interface {
 	OnConfig(config *Configuration) error
 	OnCreate(widget *Widget) error
 	OnShow() error
-	OnResize() error
+	OnWindowMoved() error
+	OnWindowResized() error
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
-	OnMove() error
+	OnMouseMoved() error
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
@@ -91,16 +92,19 @@ func (wnd *tWindow) logicThread() {
 				wnd.onCreate()
 			case showType:
 				wnd.onShow()
-			case resizeType:
+			case wndMoveType:
 				wnd.updateProps(msg)
-				wnd.onResize()
+				wnd.onWindowMoved()
+			case wndResizeType:
+				wnd.updateProps(msg)
+				wnd.onWindowResized()
 			case keyDownType:
 				wnd.onKeyDown(msg.valA, msg.repeated)
 			case keyUpType:
 				wnd.onKeyUp(msg.valA)
-			case moveType:
+			case msMoveType:
 				wnd.updateProps(msg)
-				wnd.onMove()
+				wnd.onMouseMoved()
 				/*
 					case textureType:
 						wnd.onTextureLoaded(msg.valA)
@@ -194,8 +198,15 @@ func (wnd *tWindow) onShow() {
 	}
 }
 
-func (wnd *tWindow) onResize() {
-	err := wnd.abst.OnResize()
+func (wnd *tWindow) onWindowMoved() {
+	err := wnd.abst.OnWindowMoved()
+	if err != nil {
+		wnd.onLogicError(4999, err)
+	}
+}
+
+func (wnd *tWindow) onWindowResized() {
+	err := wnd.abst.OnWindowResized()
 	if err != nil {
 		wnd.onLogicError(4999, err)
 	}
@@ -215,8 +226,8 @@ func (wnd *tWindow) onKeyUp(keyCode int) {
 	}
 }
 
-func (wnd *tWindow) onMove() {
-	err := wnd.abst.OnMove()
+func (wnd *tWindow) onMouseMoved() {
+	err := wnd.abst.OnMouseMoved()
 	if err != nil {
 		wnd.onLogicError(4999, err)
 	}
@@ -290,7 +301,11 @@ func (_ *WindowDummy) OnShow() error {
 	return nil
 }
 
-func (_ *WindowDummy) OnResize() error {
+func (_ *WindowDummy) OnWindowMoved() error {
+	return nil
+}
+
+func (_ *WindowDummy) OnWindowResized() error {
 	return nil
 }
 
@@ -302,7 +317,7 @@ func (_ *WindowDummy) OnKeyUp(keyCode int) error {
 	return nil
 }
 
-func (_ *WindowDummy) OnMove() error {
+func (_ *WindowDummy) OnMouseMoved() error {
 	return nil
 }
 

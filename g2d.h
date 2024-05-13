@@ -19,7 +19,7 @@ extern void g2d_mainloop_clean_up();
 
 extern void g2d_window_create(void **data, int cb_id, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t, long long *err1, long long *err2);
 extern void g2d_window_show(void *data, long long *err1, long long *err2);
-extern void g2d_window_props(void *data, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
+extern void g2d_window_props(void *data, int *mx, int *my, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
 extern void g2d_window_destroy(void *data, long long *err1, long long *err2);
 
 /*

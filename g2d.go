@@ -24,10 +24,11 @@ const (
 	configType = iota
 	createType
 	showType
-	resizeType
+	wndMoveType
+	wndResizeType
 	keyDownType
 	keyUpType
-	moveType
+	msMoveType
 	updateType
 	quitReqType
 	quitType

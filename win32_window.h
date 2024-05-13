@@ -59,11 +59,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			case WM_MOVE:
 				client_update(wnd_data);
 				result = DefWindowProc(hWnd, message, wParam, lParam);
-				g2dOnMove(wnd_data[0].cb_id);
+				g2dWindowMoved(wnd_data[0].cb_id);
 				break;
 			case WM_SIZE:
 				client_update(wnd_data);
-				g2dResize(wnd_data[0].cb_id);
+				g2dWindowResized(wnd_data[0].cb_id);
 				result = DefWindowProc(hWnd, message, wParam, lParam);
 				break;
 			case WM_CLOSE:
@@ -76,6 +76,23 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			case WM_KEYUP:
 				if (!key_up_process(wnd_data, message, wParam, lParam))
 					result = DefWindowProc(hWnd, message, wParam, lParam);
+				break;
+			case WM_MOUSEMOVE:
+				wnd_data[0].mouse.x = ((int)(short)LOWORD(lParam));
+				wnd_data[0].mouse.y = ((int)(short)HIWORD(lParam));
+				g2dMouseMoved(wnd_data[0].cb_id);
+				result = DefWindowProc(hWnd, message, wParam, lParam);
+/*
+				if (state.dragging_cust && !state.maximized) {
+					move_window(client.x + (int)(short)LOWORD(lParam) - mouse.x, client.y + (int)(short)HIWORD(lParam) - mouse.y, client.width, client.height);
+				} else {
+					mouse.x = ((int)(short)LOWORD(lParam));
+					mouse.y = ((int)(short)HIWORD(lParam));
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+				}
+				if (config.locked && !state.locked && state.focus)
+					update_clip_cursor();
+*/
 				break;
 			default:
 				result = DefWindowProc(hWnd, message, wParam, lParam);
@@ -230,20 +247,22 @@ void g2d_window_destroy(void *const data, long long *err1, long long *err2) {
 	}
 }
 
-void g2d_window_props(void *const data, int *const x, int *const y, int *const w, int *const h, int *const wn, int *const hn,
+void g2d_window_props(void *const data, int *const mx, int *const my, int *const x, int *const y, int *const w, int *const h, int *const wn, int *const hn,
 	int *const wx, int *const hx, int *const b, int *const d, int *const r, int *const f, int *const l) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	*x = wnd_data[0].client.x;
-	*y = wnd_data[0].client.y;
-	*w = wnd_data[0].client.width;
-	*h = wnd_data[0].client.height;
-	*wn = wnd_data[0].config.width_min;
-	*hn = wnd_data[0].config.height_min;
-	*wx = wnd_data[0].config.width_max;
-	*hx = wnd_data[0].config.height_max;
-	*b = wnd_data[0].config.borderless;
-	*d = wnd_data[0].config.dragable;
-	*r = wnd_data[0].config.resizable;
-	*f = wnd_data[0].config.fullscreen;
-	*l = wnd_data[0].config.locked;
+	mx[0] = wnd_data[0].mouse.x;
+	my[0] = wnd_data[0].mouse.y;
+	x[0] = wnd_data[0].client.x;
+	y[0] = wnd_data[0].client.y;
+	w[0] = wnd_data[0].client.width;
+	h[0] = wnd_data[0].client.height;
+	wn[0] = wnd_data[0].config.width_min;
+	hn[0] = wnd_data[0].config.height_min;
+	wx[0] = wnd_data[0].config.width_max;
+	hx[0] = wnd_data[0].config.height_max;
+	b[0] = wnd_data[0].config.borderless;
+	d[0] = wnd_data[0].config.dragable;
+	r[0] = wnd_data[0].config.resizable;
+	f[0] = wnd_data[0].config.fullscreen;
+	l[0] = wnd_data[0].config.locked;
 }
