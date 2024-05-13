@@ -24,6 +24,7 @@ type Window interface {
 	OnMouseMoved() error
 	OnButtonDown(buttonCode int, doubleClicked bool) error
 	OnButtonUp(buttonCode int, doubleClicked bool) error
+	OnWheel(rotation float32) error
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
@@ -111,6 +112,8 @@ func (wnd *tWindow) logicThread() {
 				wnd.onButtonDown(msg.valA, msg.repeated == 1)
 			case buttonUpType:
 				wnd.onButtonUp(msg.valA, msg.repeated == 1)
+			case wheelType:
+				wnd.onWheel(msg.valB)
 				/*
 					case textureType:
 						wnd.onTextureLoaded(msg.valA)
@@ -253,6 +256,13 @@ func (wnd *tWindow) onButtonUp(buttonCode int, doubleClicked bool) {
 	}
 }
 
+func (wnd *tWindow) onWheel(rotation float32) {
+	err := wnd.abst.OnWheel(rotation)
+	if err != nil {
+		wnd.onLogicError(4999, err)
+	}
+}
+
 func (wnd *tWindow) onUpdate() {
 	wnd.wgt.NanosDelta = wnd.wgt.NanosCurr - wnd.wgt.NanosPrev
 	err := wnd.abst.OnUpdate()
@@ -346,6 +356,10 @@ func (_ *WindowDummy) OnButtonDown(buttonCode int, doubleClicked bool) error {
 }
 
 func (_ *WindowDummy) OnButtonUp(buttonCode int, doubleClicked bool) error {
+	return nil
+}
+
+func (_ *WindowDummy) OnWheel(rotation float32) error {
 	return nil
 }
 

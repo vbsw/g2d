@@ -38,6 +38,7 @@ type tToMainLoop struct {
 type tLogicMessage struct {
 	typeId   int
 	valA     int
+	valB     float32
 	repeated uint
 	nanos    int64
 	props    Properties

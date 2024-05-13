@@ -222,3 +222,13 @@ func g2dButtonUp(cbIdC, code, doubleClick C.int) {
 		wnd.wgt.msgs <- msg
 	}
 }
+
+//export g2dWheel
+func g2dWheel(cbIdC C.int, wheel C.float) {
+	wnd := wndCbs[int(cbIdC)]
+	if wnd.wgt != nil {
+		msg := &tLogicMessage{typeId: wheelType, valB: float32(wheel), nanos: time.Nanos()}
+		msg.props.update(wnd.dataC)
+		wnd.wgt.msgs <- msg
+	}
+}

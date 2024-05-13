@@ -31,6 +31,7 @@ const (
 	msMoveType
 	buttonDownType
 	buttonUpType
+	wheelType
 	updateType
 	quitReqType
 	quitType

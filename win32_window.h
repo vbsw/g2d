@@ -133,6 +133,9 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			case WM_MBUTTONDBLCLK:
 				button_down(wnd_data, 2, 1);
 				break;
+			case WM_MOUSEWHEEL:
+				g2dWheel(wnd_data[0].cb_id, (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA);
+				break;
 			case WM_XBUTTONDOWN:
 				if (HIWORD(wParam) == XBUTTON1)
 					button_down(wnd_data, 3, 0);
