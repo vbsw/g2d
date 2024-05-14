@@ -232,3 +232,21 @@ func g2dWheel(cbIdC C.int, wheel C.float) {
 		wnd.wgt.msgs <- msg
 	}
 }
+
+//export g2dWindowMinimized
+func g2dWindowMinimized(cbIdC C.int) {
+	wnd := wndCbs[int(cbIdC)]
+	if wnd.wgt != nil {
+		msg := &tLogicMessage{typeId: minimizedType, nanos: time.Nanos()}
+		wnd.wgt.msgs <- msg
+	}
+}
+
+//export g2dWindowRestored
+func g2dWindowRestored(cbIdC C.int) {
+	wnd := wndCbs[int(cbIdC)]
+	if wnd.wgt != nil {
+		msg := &tLogicMessage{typeId: restoredType, nanos: time.Nanos()}
+		wnd.wgt.msgs <- msg
+	}
+}

@@ -40,6 +40,8 @@ const (
 	swapIntervType
 	imageType
 	textureType
+	minimizedType
+	restoredType
 )
 
 var (

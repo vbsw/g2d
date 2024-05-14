@@ -67,95 +67,113 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 	} else {
 		window_data_t *const wnd_data = (window_data_t*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 		if (wnd_data) {
-			switch (message) {
-			case WM_MOVE:
-				client_update(wnd_data);
-				result = DefWindowProc(hWnd, message, wParam, lParam);
-				g2dWindowMoved(wnd_data[0].cb_id);
-				break;
-			case WM_SIZE:
-				client_update(wnd_data);
-				g2dWindowResized(wnd_data[0].cb_id);
-				result = DefWindowProc(hWnd, message, wParam, lParam);
-				break;
-			case WM_CLOSE:
-				g2dClose(wnd_data[0].cb_id);
-				break;
-			case WM_KEYDOWN:
-				if (!key_down_process(wnd_data, message, wParam, lParam))
+			if (!wnd_data[0].state.minimized) {
+				switch (message) {
+				case WM_MOVE:
+					client_update(wnd_data);
 					result = DefWindowProc(hWnd, message, wParam, lParam);
-				break;
-			case WM_KEYUP:
-				if (!key_up_process(wnd_data, message, wParam, lParam))
+					g2dWindowMoved(wnd_data[0].cb_id);
+					break;
+				case WM_SIZE:
+					client_update(wnd_data);
+					g2dWindowResized(wnd_data[0].cb_id);
 					result = DefWindowProc(hWnd, message, wParam, lParam);
-				break;
-			case WM_MOUSEMOVE:
-				wnd_data[0].mouse.x = ((int)(short)LOWORD(lParam));
-				wnd_data[0].mouse.y = ((int)(short)HIWORD(lParam));
-				g2dMouseMoved(wnd_data[0].cb_id);
-				result = DefWindowProc(hWnd, message, wParam, lParam);
+					break;
+				case WM_CLOSE:
+					g2dClose(wnd_data[0].cb_id);
+					break;
+				case WM_KEYDOWN:
+					if (!key_down_process(wnd_data, message, wParam, lParam))
+						result = DefWindowProc(hWnd, message, wParam, lParam);
+					break;
+				case WM_KEYUP:
+					if (!key_up_process(wnd_data, message, wParam, lParam))
+						result = DefWindowProc(hWnd, message, wParam, lParam);
+					break;
+				case WM_SYSCOMMAND:
+					if (wParam == SC_MINIMIZE) {
+						wnd_data[0].state.minimized = 1;
+						g2dWindowMinimized(wnd_data[0].cb_id);
+					}
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+					break;
+				case WM_MOUSEMOVE:
+					wnd_data[0].mouse.x = ((int)(short)LOWORD(lParam));
+					wnd_data[0].mouse.y = ((int)(short)HIWORD(lParam));
+					g2dMouseMoved(wnd_data[0].cb_id);
+					result = DefWindowProc(hWnd, message, wParam, lParam);
 /*
-				if (state.dragging_cust && !state.maximized) {
-					move_window(client.x + (int)(short)LOWORD(lParam) - mouse.x, client.y + (int)(short)HIWORD(lParam) - mouse.y, client.width, client.height);
-				} else {
-					mouse.x = ((int)(short)LOWORD(lParam));
-					mouse.y = ((int)(short)HIWORD(lParam));
+					if (state.dragging_cust && !state.maximized) {
+						move_window(client.x + (int)(short)LOWORD(lParam) - mouse.x, client.y + (int)(short)HIWORD(lParam) - mouse.y, client.width, client.height);
+					} else {
+						mouse.x = ((int)(short)LOWORD(lParam));
+						mouse.y = ((int)(short)HIWORD(lParam));
+						result = DefWindowProc(hWnd, message, wParam, lParam);
+					}
+					if (config.locked && !state.locked && state.focus)
+						update_clip_cursor();
+*/
+					break;
+				case WM_LBUTTONDOWN:
+					button_down(wnd_data, 0, 0);
+					break;
+				case WM_LBUTTONUP:
+					button_up(wnd_data, 0);
+					break;
+				case WM_LBUTTONDBLCLK:
+					button_down(wnd_data, 0, 1);
+					break;
+				case WM_RBUTTONDOWN:
+					button_down(wnd_data, 1, 0);
+					break;
+				case WM_RBUTTONUP:
+					button_up(wnd_data, 1);
+					break;
+				case WM_RBUTTONDBLCLK:
+					button_down(wnd_data, 1, 1);
+					break;
+				case WM_MBUTTONDOWN:
+					button_down(wnd_data, 2, 0);
+					break;
+				case WM_MBUTTONUP:
+					button_up(wnd_data, 2);
+					break;
+				case WM_MBUTTONDBLCLK:
+					button_down(wnd_data, 2, 1);
+					break;
+				case WM_MOUSEWHEEL:
+					g2dWheel(wnd_data[0].cb_id, (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA);
+					break;
+				case WM_XBUTTONDOWN:
+					if (HIWORD(wParam) == XBUTTON1)
+						button_down(wnd_data, 3, 0);
+					else if (HIWORD(wParam) == XBUTTON2)
+						button_down(wnd_data, 4, 0);
+					break;
+				case WM_XBUTTONUP:
+					if (HIWORD(wParam) == XBUTTON1)
+						button_up(wnd_data, 3);
+					else if (HIWORD(wParam) == XBUTTON2)
+						button_up(wnd_data, 4);
+					break;
+				case WM_XBUTTONDBLCLK:
+					if (HIWORD(wParam) == XBUTTON1)
+						button_down(wnd_data, 3, 1);
+					else if (HIWORD(wParam) == XBUTTON2)
+						button_down(wnd_data, 4, 1);
+					break;
+				default:
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 				}
-				if (config.locked && !state.locked && state.focus)
-					update_clip_cursor();
-*/
-				break;
-			case WM_LBUTTONDOWN:
-				button_down(wnd_data, 0, 0);
-				break;
-			case WM_LBUTTONUP:
-				button_up(wnd_data, 0);
-				break;
-			case WM_LBUTTONDBLCLK:
-				button_down(wnd_data, 0, 1);
-				break;
-			case WM_RBUTTONDOWN:
-				button_down(wnd_data, 1, 0);
-				break;
-			case WM_RBUTTONUP:
-				button_up(wnd_data, 1);
-				break;
-			case WM_RBUTTONDBLCLK:
-				button_down(wnd_data, 1, 1);
-				break;
-			case WM_MBUTTONDOWN:
-				button_down(wnd_data, 2, 0);
-				break;
-			case WM_MBUTTONUP:
-				button_up(wnd_data, 2);
-				break;
-			case WM_MBUTTONDBLCLK:
-				button_down(wnd_data, 2, 1);
-				break;
-			case WM_MOUSEWHEEL:
-				g2dWheel(wnd_data[0].cb_id, (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA);
-				break;
-			case WM_XBUTTONDOWN:
-				if (HIWORD(wParam) == XBUTTON1)
-					button_down(wnd_data, 3, 0);
-				else if (HIWORD(wParam) == XBUTTON2)
-					button_down(wnd_data, 4, 0);
-				break;
-			case WM_XBUTTONUP:
-				if (HIWORD(wParam) == XBUTTON1)
-					button_up(wnd_data, 3);
-				else if (HIWORD(wParam) == XBUTTON2)
-					button_up(wnd_data, 4);
-				break;
-			case WM_XBUTTONDBLCLK:
-				if (HIWORD(wParam) == XBUTTON1)
-					button_down(wnd_data, 3, 1);
-				else if (HIWORD(wParam) == XBUTTON2)
-					button_down(wnd_data, 4, 1);
-				break;
-			default:
+			} else {
 				result = DefWindowProc(hWnd, message, wParam, lParam);
+				if (message == WM_SETFOCUS) {
+					// restore from minimized and avoid move/resize events
+					if (wnd_data[0].state.minimized) {
+						wnd_data[0].state.minimized = 0;
+						g2dWindowRestored(wnd_data[0].cb_id);
+					}
+				}
 			}
 		} else {
 			result = DefWindowProc(hWnd, message, wParam, lParam);
