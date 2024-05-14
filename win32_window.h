@@ -75,8 +75,13 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					g2dWindowMove(wnd_data[0].cb_id);
 					break;
 				case WM_SIZE:
-					client_update(wnd_data);
-					g2dWindowResize(wnd_data[0].cb_id);
+					// avoid resize on show
+					if (wnd_data[0].state.shown != 0) {
+						client_update(wnd_data);
+						g2dWindowResize(wnd_data[0].cb_id);
+					} else {
+						wnd_data[0].state.shown = 1;
+					}
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_CLOSE:
