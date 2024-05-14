@@ -144,8 +144,8 @@ func g2dProcessToMainLoopMessages() {
 	}
 }
 
-//export g2dWindowMoved
-func g2dWindowMoved(cbIdC C.int) {
+//export g2dWindowMove
+func g2dWindowMove(cbIdC C.int) {
 	wnd := wndCbs[int(cbIdC)]
 	if wnd.wgt != nil {
 		msg := &tLogicMessage{typeId: wndMoveType, nanos: time.Nanos()}
@@ -154,8 +154,8 @@ func g2dWindowMoved(cbIdC C.int) {
 	}
 }
 
-//export g2dWindowResized
-func g2dWindowResized(cbIdC C.int) {
+//export g2dWindowResize
+func g2dWindowResize(cbIdC C.int) {
 	wnd := wndCbs[int(cbIdC)]
 	if wnd.wgt != nil {
 		msg := &tLogicMessage{typeId: wndResizeType, nanos: time.Nanos()}
@@ -193,8 +193,8 @@ func g2dKeyUp(cbIdC, code C.int) {
 	}
 }
 
-//export g2dMouseMoved
-func g2dMouseMoved(cbIdC C.int) {
+//export g2dMouseMove
+func g2dMouseMove(cbIdC C.int) {
 	wnd := wndCbs[int(cbIdC)]
 	if wnd.wgt != nil {
 		msg := &tLogicMessage{typeId: msMoveType, nanos: time.Nanos()}
@@ -233,20 +233,20 @@ func g2dWheel(cbIdC C.int, wheel C.float) {
 	}
 }
 
-//export g2dWindowMinimized
-func g2dWindowMinimized(cbIdC C.int) {
+//export g2dWindowMinimize
+func g2dWindowMinimize(cbIdC C.int) {
 	wnd := wndCbs[int(cbIdC)]
 	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: minimizedType, nanos: time.Nanos()}
+		msg := &tLogicMessage{typeId: minimizeType, nanos: time.Nanos()}
 		wnd.wgt.msgs <- msg
 	}
 }
 
-//export g2dWindowRestored
-func g2dWindowRestored(cbIdC C.int) {
+//export g2dWindowRestore
+func g2dWindowRestore(cbIdC C.int) {
 	wnd := wndCbs[int(cbIdC)]
 	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: restoredType, nanos: time.Nanos()}
+		msg := &tLogicMessage{typeId: restoreType, nanos: time.Nanos()}
 		wnd.wgt.msgs <- msg
 	}
 }

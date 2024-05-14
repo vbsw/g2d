@@ -18,15 +18,15 @@ type Window interface {
 	OnCreate(widget *Widget) error
 	OnShow() error
 	OnWindowMoved() error
-	OnWindowResized() error
+	OnWindowResize() error
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
-	OnMouseMoved() error
+	OnMouseMove() error
 	OnButtonDown(buttonCode int, doubleClicked bool) error
 	OnButtonUp(buttonCode int, doubleClicked bool) error
 	OnWheel(rotation float32) error
-	OnWindowMinimized() error
-	OnWindowRestored() error
+	OnWindowMinimize() error
+	OnWindowRestore() error
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
@@ -102,24 +102,24 @@ func (wnd *tWindow) logicThread() {
 				wnd.onWindowMoved()
 			case wndResizeType:
 				wnd.updateProps(msg)
-				wnd.onWindowResized()
+				wnd.onWindowResize()
 			case keyDownType:
 				wnd.onKeyDown(msg.valA, msg.repeated)
 			case keyUpType:
 				wnd.onKeyUp(msg.valA)
 			case msMoveType:
 				wnd.updateProps(msg)
-				wnd.onMouseMoved()
+				wnd.onMouseMove()
 			case buttonDownType:
 				wnd.onButtonDown(msg.valA, msg.repeated != 0)
 			case buttonUpType:
 				wnd.onButtonUp(msg.valA, msg.repeated != 0)
 			case wheelType:
 				wnd.onWheel(msg.valB)
-			case minimizedType:
-				wnd.onWindowMinimized()
-			case restoredType:
-				wnd.onWindowRestored()
+			case minimizeType:
+				wnd.onWindowMinimize()
+			case restoreType:
+				wnd.onWindowRestore()
 				/*
 					case textureType:
 						wnd.onTextureLoaded(msg.valA)
@@ -220,8 +220,8 @@ func (wnd *tWindow) onWindowMoved() {
 	}
 }
 
-func (wnd *tWindow) onWindowResized() {
-	err := wnd.abst.OnWindowResized()
+func (wnd *tWindow) onWindowResize() {
+	err := wnd.abst.OnWindowResize()
 	if err != nil {
 		wnd.onLogicError(4999, err)
 	}
@@ -241,8 +241,8 @@ func (wnd *tWindow) onKeyUp(keyCode int) {
 	}
 }
 
-func (wnd *tWindow) onMouseMoved() {
-	err := wnd.abst.OnMouseMoved()
+func (wnd *tWindow) onMouseMove() {
+	err := wnd.abst.OnMouseMove()
 	if err != nil {
 		wnd.onLogicError(4999, err)
 	}
@@ -269,15 +269,15 @@ func (wnd *tWindow) onWheel(rotation float32) {
 	}
 }
 
-func (wnd *tWindow) onWindowMinimized() {
-	err := wnd.abst.OnWindowMinimized()
+func (wnd *tWindow) onWindowMinimize() {
+	err := wnd.abst.OnWindowMinimize()
 	if err != nil {
 		wnd.onLogicError(4999, err)
 	}
 }
 
-func (wnd *tWindow) onWindowRestored() {
-	err := wnd.abst.OnWindowRestored()
+func (wnd *tWindow) onWindowRestore() {
+	err := wnd.abst.OnWindowRestore()
 	if err != nil {
 		wnd.onLogicError(4999, err)
 	}
@@ -355,7 +355,7 @@ func (_ *WindowDummy) OnWindowMoved() error {
 	return nil
 }
 
-func (_ *WindowDummy) OnWindowResized() error {
+func (_ *WindowDummy) OnWindowResize() error {
 	return nil
 }
 
@@ -367,7 +367,7 @@ func (_ *WindowDummy) OnKeyUp(keyCode int) error {
 	return nil
 }
 
-func (_ *WindowDummy) OnMouseMoved() error {
+func (_ *WindowDummy) OnMouseMove() error {
 	return nil
 }
 
@@ -383,11 +383,11 @@ func (_ *WindowDummy) OnWheel(rotation float32) error {
 	return nil
 }
 
-func (_ *WindowDummy) OnWindowMinimized() error {
+func (_ *WindowDummy) OnWindowMinimize() error {
 	return nil
 }
 
-func (_ *WindowDummy) OnWindowRestored() error {
+func (_ *WindowDummy) OnWindowRestore() error {
 	return nil
 }
 

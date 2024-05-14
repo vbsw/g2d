@@ -72,11 +72,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 				case WM_MOVE:
 					client_update(wnd_data);
 					result = DefWindowProc(hWnd, message, wParam, lParam);
-					g2dWindowMoved(wnd_data[0].cb_id);
+					g2dWindowMove(wnd_data[0].cb_id);
 					break;
 				case WM_SIZE:
 					client_update(wnd_data);
-					g2dWindowResized(wnd_data[0].cb_id);
+					g2dWindowResize(wnd_data[0].cb_id);
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_CLOSE:
@@ -93,14 +93,14 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 				case WM_SYSCOMMAND:
 					if (wParam == SC_MINIMIZE) {
 						wnd_data[0].state.minimized = 1;
-						g2dWindowMinimized(wnd_data[0].cb_id);
+						g2dWindowMinimize(wnd_data[0].cb_id);
 					}
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_MOUSEMOVE:
 					wnd_data[0].mouse.x = ((int)(short)LOWORD(lParam));
 					wnd_data[0].mouse.y = ((int)(short)HIWORD(lParam));
-					g2dMouseMoved(wnd_data[0].cb_id);
+					g2dMouseMove(wnd_data[0].cb_id);
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 /*
 					if (state.dragging_cust && !state.maximized) {
@@ -171,7 +171,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					// restore from minimized and avoid move/resize events
 					if (wnd_data[0].state.minimized) {
 						wnd_data[0].state.minimized = 0;
-						g2dWindowRestored(wnd_data[0].cb_id);
+						g2dWindowRestore(wnd_data[0].cb_id);
 					}
 				}
 			}
