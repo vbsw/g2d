@@ -13,9 +13,34 @@ import (
 	"unsafe"
 )
 
-type Window interface {
+type Frame struct {
+	X, Y, Width, Height int
+}
+
+type Time struct {
+	Prev, Curr, Delta int64
+}
+
+type Mouse struct {
+	X, Y int
+}
+
+type Window struct {
+	Frame      Frame
+	Time      Time
+	Mouse      Mouse
+	state      int
+	cbId       int
+	dataC      unsafe.Pointer
+	autoUpdate bool
+	update     bool
+	msgs       chan *tLogicMessage
+	quitted    chan bool
+}
+
+type abstractWindow interface {
 	OnConfig(config *Configuration) error
-	OnCreate(widget *Widget) error
+	OnCreate() error
 	OnShow() error
 	OnWindowMoved() error
 	OnWindowResize() error
@@ -31,131 +56,162 @@ type Window interface {
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy() error
+	impl() *Window
 }
 
-type Widget struct {
-	ClientX, ClientY          int
-	ClientWidth, ClientHeight int
-	MouseX, MouseY            int
-	NanosPrev                 int64
-	NanosCurr                 int64
-	NanosDelta                int64
-	update                    bool
-	// Gfx                       Graphics
-	msgs    chan *tLogicMessage
-	quitted chan bool
+func (wnd *Window) Update() {
+	wnd.update = true
+	wnd.msgs <- nil
 }
 
-type WindowDummy struct {
+func (wnd *Window) Close() {
+	wnd.msgs <- (&tLogicMessage{typeId: quitReqType, nanos: time.Nanos()})
 }
 
-type tWindow struct {
-	state      int
-	cbId       int
-	abst       Window
-	wgt        *Widget
-	dataC      unsafe.Pointer
-	autoUpdate bool
+func (_ *Window) OnConfig(config *Configuration) error {
+	return nil
 }
 
-func newWindowWrapper(window Window) *tWindow {
-	wnd := new(tWindow)
-	wnd.state = configState
-	wnd.abst = window
-	wnd.wgt = new(Widget)
-	wnd.wgt.msgs = make(chan *tLogicMessage, 1000)
-	wnd.wgt.quitted = make(chan bool, 1)
-	wnd.cbId = register(wnd)
-	/*
-	   wnd.wgt.Gfx.msgs = make(chan *tGraphicsMessage, 1000)
-	   wnd.wgt.Gfx.quitted = make(chan bool, 1)
-	   wnd.wgt.Gfx.rBuffer = &wnd.wgt.Gfx.buffers[0]
-	   wnd.wgt.Gfx.wBuffer = &wnd.wgt.Gfx.buffers[0]
-	   wnd.wgt.Gfx.initEntities()
-	*/
+func (_ *Window) OnCreate() error {
+	return nil
+}
+
+func (_ *Window) OnShow() error {
+	return nil
+}
+
+func (_ *Window) OnWindowMoved() error {
+	return nil
+}
+
+func (_ *Window) OnWindowResize() error {
+	return nil
+}
+
+func (_ *Window) OnKeyDown(keyCode int, repeated uint) error {
+	return nil
+}
+
+func (_ *Window) OnKeyUp(keyCode int) error {
+	return nil
+}
+
+func (_ *Window) OnMouseMove() error {
+	return nil
+}
+
+func (_ *Window) OnButtonDown(buttonCode int, doubleClicked bool) error {
+	return nil
+}
+
+func (_ *Window) OnButtonUp(buttonCode int, doubleClicked bool) error {
+	return nil
+}
+
+func (_ *Window) OnWheel(rotation float32) error {
+	return nil
+}
+
+func (_ *Window) OnWindowMinimize() error {
+	return nil
+}
+
+func (_ *Window) OnWindowRestore() error {
+	return nil
+}
+
+func (_ *Window) OnTextureLoaded(textureId int) error {
+	return nil
+}
+
+func (_ *Window) OnUpdate() error {
+	return nil
+}
+
+func (_ *Window) OnClose() (bool, error) {
+	return true, nil
+}
+
+func (_ *Window) OnDestroy() error {
+	return nil
+}
+
+func (wnd *Window) impl() *Window {
 	return wnd
 }
 
-func (wgt *Widget) Update() {
-	wgt.update = true
-	wgt.msgs <- nil
-}
-
-func (wgt *Widget) Close() {
-	wgt.msgs <- (&tLogicMessage{typeId: quitReqType, nanos: time.Nanos()})
-}
-
-func (wnd *tWindow) logicThread() {
+func logicThread(abst abstractWindow) {
+	wnd := abst.impl()
 	for wnd.state != quitState {
 		msg := wnd.nextLogicMessage()
 		if msg != nil {
-			wnd.wgt.NanosCurr = msg.nanos
+			wnd.Time.Curr = msg.nanos
 			switch msg.typeId {
 			case configType:
-				wnd.onConfig()
+				onConfig(abst, wnd)
 			case createType:
-				wnd.onCreate()
+				onCreate(abst, wnd)
 			case showType:
-				wnd.onShow()
+				onShow(abst, wnd)
 			case wndMoveType:
 				wnd.updateProps(msg)
-				wnd.onWindowMoved()
+				onWindowMoved(abst, wnd)
 			case wndResizeType:
 				wnd.updateProps(msg)
-				wnd.onWindowResize()
+				onWindowResize(abst, wnd)
 			case keyDownType:
-				wnd.onKeyDown(msg.valA, msg.repeated)
+				onKeyDown(abst, wnd, msg.valA, msg.repeated)
 			case keyUpType:
-				wnd.onKeyUp(msg.valA)
+				onKeyUp(abst, wnd, msg.valA)
 			case msMoveType:
 				wnd.updateProps(msg)
-				wnd.onMouseMove()
+				onMouseMove(abst, wnd)
 			case buttonDownType:
-				wnd.onButtonDown(msg.valA, msg.repeated != 0)
+				onButtonDown(abst, wnd, msg.valA, msg.repeated != 0)
 			case buttonUpType:
-				wnd.onButtonUp(msg.valA, msg.repeated != 0)
+				onButtonUp(abst, wnd, msg.valA, msg.repeated != 0)
 			case wheelType:
-				wnd.onWheel(msg.valB)
+				onWheel(abst, wnd, msg.valB)
 			case minimizeType:
-				wnd.onWindowMinimize()
+				onWindowMinimize(abst, wnd)
 			case restoreType:
-				wnd.onWindowRestore()
+				onWindowRestore(abst, wnd)
 				/*
 					case textureType:
-						wnd.onTextureLoaded(msg.valA)
+						onTextureLoaded(abst, wnd, msg.valA)
 				*/
 			case updateType:
-				wnd.onUpdate()
+				onUpdate(abst, wnd)
 			case quitReqType:
-				wnd.onQuitReq()
+				onQuitReq(abst, wnd)
 			case quitType:
-				wnd.onQuit()
+				onQuit(abst, wnd)
 			}
 		}
 	}
 	/*
-		wnd.wgt.Gfx.rBuffer = nil
-		wnd.wgt.Gfx.wBuffer = nil
-		wnd.wgt.Gfx.buffers[0].layers = nil
-		wnd.wgt.Gfx.buffers[1].layers = nil
-		wnd.wgt.Gfx.buffers[2].layers = nil
-		wnd.wgt.Gfx.entitiesLayers = nil
+		wnd.Gfx.rBuffer = nil
+		wnd.Gfx.wBuffer = nil
+		wnd.Gfx.buffers[0].layers = nil
+		wnd.Gfx.buffers[1].layers = nil
+		wnd.Gfx.buffers[2].layers = nil
+		wnd.Gfx.entitiesLayers = nil
 	*/
-	wnd.wgt = nil
+	wnd = nil
 }
 
-func (wnd *tWindow) nextLogicMessage() *tLogicMessage {
+func (wnd *Window) nextLogicMessage() *tLogicMessage {
 	var message *tLogicMessage
-	if wnd.state > configState && wnd.state < closingState && (wnd.autoUpdate || wnd.wgt.update) {
+	if wnd.state > configState && wnd.state < closingState && (wnd.autoUpdate || wnd.update) {
 		select {
-		case msg := <-wnd.wgt.msgs:
+		case msg := <-wnd.msgs:
 			message = msg
 		default:
-			wnd.wgt.update = false
+			wnd.update = false
 			message = &tLogicMessage{typeId: updateType, nanos: time.Nanos()}
 		}
 	} else {
-		message = <-wnd.wgt.msgs
+		message = <-wnd.msgs
 	}
 	if wnd.state == closingState && message.typeId != quitType {
 		message = nil
@@ -163,238 +219,170 @@ func (wnd *tWindow) nextLogicMessage() *tLogicMessage {
 	return message
 }
 
-func (wnd *tWindow) updateProps(msg *tLogicMessage) {
-	wnd.wgt.ClientX = msg.props.ClientX
-	wnd.wgt.ClientY = msg.props.ClientY
-	wnd.wgt.ClientWidth = msg.props.ClientWidth
-	wnd.wgt.ClientHeight = msg.props.ClientHeight
-	wnd.wgt.MouseX = msg.props.MouseX
-	wnd.wgt.MouseY = msg.props.MouseY
+func (wnd *Window) updateProps(msg *tLogicMessage) {
+	wnd.Frame.X = msg.props.ClientX
+	wnd.Frame.Y = msg.props.ClientY
+	wnd.Frame.Width = msg.props.ClientWidth
+	wnd.Frame.Height = msg.props.ClientHeight
+	wnd.Mouse.X = msg.props.MouseX
+	wnd.Mouse.Y = msg.props.MouseY
 }
 
-func (wnd *tWindow) onConfig() {
+func onConfig(abst abstractWindow, wnd *Window) {
 	config := newConfiguration()
-	err := wnd.abst.OnConfig(config)
+	err := abst.OnConfig(config)
 	wnd.autoUpdate = config.AutoUpdate
 	if err == nil {
-		toMainLoop.postMsg(&tCreateWindowRequest{window: wnd, config: config})
+		toMainLoop.postMsg(&tCreateWindowRequest{abst: abst, config: config})
 	} else {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onCreate() {
-	wnd.wgt.NanosPrev = wnd.wgt.NanosCurr
-	err := wnd.abst.OnCreate(wnd.wgt)
+func onCreate(abst abstractWindow, wnd *Window) {
+	wnd.Time.Prev = wnd.Time.Curr
+	err := abst.OnCreate()
 	if err == nil {
 		wnd.state = runningState
 		/*
-			wnd.wgt.Gfx.running = true
-			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
+			wnd.Gfx.running = true
+			wnd.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
 			go wnd.graphicsThread()
-			wnd.wgt.Gfx.switchWBuffer()
+			wnd.Gfx.switchWBuffer()
 		*/
-		toMainLoop.postMsg(&tShowWindowRequest{window: wnd})
+		toMainLoop.postMsg(&tShowWindowRequest{abst: abst})
 	} else {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onShow() {
-	wnd.wgt.NanosPrev = wnd.wgt.NanosCurr
-	err := wnd.abst.OnShow()
+func onShow(abst abstractWindow, wnd *Window) {
+	wnd.Time.Prev = wnd.Time.Curr
+	err := abst.OnShow()
 	if err == nil {
 		/*
-			wnd.wgt.Gfx.switchWBuffer()
-			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
+			wnd.Gfx.switchWBuffer()
+			wnd.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
 		*/
 	} else {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onWindowMoved() {
-	err := wnd.abst.OnWindowMoved()
+func onWindowMoved(abst abstractWindow, wnd *Window) {
+	err := abst.OnWindowMoved()
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onWindowResize() {
-	err := wnd.abst.OnWindowResize()
+func onWindowResize(abst abstractWindow, wnd *Window) {
+	err := abst.OnWindowResize()
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onKeyDown(keyCode int, repeated uint) {
-	err := wnd.abst.OnKeyDown(keyCode, repeated)
+func onKeyDown(abst abstractWindow, wnd *Window, keyCode int, repeated uint) {
+	err := abst.OnKeyDown(keyCode, repeated)
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onKeyUp(keyCode int) {
-	err := wnd.abst.OnKeyUp(keyCode)
+func onKeyUp(abst abstractWindow, wnd *Window, keyCode int) {
+	err := abst.OnKeyUp(keyCode)
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onMouseMove() {
-	err := wnd.abst.OnMouseMove()
+func onMouseMove(abst abstractWindow, wnd *Window) {
+	err := abst.OnMouseMove()
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onButtonDown(buttonCode int, doubleClicked bool) {
-	err := wnd.abst.OnButtonDown(buttonCode, doubleClicked)
+func onButtonDown(abst abstractWindow, wnd *Window, buttonCode int, doubleClicked bool) {
+	err := abst.OnButtonDown(buttonCode, doubleClicked)
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onButtonUp(buttonCode int, doubleClicked bool) {
-	err := wnd.abst.OnButtonUp(buttonCode, doubleClicked)
+func onButtonUp(abst abstractWindow, wnd *Window, buttonCode int, doubleClicked bool) {
+	err := abst.OnButtonUp(buttonCode, doubleClicked)
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onWheel(rotation float32) {
-	err := wnd.abst.OnWheel(rotation)
+func onWheel(abst abstractWindow, wnd *Window, rotation float32) {
+	err := abst.OnWheel(rotation)
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onWindowMinimize() {
-	err := wnd.abst.OnWindowMinimize()
+func onWindowMinimize(abst abstractWindow, wnd *Window) {
+	err := abst.OnWindowMinimize()
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onWindowRestore() {
-	err := wnd.abst.OnWindowRestore()
+func onWindowRestore(abst abstractWindow, wnd *Window) {
+	err := abst.OnWindowRestore()
 	if err != nil {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onUpdate() {
-	wnd.wgt.NanosDelta = wnd.wgt.NanosCurr - wnd.wgt.NanosPrev
-	err := wnd.abst.OnUpdate()
-	wnd.wgt.NanosPrev = wnd.wgt.NanosCurr
+func onUpdate(abst abstractWindow, wnd *Window) {
+	wnd.Time.Delta = wnd.Time.Curr - wnd.Time.Prev
+	err := abst.OnUpdate()
+	wnd.Time.Prev = wnd.Time.Curr
 	if err == nil {
 		/*
-			wnd.wgt.Gfx.switchWBuffer()
-			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
+			wnd.Gfx.switchWBuffer()
+			wnd.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
 		*/
 	} else {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onQuitReq() {
-	closeOk, err := wnd.abst.OnClose()
+func onQuitReq(abst abstractWindow, wnd *Window) {
+	closeOk, err := abst.OnClose()
 	if err == nil {
 		if closeOk {
-			wnd.wgt.NanosCurr = time.Nanos()
-			wnd.onQuit()
-			toMainLoop.postMsg(&tDestroyWindowRequest{window: wnd})
+			wnd.Time.Curr = time.Nanos()
+			onQuit(abst, wnd)
+			toMainLoop.postMsg(&tDestroyWindowRequest{abst: abst})
 		}
 	} else {
-		wnd.onLogicError(4999, err)
+		onLogicError(abst, wnd, 4999, err)
 	}
 }
 
-func (wnd *tWindow) onQuit() {
+func onQuit(abst abstractWindow, wnd *Window) {
 	/*
-		if wnd.wgt.Gfx.running {
-			wnd.wgt.Gfx.msgs <- &tGraphicsMessage{typeId: quitType}
-			<- wnd.wgt.Gfx.quitted
+		if wnd.Gfx.running {
+			wnd.Gfx.msgs <- &tGraphicsMessage{typeId: quitType}
+			<- wnd.Gfx.quitted
 		}
 	*/
-	err := wnd.abst.OnDestroy()
-	wnd.wgt.quitted <- true
+	err := abst.OnDestroy()
+	wnd.quitted <- true
 	wnd.state = quitState
 	if err != nil {
 		setErrorSynced(toError(4000, 0, int64(wnd.cbId), err.Error(), nil))
 	}
 }
 
-func (wnd *tWindow) onLogicError(err1 int64, err error) {
+func onLogicError(abst abstractWindow, wnd *Window, err1 int64, err error) {
 	toMainLoop.postErr(toError(err1, 0, int64(wnd.cbId), err.Error(), nil))
-	wnd.wgt.NanosCurr = time.Nanos()
-	wnd.onQuit()
-}
-
-func (_ *WindowDummy) OnConfig(config *Configuration) error {
-	return nil
-}
-
-func (_ *WindowDummy) OnCreate(widget *Widget) error {
-	return nil
-}
-
-func (_ *WindowDummy) OnUpdate() error {
-	return nil
-}
-
-func (_ *WindowDummy) OnClose() (bool, error) {
-	return true, nil
-}
-
-func (_ *WindowDummy) OnShow() error {
-	return nil
-}
-
-func (_ *WindowDummy) OnWindowMoved() error {
-	return nil
-}
-
-func (_ *WindowDummy) OnWindowResize() error {
-	return nil
-}
-
-func (_ *WindowDummy) OnKeyDown(keyCode int, repeated uint) error {
-	return nil
-}
-
-func (_ *WindowDummy) OnKeyUp(keyCode int) error {
-	return nil
-}
-
-func (_ *WindowDummy) OnMouseMove() error {
-	return nil
-}
-
-func (_ *WindowDummy) OnButtonDown(buttonCode int, doubleClicked bool) error {
-	return nil
-}
-
-func (_ *WindowDummy) OnButtonUp(buttonCode int, doubleClicked bool) error {
-	return nil
-}
-
-func (_ *WindowDummy) OnWheel(rotation float32) error {
-	return nil
-}
-
-func (_ *WindowDummy) OnWindowMinimize() error {
-	return nil
-}
-
-func (_ *WindowDummy) OnWindowRestore() error {
-	return nil
-}
-
-func (_ *WindowDummy) OnTextureLoaded(textureId int) error {
-	return nil
-}
-
-func (_ *WindowDummy) OnDestroy() error {
-	return nil
+	wnd.Time.Curr = time.Nanos()
+	onQuit(abst, wnd)
 }

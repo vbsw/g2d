@@ -8,25 +8,25 @@
 package g2d
 
 var (
-	wndCbs     []*tWindow
-	wndCbsNext []int
+	abstCbs     []abstractWindow
+	abstCbsNext []int
 )
 
-func register(wnd *tWindow) int {
-	var cbId int
-	if len(wndCbsNext) == 0 {
-		wndCbs = append(wndCbs, wnd)
-		cbId = len(wndCbs) - 1
+func register(abst abstractWindow) int {
+	var cbIndex int
+	if len(abstCbsNext) == 0 {
+		abstCbs = append(abstCbs, abst)
+		cbIndex = len(abstCbs) - 1
 	} else {
-		indexLast := len(wndCbsNext) - 1
-		cbId = wndCbsNext[indexLast]
-		wndCbsNext = wndCbsNext[:indexLast]
-		wndCbs[cbId] = wnd
+		indexLast := len(abstCbsNext) - 1
+		cbIndex = abstCbsNext[indexLast]
+		abstCbsNext = abstCbsNext[:indexLast]
+		abstCbs[cbIndex] = abst
 	}
-	return cbId
+	return cbIndex
 }
 
-func unregister(cbId int) {
-	wndCbs[cbId] = nil
-	wndCbsNext = append(wndCbsNext, cbId)
+func unregister(cbIndex int) {
+	abstCbs[cbIndex] = nil
+	abstCbsNext = append(abstCbsNext, cbIndex)
 }

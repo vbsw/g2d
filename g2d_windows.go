@@ -36,7 +36,7 @@ func Init() {
 	}
 }
 
-func MainLoop(window ...Window) {
+func MainLoop(window ...interface{}) {
 	mutex.Lock()
 	if !initFailed {
 		if initialized {
@@ -67,7 +67,7 @@ func MainLoop(window ...Window) {
 	}
 }
 
-func hasAny(windows []Window) bool {
+func hasAny(windows []interface{}) bool {
 	for _, window := range windows {
 		if window != nil {
 			return true
@@ -77,14 +77,12 @@ func hasAny(windows []Window) bool {
 }
 
 func cleanUp() {
-	for _, wnd := range wndCbs {
-		if wnd != nil {
+	for _, abst := range abstCbs {
+		if abst != nil {
 			var err1, err2 C.longlong
-			if wnd.wgt != nil {
-				wgt := wnd.wgt
-				wgt.msgs <- (&tLogicMessage{typeId: quitType, nanos: time.Nanos()})
-				<-wgt.quitted
-			}
+			wnd := abst.impl()
+			wnd.msgs <- (&tLogicMessage{typeId: quitType, nanos: time.Nanos()})
+			<-wnd.quitted
 			unregister(wnd.cbId)
 			C.g2d_window_destroy(wnd.dataC, &err1, &err2)
 			if err1 != 0 {
@@ -96,16 +94,17 @@ func cleanUp() {
 	C.g2d_mainloop_clean_up()
 }
 
-func Show(window ...Window) {
-	if hasAny(window) {
-		toMainLoop.postMsg(&tLaunchWindowRequest{windows: window})
+func Show(window ...interface{}) {
+	for _, wnd := range window {
+		if wnd != nil {
+			switch abst := wnd.(type) {
+			case abstractWindow:
+				toMainLoop.postMsg(&tLaunchWindowRequest{abst: abst})
+			default:
+				panic("g2d Window not embedded")
+			}
+		}
 	}
-}
-
-func launchWindow(window Window) {
-	wnd := newWindowWrapper(window)
-	go wnd.logicThread()
-	wnd.wgt.msgs <- (&tLogicMessage{typeId: configType, nanos: time.Nanos()})
 }
 
 func quitMainLoop(err1Ev, wndId int64) {
@@ -146,107 +145,85 @@ func g2dProcessToMainLoopMessages() {
 
 //export g2dWindowMove
 func g2dWindowMove(cbIdC C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: wndMoveType, nanos: time.Nanos()}
-		msg.props.update(wnd.dataC)
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: wndMoveType, nanos: time.Nanos()}
+	msg.props.update(wnd.dataC)
+	wnd.msgs <- msg
 }
 
 //export g2dWindowResize
 func g2dWindowResize(cbIdC C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: wndResizeType, nanos: time.Nanos()}
-		msg.props.update(wnd.dataC)
-		wnd.wgt.msgs <- msg
-		//wnd.wnd.wgt.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: wndResizeType, nanos: time.Nanos()}
+	msg.props.update(wnd.dataC)
+	wnd.msgs <- msg
+	//wnd.wnd.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
 }
 
 //export g2dClose
 func g2dClose(cbIdC C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		wnd.wgt.msgs <- (&tLogicMessage{typeId: quitReqType, nanos: time.Nanos()})
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	wnd.msgs <- (&tLogicMessage{typeId: quitReqType, nanos: time.Nanos()})
 }
 
 //export g2dKeyDown
 func g2dKeyDown(cbIdC, code C.int, repeated C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: keyDownType, valA: int(code), repeated: uint(repeated), nanos: time.Nanos()}
-		msg.props.update(wnd.dataC)
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: keyDownType, valA: int(code), repeated: uint(repeated), nanos: time.Nanos()}
+	msg.props.update(wnd.dataC)
+	wnd.msgs <- msg
 }
 
 //export g2dKeyUp
 func g2dKeyUp(cbIdC, code C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: keyUpType, valA: int(code), nanos: time.Nanos()}
-		msg.props.update(wnd.dataC)
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: keyUpType, valA: int(code), nanos: time.Nanos()}
+	msg.props.update(wnd.dataC)
+	wnd.msgs <- msg
 }
 
 //export g2dMouseMove
 func g2dMouseMove(cbIdC C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: msMoveType, nanos: time.Nanos()}
-		msg.props.update(wnd.dataC)
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: msMoveType, nanos: time.Nanos()}
+	msg.props.update(wnd.dataC)
+	wnd.msgs <- msg
 }
 
 //export g2dButtonDown
 func g2dButtonDown(cbIdC, code, doubleClick C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: buttonDownType, valA: int(code), repeated: uint(doubleClick), nanos: time.Nanos()}
-		msg.props.update(wnd.dataC)
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: buttonDownType, valA: int(code), repeated: uint(doubleClick), nanos: time.Nanos()}
+	msg.props.update(wnd.dataC)
+	wnd.msgs <- msg
 }
 
 //export g2dButtonUp
 func g2dButtonUp(cbIdC, code, doubleClick C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: buttonUpType, valA: int(code), repeated: uint(doubleClick), nanos: time.Nanos()}
-		msg.props.update(wnd.dataC)
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: buttonUpType, valA: int(code), repeated: uint(doubleClick), nanos: time.Nanos()}
+	msg.props.update(wnd.dataC)
+	wnd.msgs <- msg
 }
 
 //export g2dWheel
 func g2dWheel(cbIdC C.int, wheel C.float) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: wheelType, valB: float32(wheel), nanos: time.Nanos()}
-		msg.props.update(wnd.dataC)
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: wheelType, valB: float32(wheel), nanos: time.Nanos()}
+	msg.props.update(wnd.dataC)
+	wnd.msgs <- msg
 }
 
 //export g2dWindowMinimize
 func g2dWindowMinimize(cbIdC C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: minimizeType, nanos: time.Nanos()}
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: minimizeType, nanos: time.Nanos()}
+	wnd.msgs <- msg
 }
 
 //export g2dWindowRestore
 func g2dWindowRestore(cbIdC C.int) {
-	wnd := wndCbs[int(cbIdC)]
-	if wnd.wgt != nil {
-		msg := &tLogicMessage{typeId: restoreType, nanos: time.Nanos()}
-		wnd.wgt.msgs <- msg
-	}
+	wnd := abstCbs[int(cbIdC)].impl()
+	msg := &tLogicMessage{typeId: restoreType, nanos: time.Nanos()}
+	wnd.msgs <- msg
 }

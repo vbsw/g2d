@@ -54,20 +54,20 @@ type tGraphicsMessage struct {
 }
 
 type tLaunchWindowRequest struct {
-	windows []Window
+	abst abstractWindow
 }
 
 type tCreateWindowRequest struct {
-	window *tWindow
+	abst abstractWindow
 	config *Configuration
 }
 
 type tShowWindowRequest struct {
-	window *tWindow
+	abst abstractWindow
 }
 
 type tDestroyWindowRequest struct {
-	window *tWindow
+	abst abstractWindow
 }
 
 func (toMainLoop *tToMainLoop) reset() {
@@ -154,11 +154,20 @@ func (toMainLoop *tToMainLoop) quitMessageThread() {
 }
 
 func (req *tLaunchWindowRequest) processRequest() {
-	for _, window := range req.windows {
-		if window != nil {
-			launchWindow(window)
-		}
-	}
+	wnd := req.abst.impl()
+	wnd.state = configState
+	wnd.msgs = make(chan *tLogicMessage, 1000)
+	wnd.quitted = make(chan bool, 1)
+	wnd.cbId = register(req.abst)
+	/*
+	   wnd.Gfx.msgs = make(chan *tGraphicsMessage, 1000)
+	   wnd.Gfx.quitted = make(chan bool, 1)
+	   wnd.Gfx.rBuffer = &wnd.Gfx.buffers[0]
+	   wnd.Gfx.wBuffer = &wnd.Gfx.buffers[0]
+	   wnd.Gfx.initEntities()
+	*/
+	go logicThread(req.abst)
+	wnd.msgs <- (&tLogicMessage{typeId: configType, nanos: time.Nanos()})
 }
 
 func (req *tLaunchWindowRequest) err1(err1 C.longlong) int64 {
@@ -172,7 +181,7 @@ func (req *tLaunchWindowRequest) wndId() int64 {
 func (req *tCreateWindowRequest) processRequest() {
 	var err1, err2 C.longlong
 	config := req.config
-	wnd := req.window
+	wnd := req.abst.impl()
 	x := C.int(config.ClientX)
 	y := C.int(config.ClientY)
 	w := C.int(config.ClientWidth)
@@ -194,7 +203,7 @@ func (req *tCreateWindowRequest) processRequest() {
 		if err1 == 0 {
 			msg := &tLogicMessage{typeId: createType, nanos: time.Nanos()}
 			msg.props.update(wnd.dataC)
-			wnd.wgt.msgs <- msg
+			wnd.msgs <- msg
 		} else {
 			toMainLoop.postErr(toError(int64(err1), int64(err2), int64(wnd.cbId), "", nil))
 		}
@@ -208,16 +217,17 @@ func (req *tCreateWindowRequest) err1(err1 C.longlong) int64 {
 }
 
 func (req *tCreateWindowRequest) wndId() int64 {
-	return int64(req.window.cbId)
+	return int64(req.abst.impl().cbId)
 }
 
 func (req *tShowWindowRequest) processRequest() {
 	var err1, err2 C.longlong
-	C.g2d_window_show(req.window.dataC, &err1, &err2)
+	wnd := req.abst.impl()
+	C.g2d_window_show(wnd.dataC, &err1, &err2)
 	if err1 == 0 {
-		req.window.wgt.msgs <- (&tLogicMessage{typeId: showType, nanos: time.Nanos()})
+		wnd.msgs <- (&tLogicMessage{typeId: showType, nanos: time.Nanos()})
 	} else {
-		toMainLoop.postErr(toError(int64(err1), int64(err2), int64(req.window.cbId), "", nil))
+		toMainLoop.postErr(toError(int64(err1), int64(err2), int64(wnd.cbId), "", nil))
 	}
 }
 
@@ -226,16 +236,17 @@ func (req *tShowWindowRequest) err1(err1 C.longlong) int64 {
 }
 
 func (req *tShowWindowRequest) wndId() int64 {
-	return int64(req.window.cbId)
+	return int64(req.abst.impl().cbId)
 }
 
 func (req *tDestroyWindowRequest) processRequest() {
 	var err1, err2 C.longlong
-	C.g2d_window_destroy(req.window.dataC, &err1, &err2)
-	unregister(req.window.cbId)
-	req.window.cbId = -1
+	wnd := req.abst.impl()
+	C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+	unregister(wnd.cbId)
+	wnd.cbId = -1
 	if err1 != 0 {
-		toMainLoop.postErr(toError(int64(err1), int64(err2), int64(req.window.cbId), "", nil))
+		toMainLoop.postErr(toError(int64(err1), int64(err2), int64(wnd.cbId), "", nil))
 	}
 }
 
@@ -244,5 +255,5 @@ func (req *tDestroyWindowRequest) err1(err1 C.longlong) int64 {
 }
 
 func (req *tDestroyWindowRequest) wndId() int64 {
-	return int64(req.window.cbId)
+	return int64(req.abst.impl().cbId)
 }
