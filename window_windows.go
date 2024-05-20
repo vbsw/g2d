@@ -197,12 +197,11 @@ func logicThread(abst abstractWindow) {
 		wnd.Gfx.buffers[2].layers = nil
 		wnd.Gfx.entitiesLayers = nil
 	*/
-	wnd = nil
 }
 
 func (wnd *Window) nextLogicMessage() *tLogicMessage {
 	var message *tLogicMessage
-	if wnd.state > configState && wnd.state < closingState && (wnd.autoUpdate || wnd.update) {
+	if wnd.state > configState && wnd.state < closingState && wnd.autoUpdate {
 		select {
 		case msg := <-wnd.msgs:
 			message = msg
@@ -212,6 +211,10 @@ func (wnd *Window) nextLogicMessage() *tLogicMessage {
 		}
 	} else {
 		message = <-wnd.msgs
+		if message == nil && wnd.update {
+			wnd.update = false
+			message = &tLogicMessage{typeId: updateType, nanos: time.Nanos()}
+		}
 	}
 	if wnd.state == closingState && message.typeId != quitType {
 		message = nil
