@@ -58,7 +58,7 @@ type tLaunchWindowRequest struct {
 }
 
 type tCreateWindowRequest struct {
-	abst abstractWindow
+	abst   abstractWindow
 	config *Configuration
 }
 
@@ -159,9 +159,11 @@ func (req *tLaunchWindowRequest) processRequest() {
 	wnd.msgs = make(chan *tLogicMessage, 1000)
 	wnd.quitted = make(chan bool, 1)
 	wnd.cbId = register(req.abst)
+	wnd.gfxImpl = new(tGraphics)
+	wnd.Gfx = wnd.gfxImpl
+	wnd.gfxImpl.msgs = make(chan *tGraphicsMessage, 1000)
+	wnd.gfxImpl.quitted = make(chan bool, 1)
 	/*
-	   wnd.Gfx.msgs = make(chan *tGraphicsMessage, 1000)
-	   wnd.Gfx.quitted = make(chan bool, 1)
 	   wnd.Gfx.rBuffer = &wnd.Gfx.buffers[0]
 	   wnd.Gfx.wBuffer = &wnd.Gfx.buffers[0]
 	   wnd.Gfx.initEntities()

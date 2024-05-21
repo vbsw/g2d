@@ -27,8 +27,10 @@ type Mouse struct {
 
 type Window struct {
 	Frame      Frame
-	Time      Time
+	Time       Time
 	Mouse      Mouse
+	Gfx        Graphics
+	gfxImpl    *tGraphics
 	state      int
 	cbId       int
 	dataC      unsafe.Pointer
@@ -189,14 +191,7 @@ func logicThread(abst abstractWindow) {
 			}
 		}
 	}
-	/*
-		wnd.Gfx.rBuffer = nil
-		wnd.Gfx.wBuffer = nil
-		wnd.Gfx.buffers[0].layers = nil
-		wnd.Gfx.buffers[1].layers = nil
-		wnd.Gfx.buffers[2].layers = nil
-		wnd.Gfx.entitiesLayers = nil
-	*/
+	wnd.gfxImpl.destroy()
 }
 
 func (wnd *Window) nextLogicMessage() *tLogicMessage {
@@ -247,12 +242,10 @@ func onCreate(abst abstractWindow, wnd *Window) {
 	err := abst.OnCreate()
 	if err == nil {
 		wnd.state = runningState
-		/*
-			wnd.Gfx.running = true
-			wnd.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
-			go wnd.graphicsThread()
-			wnd.Gfx.switchWBuffer()
-		*/
+		wnd.gfxImpl.running = true
+		go graphicsThread(abst, wnd)
+		wnd.gfxImpl.msgs <- &tGraphicsMessage{typeId: refreshType}
+		//wnd.gfxImpl.switchWBuffer()
 		toMainLoop.postMsg(&tShowWindowRequest{abst: abst})
 	} else {
 		onLogicError(abst, wnd, 4999, err)
@@ -263,10 +256,8 @@ func onShow(abst abstractWindow, wnd *Window) {
 	wnd.Time.Prev = wnd.Time.Curr
 	err := abst.OnShow()
 	if err == nil {
-		/*
-			wnd.Gfx.switchWBuffer()
-			wnd.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
-		*/
+		//wnd.gfxImpl.switchWBuffer()
+		wnd.gfxImpl.msgs <- &tGraphicsMessage{typeId: refreshType}
 	} else {
 		onLogicError(abst, wnd, 4999, err)
 	}
@@ -347,10 +338,8 @@ func onUpdate(abst abstractWindow, wnd *Window) {
 	err := abst.OnUpdate()
 	wnd.Time.Prev = wnd.Time.Curr
 	if err == nil {
-		/*
-			wnd.Gfx.switchWBuffer()
-			wnd.Gfx.msgs <- &tGraphicsMessage{typeId: refreshType}
-		*/
+		//wnd.gfxImpl.switchWBuffer()
+		wnd.gfxImpl.msgs <- &tGraphicsMessage{typeId: refreshType}
 	} else {
 		onLogicError(abst, wnd, 4999, err)
 	}
@@ -370,12 +359,10 @@ func onQuitReq(abst abstractWindow, wnd *Window) {
 }
 
 func onQuit(abst abstractWindow, wnd *Window) {
-	/*
-		if wnd.Gfx.running {
-			wnd.Gfx.msgs <- &tGraphicsMessage{typeId: quitType}
-			<- wnd.Gfx.quitted
-		}
-	*/
+	if wnd.gfxImpl.running {
+		wnd.gfxImpl.msgs <- &tGraphicsMessage{typeId: quitType}
+		<-wnd.gfxImpl.quitted
+	}
 	err := abst.OnDestroy()
 	wnd.quitted <- true
 	wnd.state = quitState

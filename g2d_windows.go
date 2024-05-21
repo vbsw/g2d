@@ -157,7 +157,7 @@ func g2dWindowResize(cbIdC C.int) {
 	msg := &tLogicMessage{typeId: wndResizeType, nanos: time.Nanos()}
 	msg.props.update(wnd.dataC)
 	wnd.msgs <- msg
-	//wnd.wnd.Gfx.msgs <- &tGMessage{typeId: resizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
+	wnd.gfxImpl.msgs <- &tGraphicsMessage{typeId: wndResizeType, valA: msg.props.ClientWidth, valB: msg.props.ClientHeight}
 }
 
 //export g2dClose
