@@ -18,7 +18,7 @@ import (
 )
 
 func (ini tInitializer) CProcFunc() unsafe.Pointer {
-	return C.vbsw_openglloader_init
+	return C.g2d_openglloader_init
 }
 
 func (ini tInitializer) SetCData(data unsafe.Pointer) {

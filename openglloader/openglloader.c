@@ -56,7 +56,7 @@ static void openglloader_glGetIntegerv(const unsigned int pname, int *const para
 	glGetIntegerv((GLenum) pname, (GLint *)params);
 }
 
-void vbsw_openglloader_init(const int pass, cdata_t *const cdata) {
+void g2d_openglloader_init(const int pass, cdata_t *const cdata) {
 	cdata_set_func_t const set = (cdata_set_func_t)cdata[0].set_func;
 	cdata_get_func_t const get = (cdata_get_func_t)cdata[0].get_func;
 	/* init and set current OpenGL context */
