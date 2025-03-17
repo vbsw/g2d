@@ -3,10 +3,10 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/vbsw/g2d/window.svg)](https://pkg.go.dev/github.com/vbsw/g2d/window) [![Go Report Card](https://goreportcard.com/badge/github.com/vbsw/g2d/window)](https://goreportcard.com/report/github.com/vbsw/g2d/window) [![Stability: Experimental](https://masterminds.github.io/stability/experimental.svg)](https://masterminds.github.io/stability/experimental.html)
 
 ## About
-window is a package for Go to create an OpenGL window. window is published on <https://github.com/vbsw/g2d/window>.
+window is a package for Go to create an OpenGL window. It is part of g2d. window is published on <https://github.com/vbsw/g2d/window>.
 
 ## Copyright
-Copyright 2025, Vitali Baumtrok (vbsw@mailbox.org).
+Copyright 2024, 2025, Vitali Baumtrok (vbsw@mailbox.org).
 
 window is distributed under the Boost Software License, version 1.0. (See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 

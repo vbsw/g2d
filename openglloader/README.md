@@ -6,7 +6,7 @@
 openglloader is a package for Go to load OpenGL functions. It is part of g2d. openglloader is published on <https://github.com/vbsw/g2d/openglloader>.
 
 ## Copyright
-Copyright 2023, Vitali Baumtrok (vbsw@mailbox.org).
+Copyright 2023, 2025, Vitali Baumtrok (vbsw@mailbox.org).
 
 openglloader is distributed under the Boost Software License, version 1.0. (See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 

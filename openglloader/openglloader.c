@@ -1,5 +1,5 @@
 /*
- *        Copyright 2023, 2025 Vitali Baumtrok.
+ *       Copyright 2023, 2025, Vitali Baumtrok.
  * Distributed under the Boost Software License, Version 1.0.
  *     (See accompanying file LICENSE or copy at
  *        http://www.boost.org/LICENSE_1_0.txt)
@@ -8,20 +8,6 @@
 #include "openglloader.h"
 
 #if defined(G2D_OPENGLLOADER_WIN32)
-
-#define OPENGLLOADER_ERR_ALLOC 101
-#define OPENGLLOADER_ERR_1 1000001
-#define OPENGLLOADER_ERR_2 1000002
-#define OPENGLLOADER_ERR_3 1000003
-#define OPENGLLOADER_ERR_4 1000004
-#define OPENGLLOADER_ERR_5 1000005
-#define OPENGLLOADER_ERR_6 1000006
-#define OPENGLLOADER_ERR_7 1000007
-#define OPENGLLOADER_ERR_8 1000008
-#define OPENGLLOADER_ERR_9 1000009
-
-#define OPENGLLOADER_CDATA_ID "vbsw.g2d.openglloader"
-#define CLASS_NAME TEXT("openglloader_dummy")
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -39,6 +25,21 @@ typedef void (openglloader_glGetIntegerv_t) (unsigned int pname, int *params);
 /* private */
 typedef struct { void *load_func; void *glGetIntegerv; HINSTANCE instance; HWND hndl; HDC dc; HGLRC rc; } openglloader_data_t;
 typedef union { openglloader_t loader; openglloader_data_t data; } openglloader_union_t;
+
+#define OPENGLLOADER_ERR_ALLOC 101
+#define OPENGLLOADER_ERR_1 1000001
+#define OPENGLLOADER_ERR_2 1000002
+#define OPENGLLOADER_ERR_3 1000003
+#define OPENGLLOADER_ERR_4 1000004
+#define OPENGLLOADER_ERR_5 1000005
+#define OPENGLLOADER_ERR_6 1000006
+#define OPENGLLOADER_ERR_7 1000007
+#define OPENGLLOADER_ERR_8 1000008
+#define OPENGLLOADER_ERR_9 1000009
+
+#define OPENGLLOADER_CDATA_ID "vbsw.g2d.openglloader"
+
+static LPCTSTR const class_name = TEXT("g2d_window_dummy");
 
 static void* openglloader_load(const char *const name, long long *const err) {
 	/* wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions). */
@@ -70,10 +71,10 @@ void g2d_openglloader_init(const int pass, cdata_t *const cdata) {
 			cls.style = CS_OWNDC;
 			cls.lpfnWndProc = DefWindowProc;
 			cls.hInstance = instance;
-			cls.lpszClassName = CLASS_NAME;
+			cls.lpszClassName = class_name;
 			if (RegisterClassEx(&cls) != INVALID_ATOM) {
 				/* dummy window */
-				HWND const dummy_hndl = CreateWindow(CLASS_NAME, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, instance, NULL);
+				HWND const dummy_hndl = CreateWindow(class_name, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, instance, NULL);
 				if (dummy_hndl) {
 					/* dummy context */
 					HDC const dummy_dc = GetDC(dummy_hndl);
@@ -106,32 +107,32 @@ void g2d_openglloader_init(const int pass, cdata_t *const cdata) {
 										} else {
 											cdata[0].err1 = OPENGLLOADER_ERR_ALLOC;
 											wglDeleteContext(dummy_rc); ReleaseDC(dummy_hndl, dummy_dc);
-											DestroyWindow(dummy_hndl); UnregisterClass(CLASS_NAME, instance);
+											DestroyWindow(dummy_hndl); UnregisterClass(class_name, instance);
 										}
 									} else {
 										cdata[0].err1 = OPENGLLOADER_ERR_8; cdata[0].err2 = (long long)GetLastError();
 										wglDeleteContext(dummy_rc); ReleaseDC(dummy_hndl, dummy_dc);
-										DestroyWindow(dummy_hndl); UnregisterClass(CLASS_NAME, instance);
+										DestroyWindow(dummy_hndl); UnregisterClass(class_name, instance);
 									}
 								} else {
 									cdata[0].err1 = OPENGLLOADER_ERR_7; cdata[0].err2 = (long long)GetLastError();
-									ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(CLASS_NAME, instance);
+									ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name, instance);
 								}
 							} else {
 								cdata[0].err1 = OPENGLLOADER_ERR_6; cdata[0].err2 = (long long)GetLastError();
-								ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(CLASS_NAME, instance);
+								ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name, instance);
 							}
 						} else {
 							cdata[0].err1 = OPENGLLOADER_ERR_5; cdata[0].err2 = (long long)GetLastError();
-							ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(CLASS_NAME, instance);
+							ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name, instance);
 						}
 					} else {
 						cdata[0].err1 = OPENGLLOADER_ERR_4;
-						DestroyWindow(dummy_hndl); UnregisterClass(CLASS_NAME, instance);
+						DestroyWindow(dummy_hndl); UnregisterClass(class_name, instance);
 					}
 				} else {
 					cdata[0].err1 = OPENGLLOADER_ERR_3; cdata[0].err2 = (long long)GetLastError();
-					UnregisterClass(CLASS_NAME, instance);
+					UnregisterClass(class_name, instance);
 				}
 			} else {
 				cdata[0].err1 = OPENGLLOADER_ERR_2; cdata[0].err2 = (long long)GetLastError();
@@ -146,7 +147,7 @@ void g2d_openglloader_init(const int pass, cdata_t *const cdata) {
 			if (wglGetCurrentContext() == data[0].rc)
 				wglMakeCurrent(NULL, NULL);
 			wglDeleteContext(data[0].rc); ReleaseDC(data[0].hndl, data[0].dc);
-			DestroyWindow(data[0].hndl); UnregisterClass(CLASS_NAME, data[0].instance);
+			DestroyWindow(data[0].hndl); UnregisterClass(class_name, data[0].instance);
 			free(data);
 		} else {
 			cdata[0].err1 = OPENGLLOADER_ERR_9;
@@ -158,7 +159,7 @@ void g2d_openglloader_init(const int pass, cdata_t *const cdata) {
 			if (wglGetCurrentContext() == data[0].rc)
 				wglMakeCurrent(NULL, NULL);
 			wglDeleteContext(data[0].rc); ReleaseDC(data[0].hndl, data[0].dc);
-			DestroyWindow(data[0].hndl); UnregisterClass(CLASS_NAME, data[0].instance);
+			DestroyWindow(data[0].hndl); UnregisterClass(class_name, data[0].instance);
 			free(data);
 		}
 	}
