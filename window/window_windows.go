@@ -8,7 +8,7 @@
 package window
 
 // #cgo CFLAGS: -DG2D_WINDOW_WIN32 -DUNICODE
-// #cgo LDFLAGS: -luser32
+// #cgo LDFLAGS: -luser32 -lgdi32
 // #include "window.h"
 import "C"
 import (
@@ -18,9 +18,19 @@ import (
 	"unsafe"
 )
 
+var (
+	mainLoopListener MainLoopListener
+	running          bool
+)
+
 const (
 	loadFunctionFailed = "g2d window load %s function failed"
 )
+
+type MainLoopListener interface {
+	AtMainLoopStart()
+	AtMainLoopEvent()
+}
 
 func (init tInitializer) CProcFunc() unsafe.Pointer {
 	return C.g2d_window_init
@@ -66,4 +76,39 @@ func (init tInitializer) ToError(err1, err2 int64, info string) error {
 		}
 	}
 	return err
+}
+
+func MainLoop(listener MainLoopListener) {
+	if listener != nil {
+		mainLoopListener = listener
+		C.g2d_window_mainloop_process()
+	} else {
+		panic("MainLoopListener must not be nil")
+	}
+}
+
+func ProcessCustomMessage() (int64, int64) {
+	var err1, err2 C.longlong
+	C.g2d_window_post_custom_msg(&err1, &err2)
+	return int64(err1), int64(err1)
+}
+
+func ProcessQuitMessage() (int64, int64) {
+	var err1, err2 C.longlong
+	C.g2d_window_post_quit_msg(&err1, &err2)
+	return int64(err1), int64(err1)
+}
+
+func ClearMessageQueue() {
+	C.g2d_window_mainloop_clean_up()
+}
+
+//export g2dWindowInit
+func g2dWindowInit() {
+	mainLoopListener.AtMainLoopStart()
+}
+
+//export g2dWindowProcessMessages
+func g2dWindowProcessMessages() {
+	mainLoopListener.AtMainLoopEvent()
 }

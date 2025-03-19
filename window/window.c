@@ -12,6 +12,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+/* Go functions can not be passed to c directly.            */
+/* They can only be called from c.                          */
+/* This code is an indirection to call Go callbacks.        */
+/* _cgo_export.h is generated automatically by cgo.         */
+#include "_cgo_export.h"
+
 /* external */
 typedef void (*cdata_set_func_t)(cdata_t *cdata, void *data, const char *id);
 typedef void* (*cdata_get_func_t)(cdata_t *cdata, const char *id);
@@ -34,20 +40,61 @@ typedef HGLRC(WINAPI * PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShare
 typedef BOOL(WINAPI * PFNWGLSWAPINTERVALEXTPROC) (int interval);
 typedef int (WINAPI * PFNWGLGETSWAPINTERVALEXTPROC) (void);
 
+typedef struct {} window_t;
+
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
 static PFNWGLSWAPINTERVALEXTPROC         wglSwapIntervalEXT         = NULL;
 static PFNWGLGETSWAPINTERVALEXTPROC      wglGetSwapIntervalEXT      = NULL;
 
-static const WPARAM g2d_CUSTOM_EVENT  = (WPARAM)"g2dc";
-static const WPARAM g2d_QUIT_EVENT    = (WPARAM)"g2dq";
-static LPCTSTR const class_name       = TEXT("g2d_window");
+static const WPARAM wnd_CUSTOM_EVENT = (WPARAM)"vbsw_g2dc";
+static const WPARAM wnd_QUIT_EVENT   = (WPARAM)"vbsw_g2dq";
+static LPCTSTR const class_name      = TEXT("vbsw_g2d_window");
 
 static BOOL initialized   = FALSE;
 static HINSTANCE instance = NULL;
 static int windows_count  = 0;
 static DWORD thread_id    = 0;
 static BOOL stop          = FALSE;
+
+static window_t window;
+
+void g2d_window_mainloop_process() {
+	MSG msg; BOOL ret_code; stop = FALSE;
+	thread_id = GetCurrentThreadId();
+	g2dWindowInit();
+	while (!stop && (ret_code = GetMessage(&msg, NULL, 0, 0)) > 0) {
+		if (msg.message == WM_APP) {
+			if (msg.wParam == wnd_CUSTOM_EVENT)
+				g2dWindowProcessMessages();
+			else if (msg.wParam == wnd_QUIT_EVENT)
+				break;
+		} else {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+}
+
+void g2d_window_post_custom_msg(long long *const err1, long long *const err2) {
+	if (!PostThreadMessage(thread_id, WM_APP, wnd_CUSTOM_EVENT, 0)) {
+		err1[0] = 3999;
+		err2[0] = (long long)GetLastError();
+	}
+}
+
+void g2d_window_post_quit_msg(long long *const err1, long long *const err2) {
+	if (!PostThreadMessage(thread_id, WM_APP, wnd_QUIT_EVENT, 0)) {
+		err1[0] = 3999;
+		err2[0] = (long long)GetLastError();
+	}
+	stop = TRUE;
+}
+
+void g2d_window_mainloop_clean_up() {
+	MSG msg;
+	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE));
+}
 
 void g2d_window_init(const int pass, cdata_t *const cdata) {
 	if (pass == 0) {
@@ -63,6 +110,8 @@ void g2d_window_init(const int pass, cdata_t *const cdata) {
 				LOAD_FUNC(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB, WINDOW_ERR_3)
 				LOAD_FUNC(PFNWGLSWAPINTERVALEXTPROC,         wglSwapIntervalEXT,         WINDOW_ERR_4)
 				LOAD_FUNC(PFNWGLGETSWAPINTERVALEXTPROC,      wglGetSwapIntervalEXT,      WINDOW_ERR_5)
+				if (err1[0] == 0)
+					set(cdata, (void*)&window, WINDOW_CDATA_ID);
 				if (err1[0] == 0)
 					initialized = TRUE;
 			} else {
