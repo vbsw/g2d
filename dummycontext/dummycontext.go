@@ -5,20 +5,32 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-package openglloader
+// Package dummycontext creates a window with an OpenGL context.
+package dummycontext
 
-// #cgo CFLAGS: -DG2D_OPENGLLOADER_WIN32 -DUNICODE
-// #cgo LDFLAGS: -luser32 -lOpenGL32
-// #include "openglloader.h"
+// #cgo CFLAGS: -DUNICODE
+// #cgo LDFLAGS: -luser32 -lgdi32
+// #include "dummycontext.h"
 import "C"
 import (
 	"errors"
+	"fmt"
+	"github.com/vbsw/golib/cdata"
 	"strconv"
 	"unsafe"
 )
 
+const functionFailed = "g2d dummy context %s failed"
+
+type tInitializer struct {
+}
+
+func NewInitializer() cdata.CData {
+	return new(tInitializer)
+}
+
 func (ini tInitializer) CProcFunc() unsafe.Pointer {
-	return C.g2d_openglloader_init
+	return C.g2d_dummycontext_init
 }
 
 func (ini tInitializer) SetCData(data unsafe.Pointer) {
@@ -28,31 +40,24 @@ func (ini tInitializer) ToError(err1, err2 int64, info string) error {
 	var err error
 	if err1 > 0 {
 		var errStr string
-		if err1 < 1000000 {
-			/* 101 */
-			if err1 > 100 && err1 < 201 {
-				errStr = "memory allocation failed"
-			}
-		} else {
+		if err1 > 1000000 && err1 < 1000201 {
 			switch err1 {
 			case 1000101:
-				errStr = "g2d OpenGL Loader GetModuleHandle failed"
+				errStr = fmt.Sprintf(functionFailed, "GetModuleHandle")
 			case 1000102:
-				errStr = "g2d OpenGL Loader RegisterClassEx failed"
+				errStr = fmt.Sprintf(functionFailed, "RegisterClassEx")
 			case 1000103:
-				errStr = "g2d OpenGL Loader CreateWindow failed"
+				errStr = fmt.Sprintf(functionFailed, "CreateWindow")
 			case 1000104:
-				errStr = "g2d OpenGL Loader GetDC failed"
+				errStr = fmt.Sprintf(functionFailed, "GetDC")
 			case 1000105:
-				errStr = "g2d OpenGL Loader ChoosePixelFormat failed"
+				errStr = fmt.Sprintf(functionFailed, "ChoosePixelFormat")
 			case 1000106:
-				errStr = "g2d OpenGL Loader SetPixelFormat failed"
+				errStr = fmt.Sprintf(functionFailed, "SetPixelFormat")
 			case 1000107:
-				errStr = "g2d OpenGL Loader wglCreateContext failed"
+				errStr = fmt.Sprintf(functionFailed, "wglCreateContext")
 			case 1000108:
-				errStr = "g2d OpenGL Loader wglMakeCurrent failed"
-			case 1000109:
-				errStr = "g2d OpenGL Loader get cdata failed"
+				errStr = fmt.Sprintf(functionFailed, "wglMakeCurrent")
 			}
 		}
 		if len(errStr) > 0 {

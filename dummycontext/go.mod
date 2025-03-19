@@ -1,4 +1,4 @@
-module github.com/vbsw/g2d/openglloader
+module github.com/vbsw/g2d/dummycontext
 
 go 1.13
 
