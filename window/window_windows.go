@@ -65,8 +65,8 @@ func ToError(err1, err2 int64, info string) error {
 	var err error
 	if err1 > 0 {
 		var errStr string
+		/* 201 - 300, 1000201 - 1000300 */
 		if err1 < 1000000 {
-			/* 201 */
 			if err1 > 200 && err1 < 301 {
 				errStr = "memory allocation failed"
 			}
@@ -161,14 +161,14 @@ func Create(props *Properties) (unsafe.Pointer, int64, int64) {
 		bytes := *(*[]byte)(unsafe.Pointer(&(props.Title)))
 		t, ts = unsafe.Pointer(&bytes[0]), C.size_t(len(props.Title))
 	}
-	C.g2d_window_create(&data, C.int(props.CbId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t, ts, &err1, &err2)
+	C.g2d_window_create(&data, C.int(props.WindowId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t, ts, &err1, &err2)
 /*
 	if err1 == 0 {
 		msg := &tLogicMessage{typeId: createType, nanos: time.Nanos()}
 		msg.props.update(wnd.dataC)
 		wnd.msgs <- msg
 	} else {
-		toMainLoop.postErr(toError(int64(err1), int64(err2), int64(wnd.cbId), "", nil))
+		toMainLoop.postErr(toError(int64(err1), int64(err2), int64(wnd.WindowId), "", nil))
 	}
 */
 	return data, int64(err1), int64(err2)
@@ -204,6 +204,7 @@ func processEvents(newEvent Event, newDelta uint32) {
 //export g2dWindowMainLoopStart
 func g2dWindowMainLoopStart(millis C.longlong) {
 	startMillis = uint64(millis)
+	evFactory.NewMainLoopStartedEvent().ProcessEvent(0)
 }
 
 //export g2dWindowMainLoopEvent

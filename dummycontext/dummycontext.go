@@ -40,7 +40,12 @@ func (ini tInitializer) ToError(err1, err2 int64, info string) error {
 	var err error
 	if err1 > 0 {
 		var errStr string
-		if err1 > 1000000 && err1 < 1000201 {
+		/* 101 - 200, 1000101 - 1000200 */
+		if err1 < 1000000 {
+			if err1 > 100 && err1 < 201 {
+				errStr = "memory allocation failed"
+			}
+		} else {
 			switch err1 {
 			case 1000101:
 				errStr = fmt.Sprintf(functionFailed, "GetModuleHandle")

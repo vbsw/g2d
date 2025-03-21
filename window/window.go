@@ -34,6 +34,7 @@ type Event interface {
 }
 
 type EventFactory interface {
+	NewMainLoopStartedEvent() Event
 	NewKeyPressedEvent(windowId, keyCode, keyRepeated int) Event
 	NewKeyReleasedEvent(windowId, keyCode int) Event
 }
@@ -46,7 +47,7 @@ type Properties struct {
 	ClientWidth, ClientHeight         int
 	ClientWidthMin, ClientHeightMin   int
 	ClientWidthMax, ClientHeightMax   int
-	CbId                              int
+	WindowId                          int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
 	AutoUpdate                        bool
