@@ -5,7 +5,7 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-static LPTSTR to_tstr(void *const go_cstr, const size_t length, long long *err1) {
+static LPTSTR to_tstr(void *const go_cstr, const size_t length, long long *const err1, const long long err1_val) {
 	LPTSTR const str_new = (LPTSTR)malloc(sizeof(TCHAR) * (length + 1));
 	if (str_new) {
 		if (length > 0)
@@ -16,7 +16,7 @@ static LPTSTR to_tstr(void *const go_cstr, const size_t length, long long *err1)
 			#endif
 		str_new[length] = 0;
 	} else {
-		err1[0] = 120;
+		err1[0] = err1_val;
 	}
 	return str_new;
 }
@@ -44,6 +44,25 @@ static void style_update(window_data_t *const wnd_data) {
 			wnd_data[0].config.style = WS_OVERLAPPEDWINDOW;
 		else
 			wnd_data[0].config.style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
+}
+
+static void client_props_update(window_data_t *const wnd_data) {
+	RECT rect;
+	POINT point = {0, 0};
+	GetClientRect(wnd_data[0].wnd.hndl, &rect);
+	ClientToScreen(wnd_data[0].wnd.hndl, &point);
+	wnd_data[0].client.x = point.x;
+	wnd_data[0].client.y = point.y;
+	wnd_data[0].client.width = (int)(rect.right - rect.left);
+	wnd_data[0].client.height = (int)(rect.bottom - rect.top);
+}
+
+static void cursor_clip_update(window_data_t *const wnd_data) {
+	if (wnd_data[0].config.locked) {
+		const RECT rect = { wnd_data[0].client.x, wnd_data[0].client.y, wnd_data[0].client.x + wnd_data[0].client.width, wnd_data[0].client.y + wnd_data[0].client.height };
+		ClipCursor(&rect);
+		wnd_data[0].state.locked = 1;
+	}
 }
 
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -74,10 +93,10 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					}
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
+*/
 				case WM_CLOSE:
 					g2dClose(wnd_data[0].cb_id);
 					break;
-*/
 /*
 				case WM_KEYDOWN:
 					if (!key_down_process(wnd_data, message, wParam, lParam))
@@ -193,7 +212,7 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 	const int b, const int d, const int r, const int f, const int l, const int c, void *const t, const size_t ts, long long *const err1, long long *const err2) {
 	window_data_t *const wnd_data = (window_data_t*)malloc(sizeof(window_data_t));
 	if (wnd_data) {
-		LPCTSTR const title = to_tstr(t, ts, err1);
+		LPCTSTR const title = to_tstr(t, ts, err1, G2D_ERR_0000002);
 		if (err1[0] == 0) {
 			ZeroMemory(wnd_data, sizeof(window_data_t));
 			wnd_data[0].cb_id = cb_id;
@@ -307,7 +326,7 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 			err1[0] = 122;
 		}
 	} else {
-		err1[0] = 121;
+		err1[0] = G2D_ERR_0000001;
 	}
 }
 
@@ -315,5 +334,151 @@ void g2d_window_show(void *const data, long long *const err1, long long *const e
 	if (data) {
 		window_data_t *const wnd_data = (window_data_t*)data;
 		ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
+		if (wnd_data[0].config.fullscreen)
+			g2d_window_fullscreen_set(wnd_data, err1, err2);
+		if (err1[0] == 0) {
+			client_props_update(wnd_data);
+			cursor_clip_update(wnd_data);
+		}
+	}
+}
+
+void g2d_window_destroy(void *const data, long long *err1, long long *err2) {
+	if (data) {
+		window_data_t *const wnd_data = (window_data_t*)data;
+		if (!wglDeleteContext(wnd_data[0].wnd.rc) && err1[0] == 0) {
+			err1[0] = 20; err2[0] = (long long)GetLastError();
+		}
+		ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.dc);
+		if (!DestroyWindow(wnd_data[0].wnd.hndl) && err1[0] == 0) {
+			err1[0] = 21; err2[0] = (long long)GetLastError();
+		}
+		windows_count--; free(wnd_data);
+		if (windows_count <= 0) { 
+			if (!UnregisterClass(class_name, instance) && err1[0] == 0) {
+				err1[0] = 22; err2[0] = (long long)GetLastError();
+			}
+			PostQuitMessage(0);
+		}
+	}
+}
+
+void g2d_window_props(void *const data, int *const mx, int *const my, int *const x, int *const y, int *const w, int *const h, int *const wn, int *const hn,
+	int *const wx, int *const hx, int *const b, int *const d, int *const r, int *const f, int *const l) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	mx[0] = wnd_data[0].mouse.x;
+	my[0] = wnd_data[0].mouse.y;
+	x[0] = wnd_data[0].client.x;
+	y[0] = wnd_data[0].client.y;
+	w[0] = wnd_data[0].client.width;
+	h[0] = wnd_data[0].client.height;
+	wn[0] = wnd_data[0].config.width_min;
+	hn[0] = wnd_data[0].config.height_min;
+	wx[0] = wnd_data[0].config.width_max;
+	hx[0] = wnd_data[0].config.height_max;
+	b[0] = wnd_data[0].config.borderless;
+	d[0] = wnd_data[0].config.dragable;
+	r[0] = wnd_data[0].config.resizable;
+	f[0] = wnd_data[0].config.fullscreen;
+	l[0] = wnd_data[0].config.locked;
+}
+
+void g2d_window_pos_set(void *const data, const int x, const int y) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	if (wnd_data[0].config.fullscreen) {
+		wnd_data[0].client_bak.x = x;
+		wnd_data[0].client_bak.y = y;
+	} else {
+		wnd_data[0].client.x = x;
+		wnd_data[0].client.y = y;
+	}
+}
+
+void g2d_window_size_set(void *const data, const int width, const int height) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	if (wnd_data[0].config.fullscreen) {
+		wnd_data[0].client_bak.width = width;
+		wnd_data[0].client_bak.height = height;
+	} else {
+		wnd_data[0].client.width = width;
+		wnd_data[0].client.height = height;
+	}
+}
+
+void g2d_window_style_set(void *const data, const int wn, const int hn, const int wx, const int hx, const int b, const int d, const int r, const int l) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	wnd_data[0].config.width_min = wn;
+	wnd_data[0].config.height_min = hn;
+	wnd_data[0].config.width_max = wx;
+	wnd_data[0].config.height_max = hx;
+	wnd_data[0].config.borderless = b;
+	wnd_data[0].config.dragable = d;
+	wnd_data[0].config.resizable = r;
+}
+
+void g2d_window_fullscreen_set(void *const data, long long *const err1, long long *const err2) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	int mx, my, mw, mh; monitor_metrics(MonitorFromWindow(wnd_data[0].wnd.hndl, MONITOR_DEFAULTTONEAREST), &mx, &my, &mw, &mh);
+	wnd_data[0].client_bak.x = wnd_data[0].client.x;
+	wnd_data[0].client_bak.y = wnd_data[0].client.y;
+	wnd_data[0].client_bak.width = wnd_data[0].client.width;
+	wnd_data[0].client_bak.height = wnd_data[0].client.height;
+	const LONG_PTR style = SetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE, 0);
+	if (style && SetWindowPos(wnd_data[0].wnd.hndl, HWND_TOP, mx, my, mw, mh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
+		wnd_data[0].config.fullscreen = 1;
+	} else {
+		err1[0] = 70; err2[0] = (long long)GetLastError();
+	}
+}
+
+void g2d_window_restore_bak(void *const data) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	wnd_data[0].client.x = wnd_data[0].client_bak.x;
+	wnd_data[0].client.y = wnd_data[0].client_bak.y;
+	wnd_data[0].client.width = wnd_data[0].client_bak.width;
+	wnd_data[0].client.height = wnd_data[0].client_bak.height;
+}
+
+void g2d_window_pos_apply(void *const data, long long *const err1, long long *const err2) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	int wx, wy, ww, wh; window_metrics(wnd_data, &wx, &wy, &ww, &wh);
+	const LONG_PTR style = GetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE);
+	if (style == SetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE, wnd_data[0].config.style)) {
+		if (SetWindowPos(wnd_data[0].wnd.hndl, HWND_NOTOPMOST, wx, wy, ww, wh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
+			wnd_data[0].config.fullscreen = 0;
+			cursor_clip_update(wnd_data);
+		} else {
+			err1[0] = 71; err2[0] = (long long)GetLastError();
+		}
+	} else {
+		err1[0] = 71; err2[0] = (long long)GetLastError();
+	}
+}
+
+void g2d_window_move(void *const data, long long *const err1, long long *const err2) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	int wx, wy, ww, wh; window_metrics(wnd_data, &wx, &wy, &ww, &wh);
+	if (!MoveWindow(wnd_data[0].wnd.hndl, wx, wy, ww, wh, FALSE)) {
+		err1[0] = 71; err2[0] = (long long)GetLastError();
+	}
+}
+
+void g2d_window_title_set(void *const data, void *const t, const size_t ts, long long *const err1, long long *const err2) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	LPCTSTR const title = to_tstr(t, ts, err1, G2D_ERR_0000003);
+	if (err1[0] == 0) {
+		if (!SetWindowText(wnd_data[0].wnd.hndl, title)) {
+			err1[0] = 68; err2[0] = (long long)GetLastError();
+		}
+		free((void*)title);
+	}
+}
+
+void g2d_mouse_pos_set(void *const data, const int x, const int y, long long *const err1, long long *const err2) {
+	window_data_t *const wnd_data = (window_data_t*)data;
+	POINT point = {0, 0};
+	ClientToScreen(wnd_data[0].wnd.hndl, &point);
+	if (!SetCursorPos(point.x + x, point.y + y)) {
+		err1[0] = 69; err2[0] = (long long)GetLastError();
 	}
 }

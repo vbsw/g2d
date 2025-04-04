@@ -1,5 +1,5 @@
 /*
- *          Copyright 2022, Vitali Baumtrok.
+ *          Copyright 2025, Vitali Baumtrok.
  * Distributed under the Boost Software License, Version 1.0.
  *     (See accompanying file LICENSE or copy at
  *        http://www.boost.org/LICENSE_1_0.txt)
@@ -36,7 +36,7 @@ func Init() {
 			initialized, initFailed, quitting = true, false, false
 		} else {
 			initFailed = true
-			Err = toError(int64(err1), int64(err2), errInfo)
+			Err = toError(err1, err2, errInfo)
 		}
 		mutex.Unlock()
 	} else {
@@ -79,16 +79,127 @@ func MainLoop(mainWindow Window) {
 	}
 }
 
-func postReqest(request tRequest) {
-	mutex.Lock()
-	var err1, err2 C.longlong
-	requests = append(requests, request)
-	C.g2d_post_request(&err1, &err2)
-	mutex.Unlock()
+func (props *Properties) update(data unsafe.Pointer) {
+	var mx, my, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
+	C.g2d_window_props(data, &mx, &my, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
+	props.MouseX = int(mx)
+	props.MouseY = int(my)
+	props.ClientX = int(x)
+	props.ClientY = int(y)
+	props.ClientWidth = int(w)
+	props.ClientHeight = int(h)
+	props.ClientWidthMin = int(wn)
+	props.ClientHeightMin = int(hn)
+	props.ClientWidthMax = int(wx)
+	props.ClientHeightMax = int(hx)
+	props.Borderless = bool(b != 0)
+	props.Dragable = bool(d != 0)
+	props.Resizable = bool(r != 0)
+	props.Fullscreen = bool(f != 0)
+	props.MouseLocked = bool(l != 0)
 }
 
 func (request *tCreateWindowRequest) process() {
-	
+	var err1, err2 C.longlong
+	var data unsafe.Pointer
+	var t unsafe.Pointer
+	var ts C.size_t
+	x := C.int(request.config.ClientX)
+	y := C.int(request.config.ClientY)
+	w := C.int(request.config.ClientWidth)
+	h := C.int(request.config.ClientHeight)
+	wn := C.int(request.config.ClientWidthMin)
+	hn := C.int(request.config.ClientHeightMin)
+	wx := C.int(request.config.ClientWidthMax)
+	hx := C.int(request.config.ClientHeightMax)
+	c, l, b, d, r, f := request.config.boolsToCInt()
+	if len(request.config.Title) > 0 {
+		bytes := *(*[]byte)(unsafe.Pointer(&(request.config.Title)))
+		t, ts = unsafe.Pointer(&bytes[0]), C.size_t(len(request.config.Title))
+	}
+	C.g2d_window_create(&data, C.int(request.wndId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t, ts, &err1, &err2)
+	if err1 == 0 {
+		wnd := wnds[request.wndId]
+		wnd.data = data
+		event := &tLogicEvent{typeId: createType}
+		event.props.update(data)
+		wnd.eventsChan <- event
+	} else {
+		Err = toError(err1, err2, nil)
+	}
+}
+
+func (request *tShowWindowRequest) process() {
+	var err1, err2 C.longlong
+	wnd := wnds[request.wndId]
+	C.g2d_window_show(wnd.data, &err1, &err2);
+	if err1 == 0 {
+		event := &tLogicEvent{typeId: showType}
+		event.props.update(wnd.data)
+		wnd.eventsChan <- event
+	} else {
+		Err = toError(err1, err2, nil)
+	}
+}
+
+func (request *tDestroyWindowRequest) process() {
+	var err1, err2 C.longlong
+	wnd := wnds[request.wndId]
+	C.g2d_window_destroy(wnd.data, &err1, &err2);
+	if err1 == 0 {
+	} else {
+		Err = toError(err1, err2, nil)
+	}
+}
+
+func (request *tSetPropertiesRequest) process() {
+	var err1, err2 C.longlong
+	wnd := wnds[request.wndId]
+	if request.modPos {
+		C.g2d_window_pos_set(wnd.data, C.int(request.props.ClientX), C.int(request.props.ClientY))
+	}
+	if request.modSize {
+		C.g2d_window_size_set(wnd.data, C.int(request.props.ClientWidth), C.int(request.props.ClientHeight))
+	}
+	if request.modStyle {
+		wn := C.int(request.props.ClientWidthMin)
+		hn := C.int(request.props.ClientHeightMin)
+		wx := C.int(request.props.ClientWidthMax)
+		hx := C.int(request.props.ClientHeightMax)
+		l, b, d, r := request.props.boolsToCInt()
+		C.g2d_window_style_set(wnd.data, wn, hn, wx, hx, l, b, d, r)
+	}
+	if request.modFullscreen {
+		if request.props.Fullscreen {
+			C.g2d_window_fullscreen_set(wnd.data, &err1, &err2)
+		} else {
+			C.g2d_window_restore_bak(wnd.data)
+		}
+	} else if request.modStyle {
+		C.g2d_window_pos_apply(wnd.data, &err1, &err2)
+	} else if request.modPos || request.modSize {
+		C.g2d_window_move(wnd.data, &err1, &err2)
+	}
+	if request.modTitle {
+		var t unsafe.Pointer
+		var ts C.size_t
+		if len(request.props.Title) > 0 {
+			bytes := *(*[]byte)(unsafe.Pointer(&(request.props.Title)))
+			t, ts = unsafe.Pointer(&bytes[0]), C.size_t(len(request.props.Title))
+		}
+		C.g2d_window_title_set(wnd.data, t, ts, &err1, &err2)
+	}
+	if request.modMouse {
+		C.g2d_mouse_pos_set(wnd.data, C.int(request.props.MouseX), C.int(request.props.MouseY), &err1, &err2)
+	}
+}
+
+func postReqest(request tRequest) {
+	var err1, err2 C.longlong
+	mutex.Lock()
+	requests = append(requests, request)
+	C.g2d_post_request(&err1, &err2)
+	mutex.Unlock()
 }
 
 func cleanUp() {
@@ -126,7 +237,14 @@ func g2dProcessRequest() {
 	mutex.Unlock()
 }
 
-func toError(err1, err2 int64, errInfo *C.char) error {
+//export g2dClose
+func g2dClose(id C.int) {
+	mutex.Lock()
+	wnds[id].eventsChan <- (&tLogicEvent{typeId: closeType})
+	mutex.Unlock()
+}
+
+func toError(err1, err2 C.longlong, errInfo *C.char) error {
 	var err error
 	if err1 > 0 {
 		var errStr, info string
@@ -170,11 +288,11 @@ func toError(err1, err2 int64, errInfo *C.char) error {
 		if len(errStr) == 0 {
 			errStr = "unknown"
 		}
-		errStr = errStr + " (" + strconv.FormatInt(err1, 10)
+		errStr = errStr + " (" + strconv.FormatInt(int64(err1), 10)
 		if err2 == 0 {
 			errStr = errStr + ")"
 		} else {
-			errStr = errStr + ", " + strconv.FormatInt(err2, 10) + ")"
+			errStr = errStr + ", " + strconv.FormatInt(int64(err2), 10) + ")"
 		}
 		if errInfo != nil {
 			info = C.GoString(errInfo)
@@ -290,137 +408,6 @@ func toTString(str string) (unsafe.Pointer, unsafe.Pointer) {
 	errC := C.g2d_string_new(&strT, strC)
 	C.g2d_string_free(strC)
 	return strT, errC
-}
-
-func pollEvents() {
-	errC := C.g2d_process_events()
-	Err = toError(errC)
-}
-
-func (mgr *tManagerBase) newProps() Properties {
-	var x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
-	var props Properties
-	C.g2d_window_props(mgr.data, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
-	props.ClientX = int(x)
-	props.ClientY = int(y)
-	props.ClientWidth = int(w)
-	props.ClientHeight = int(h)
-	props.ClientWidthMin = int(wn)
-	props.ClientHeightMin = int(hn)
-	props.ClientWidthMax = int(wx)
-	props.ClientHeightMax = int(hx)
-	props.Borderless = bool(b != 0)
-	props.Dragable = bool(d != 0)
-	props.Resizable = bool(r != 0)
-	props.Fullscreen = bool(f != 0)
-	props.MouseLocked = bool(l != 0)
-	return props
-}
-
-func (mgr *tManagerBase) setClientPos(x, y int) {
-	C.g2d_client_pos_set(mgr.data, C.int(x), C.int(y))
-}
-
-func (mgr *tManagerBase) setClientSize(width, height int) {
-	C.g2d_client_size_set(mgr.data, C.int(width), C.int(height))
-}
-
-func (mgr *tManagerBase) setWindowStyle(props Properties) {
-	wn := C.int(props.ClientWidthMin)
-	hn := C.int(props.ClientHeightMin)
-	wx := C.int(props.ClientWidthMax)
-	hx := C.int(props.ClientHeightMax)
-	b := toCInt(props.Borderless)
-	d := toCInt(props.Dragable)
-	r := toCInt(props.Resizable)
-	l := toCInt(props.MouseLocked)
-	C.g2d_window_style_set(mgr.data, wn, hn, wx, hx, b, d, r, l)
-}
-
-func (mgr *tManagerBase) applyFullscreen() {
-	if Err == nil {
-		errC := C.g2d_window_fullscreen_set(mgr.data)
-		setErr(toError(errC))
-	}
-}
-
-func (mgr *tManagerBase) applyClientPos() {
-	if Err == nil {
-		errC := C.g2d_client_pos_apply(mgr.data)
-		setErr(toError(errC))
-	}
-}
-
-func (mgr *tManagerBase) applyClientMove() {
-	if Err == nil {
-		errC := C.g2d_client_move(mgr.data)
-		setErr(toError(errC))
-	}
-}
-
-func (mgr *tManagerBase) applyCmd(cmd Command) {
-	if Err == nil {
-		if cmd.CloseUnc {
-			mgr.destroy()
-		} else if cmd.CloseReq {
-			errC := C.g2d_post_close(mgr.data)
-			setErr(toError(errC))
-		}
-	}
-}
-
-func (mgr *tManagerBase) applyMouse(x, y int) {
-	if Err == nil {
-		errC := C.g2d_mouse_pos_set(mgr.data, C.int(x), C.int(y))
-		setErr(toError(errC))
-	}
-}
-
-func (mgr *tManagerBase) applyTitle(title string) {
-	if Err == nil {
-		t, errC := toTString(title)
-		if errC == nil {
-			errC = C.g2d_window_title_set(mgr.data, t)
-			C.g2d_string_free(t)
-		}
-		setErr(toError(errC))
-	}
-}
-
-func (mgr *tManagerBase) applyProps(props Properties, mod tModification) {
-	if Err == nil && !mgr.wndBase.destroying {
-		if mod.pos {
-			mgr.setClientPos(props.ClientX, props.ClientY)
-		}
-		if mod.size {
-			mgr.setClientSize(props.ClientWidth, props.ClientHeight)
-		}
-		if mod.style {
-			mgr.setWindowStyle(props)
-		}
-		if mod.fsToggle && props.Fullscreen {
-			mgr.applyFullscreen()
-		} else if mod.fsToggle {
-			C.g2d_client_restore_bak(mgr.data)
-			mgr.applyClientPos()
-		} else if mod.style {
-			mgr.applyClientPos()
-		} else if mod.pos || mod.size {
-			mgr.applyClientMove()
-		}
-		if mod.mouse {
-			mgr.applyMouse(props.MouseX, props.MouseY)
-		}
-		if mod.title {
-			mgr.applyTitle(props.Title)
-		}
-	}
-}
-
-func (mgr *tManagerBase) createToWindow(nanos int64) error {
-	mgr.wndBase.Time.NanosEvent = nanos
-	err := mgr.wndAbst.Create()
-	return err
 }
 
 // showToWindow is same as updateToWindow
