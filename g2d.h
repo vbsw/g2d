@@ -8,6 +8,12 @@ extern "C" {
 #if defined(G2D_WIN32)
 extern void g2d_free(void *data);
 extern void g2d_init(int *n1, int *n2, long long *err1, long long *err2, char **err_nfo);
+extern void g2d_main_loop();
+extern void g2d_post_request(long long *err1, long long *err2);
+extern void g2d_post_quit(long long *err1, long long *err2);
+extern void g2d_clean_up();
+extern void g2d_window_create(void **data, int cb_id, int x, int y, int w, int h, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l, int c, void *t, size_t ts, long long *err1, long long *err2);
+extern void g2d_window_show(void *data, long long *err1, long long *err2);
 /*
 typedef unsigned long g2d_ul_t;
 typedef unsigned int g2d_ui_t;

@@ -21,13 +21,9 @@ g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 		"github.com/vbsw/g2d"
 	)
 
-	type mainWindow struct {
-		g2d.WindowImpl
-	}
-
 	func Main() {
 		g2d.Init()
-		g2d.MainLoop(new(mainWindow))
+		g2d.MainLoop(new(g2d.WindowImpl))
 		if g2d.Err != nil {
 			fmt.Println(g2d.Err.Error())
 		}

@@ -106,73 +106,6 @@ typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei co
 typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
-#define CLASS_NAME TEXT("g2d")
-
-/*
-typedef struct {
-	int err_num;
-	g2d_ul_t err_win32;
-	char *err_str;
-} error_t;
-
-typedef struct {
-	HDC dc;
-	HGLRC rc;
-} context_t;
-
-typedef struct {
-	WNDCLASSEX cls;
-	HWND hndl;
-	context_t ctx;
-} window_t;
-
-typedef struct {
-	int x, y, width, height;
-} client_t;
-
-typedef struct {
-	int width_min, height_min, width_max, height_max;
-	int borderless, dragable, fullscreen, resizable, locked;
-	DWORD style;
-} config_t;
-
-typedef struct {
-	int dragging, dragging_cust, locked;
-	int minimized, maximized, resizing;
-	int focus;
-} state_t;
-
-typedef struct {
-	window_t wnd;
-	client_t client;
-	client_t client_bak;
-	config_t config;
-	state_t state;
-	int key_repeated[255];
-	int go_obj_id;
-} window_data_t;
-
-static const WPARAM const MSG_SHOW = (WPARAM)"shown";
-static const WPARAM const MSG_UPDATE = (WPARAM)"update";
-static const WPARAM const MSG_PROPS = (WPARAM)"props";
-static const WPARAM const MSG_ERROR = (WPARAM)"error";
-
-static error_t err_no_mem = {1, 0, NULL};
-static error_t *err_static = NULL;
-*/
-
-static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
-static HINSTANCE instance = NULL;
-static BOOL initialized = FALSE;
-static int active_windows = 0;
-
-/*
-static struct {
-	int count;
-	BOOL force_destroy;
-} active_windows = {0, FALSE};
-*/
-
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
 static PFNWGLSWAPINTERVALEXTPROC         wglSwapIntervalEXT         = NULL;
@@ -212,11 +145,68 @@ static PFNGLUNIFORMMATRIX2X3FVPROC       glUniformMatrix2x3fv       = NULL;
 static PFNGLGENERATEMIPMAPPROC           glGenerateMipmap           = NULL;
 static PFNGLACTIVETEXTUREPROC            glActiveTexture            = NULL;
 
+typedef struct {
+	struct { HWND hndl; HDC dc; HGLRC rc; } wnd;
+	struct { int x, y, width, height; } client;
+	struct { int x, y, width, height; } client_bak;
+	struct { int x, y, double_clicked[5]; } mouse;
+	struct { int width_min, height_min, width_max, height_max, borderless, dragable, fullscreen, resizable, locked; DWORD style; } config;
+	struct { int dragging, dragging_cust, locked, minimized, maximized, resizing, focus, shown; } state;
+	int key_repeated[255];
+	int cb_id;
+/*
+	program_t prog;
+	rect_program_t rect_prog;
+	image_program_t image_prog;
+	float projection_mat[4*4];
+*/
+} window_data_t;
+
+static const WPARAM g2d_REQUEST_EVENT  = (WPARAM)"g2dc";
+static const WPARAM g2d_QUIT_EVENT    = (WPARAM)"g2dq";
+static LPCTSTR const class_name       = TEXT("g2d");
+static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
+
+static HINSTANCE instance = NULL;
+static BOOL initialized   = FALSE;
+static int windows_count  = 0;
+static DWORD thread_id    = 0;
+static BOOL stop          = FALSE;
+
+/*
+static struct {
+	int count;
+	BOOL force_destroy;
+} active_windows = {0, FALSE};
+*/
+
 void g2d_free(void *const data) {
 	free(data);
 }
 
 #include "win32_init.h"
+#include "win32_main_loop.h"
+#include "win32_window.h"
+
+void g2d_post_request(long long *const err1, long long *const err2) {
+	if (!PostThreadMessage(thread_id, WM_APP, g2d_REQUEST_EVENT, 0)) {
+		err1[0] = 3999;
+		err2[0] = (long long)GetLastError();
+	}
+}
+
+void g2d_post_quit(long long *const err1, long long *const err2) {
+	if (!PostThreadMessage(thread_id, WM_APP, g2d_QUIT_EVENT, 0)) {
+		err1[0] = 3999;
+		err2[0] = (long long)GetLastError();
+	}
+	stop = TRUE;
+}
+
+void g2d_clean_up() {
+	MSG msg;
+	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE));
+}
 
 /*
 static void *error_new(const int err_num, const DWORD err_win32, char *const err_str) {

@@ -31,6 +31,7 @@ func Init() {
 		var errInfo *C.char
 		C.g2d_init(&n1, &n2, &err1, &err2, &errInfo)
 		if err1 == 0 {
+			Err = nil
 			MaxTexSize, MaxTexUnits = int(n1), int(n2)
 			initialized, initFailed, quitting = true, false, false
 		} else {
@@ -42,6 +43,87 @@ func Init() {
 		mutex.Unlock()
 		panic("g2d engine is already initialized")
 	}
+}
+
+func MainLoop(mainWindow Window) {
+	if mainWindow != nil {
+		mutex.Lock()
+		if !initFailed {
+			if initialized {
+				if !running {
+					running = true
+					wnds = make([]*tWindow, 0, 2)
+					wndNextId = make([]int, 0, 2)
+					requests = make([]tRequest, 0, 2)
+					wnd := newWindow(mainWindow)
+					go wnd.logicThread()
+					mutex.Unlock()
+					C.g2d_main_loop()
+					mutex.Lock()
+					running = false
+					mutex.Unlock()
+					cleanUp()
+				} else {
+					mutex.Unlock()
+					panic("g2d MainLoop already running")
+				}
+			} else {
+				mutex.Unlock()
+				panic("g2d not initialized")
+			}
+		} else {
+			mutex.Unlock()
+		}
+	} else {
+		panic("main window must not be nil")
+	}
+}
+
+func postReqest(request tRequest) {
+	mutex.Lock()
+	var err1, err2 C.longlong
+	requests = append(requests, request)
+	C.g2d_post_request(&err1, &err2)
+	mutex.Unlock()
+}
+
+func (request *tCreateWindowRequest) process() {
+	
+}
+
+func cleanUp() {
+/*
+	for _, abst := range abstCbs {
+		if abst != nil {
+			var err1, err2 C.longlong
+			wnd := abst.impl()
+			wnd.msgs <- (&tLogicMessage{typeId: quitType, nanos: time.Nanos()})
+			<-wnd.quitted
+			unregister(wnd.cbId)
+			C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+			if err1 != 0 {
+				setError(toError(int64(err1), 0, int64(wnd.cbId), "", nil))
+			}
+		}
+	}
+	toMainLoop.quitMessageThread()
+*/
+	C.g2d_clean_up()
+}
+
+//export g2dMainLoopStarted
+func g2dMainLoopStarted() {
+	wnds[0].eventsChan <- &tLogicEvent{typeId: configType}
+}
+
+//export g2dProcessRequest
+func g2dProcessRequest() {
+	mutex.Lock()
+	for _, request := range requests {
+		request.process()
+	}
+	requests = requests[:0]
+	mutex.Unlock()
 }
 
 func toError(err1, err2 int64, errInfo *C.char) error {
