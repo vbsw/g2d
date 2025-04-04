@@ -15,6 +15,12 @@ import (
 )
 
 const (
+	mustNotBeNil   = "main window must not be nil"
+	notInitialized = "g2d not initialized"
+	alreadyRunning = "g2d main loop already running"
+)
+
+const (
 	configState = iota
 	runningState
 	closingState
@@ -47,19 +53,18 @@ const (
 
 var (
 	MaxTexSize, MaxTexUnits int
-	Err error
+	Err                     error
 )
 
 var (
 	initialized, initFailed bool
 	running, quitting       bool
 	mutex                   sync.Mutex
-	wnds []*tWindow
-	wndNextId []int
-	requests []tRequest
+	wnds                    []*tWindow
+	wndNextId               []int
+	requests                []tRequest
 )
 
-// Window is the window event listener.
 type Window interface {
 	OnConfig(config *Configuration) error
 	OnCreate() error
@@ -71,10 +76,15 @@ type Window interface {
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy() error
+	Close()
+	Quit()
+	impl() *WindowImpl
 }
 
-// WindowImpl is the default implementation of Window.
+// WindowImpl is the implementation of Window.
 type WindowImpl struct {
+	Props Properties
+	id int
 }
 
 type Configuration struct {
@@ -96,16 +106,16 @@ type Properties struct {
 	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen             bool
-	EventTime, UpdateTime             int64
+	Update, AutoUpdate                bool
 	Title                             string
 }
 
 type tWindow struct {
-	eventsChan       chan *tLogicEvent
-	abst Window
-	data unsafe.Pointer
-	id, state int
-	autoUpdate bool
+	eventsChan chan *tLogicEvent
+	abst       Window
+	impl       *WindowImpl
+	data       unsafe.Pointer
+	id, state  int
 }
 
 type tLogicEvent struct {
@@ -113,7 +123,7 @@ type tLogicEvent struct {
 	valA     int
 	valB     float32
 	repeated uint
-	time    int
+	time     int
 	props    Properties
 	obj      interface{}
 }
@@ -124,10 +134,14 @@ type tRequest interface {
 
 type tCreateWindowRequest struct {
 	config *Configuration
-	wndId int
+	wndId  int
 }
 
 type tShowWindowRequest struct {
+	wndId int
+}
+
+type tCloseWindowRequest struct {
 	wndId int
 }
 
@@ -136,10 +150,10 @@ type tDestroyWindowRequest struct {
 }
 
 type tSetPropertiesRequest struct {
-	props Properties
-	modPos, modSize, modStyle bool
+	props                             Properties
+	modPos, modSize, modStyle         bool
 	modFullscreen, modMouse, modTitle bool
-	wndId int
+	wndId                             int
 }
 
 func newConfiguration() *Configuration {
@@ -203,38 +217,68 @@ func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int) {
 	return l, b, d, r
 }
 
+func (props *Properties) copyTo(target *Properties) {
+	updateTmp := target.Update
+	autoAupdateTmp := target.AutoUpdate
+	titleTmp := target.Title
+	target = props
+	target.Update = updateTmp
+	target.AutoUpdate = autoAupdateTmp
+	target.Title = titleTmp
+}
+
+func (props *Properties) compare(target *Properties) *tSetPropertiesRequest {
+	var req *tSetPropertiesRequest
+	if *props != *target && props.Update == target.Update && props.AutoUpdate == target.AutoUpdate {
+		req = new(tSetPropertiesRequest)
+		req.props = *target
+		req.modPos = bool(props.ClientX != target.ClientX || props.ClientY != target.ClientY)
+		req.modSize = bool(props.ClientWidth != target.ClientWidth || props.ClientHeight != target.ClientHeight)
+		req.modStyle = bool(props.ClientWidthMin != target.ClientWidthMin || props.ClientHeightMin != target.ClientHeightMin)
+		req.modStyle = bool(req.modStyle || props.ClientWidthMax != target.ClientWidthMax || props.ClientHeightMax != target.ClientHeightMax)
+		req.modStyle = bool(req.modStyle || props.MouseLocked != target.MouseLocked || props.Borderless != target.Borderless)
+		req.modStyle = bool(req.modStyle || props.Dragable != target.Dragable || props.Resizable != target.Resizable)
+		req.modFullscreen = bool(props.Fullscreen != target.Fullscreen)
+		req.modMouse = bool(props.MouseX != target.MouseX || props.MouseY != target.MouseY)
+		req.modTitle = bool(props.Title != target.Title)
+	}
+	return req
+}
+
 func newWindow(abst Window) *tWindow {
 	wnd := new(tWindow)
+	wnd.id = registerWnd(wnd)
 	wnd.eventsChan = make(chan *tLogicEvent, 1000)
 	wnd.abst = abst
-	wnd.id = registerWnd(wnd)
+	wnd.impl = abst.impl()
 	wnd.state = configState
+	wnd.impl.id = wnd.id
 	return wnd
 }
 
 func (wnd *tWindow) nextEvent() *tLogicEvent {
 	var event *tLogicEvent
 	event = <-wnd.eventsChan
-/*
-	if wnd.state > configState && wnd.state < closingState && wnd.autoUpdate {
-		select {
-		case msg := <-wnd.msgs:
-			event = msg
-		default:
-			wnd.update = false
-			event = &tLogicEvent{typeId: updateType, nanos: time.Nanos()}
+	/*
+		if wnd.state > configState && wnd.state < closingState && wnd.autoUpdate {
+			select {
+			case msg := <-wnd.msgs:
+				event = msg
+			default:
+				wnd.update = false
+				event = &tLogicEvent{typeId: updateType, nanos: time.Nanos()}
+			}
+		} else {
+			event = <-wnd.msgs
+			if event == nil && wnd.update {
+				wnd.update = false
+				event = &tLogicEvent{typeId: updateType, nanos: time.Nanos()}
+			}
 		}
-	} else {
-		event = <-wnd.msgs
-		if event == nil && wnd.update {
-			wnd.update = false
-			event = &tLogicEvent{typeId: updateType, nanos: time.Nanos()}
+		if wnd.state == closingState && event.typeId != quitType {
+			event = nil
 		}
-	}
-	if wnd.state == closingState && event.typeId != quitType {
-		event = nil
-	}
-*/
+	*/
 	return event
 }
 
@@ -242,11 +286,20 @@ func (wnd *tWindow) logicThread() {
 	for wnd.state != quitState {
 		event := wnd.nextEvent()
 		if event != nil {
+			if event.typeId != destroyType {
+				event.props.copyTo(&wnd.impl.Props)
+			}
 			switch event.typeId {
 			case configType:
 				wnd.onConfig()
 			case createType:
 				wnd.onCreate()
+			case showType:
+				wnd.onShow()
+			case keyDownType:
+				wnd.onKeyDown(event.valA, event.repeated)
+			case keyUpType:
+				wnd.onKeyUp(event.valA)
 			case closeType:
 				wnd.onClose()
 			case destroyType:
@@ -254,71 +307,58 @@ func (wnd *tWindow) logicThread() {
 			}
 		}
 	}
-/*
-	wnd := abst.impl()
-	for wnd.state != quitState {
-		msg := wnd.nextEvent()
-		if msg != nil {
-			wnd.Time.Curr = msg.nanos
-			switch msg.typeId {
-			case configType:
-				onConfig(abst, wnd)
-			case createType:
-				onCreate(abst, wnd)
-			case showType:
-				onShow(abst, wnd)
-			case wndMoveType:
-				wnd.updateProps(msg)
-				onWindowMoved(abst, wnd)
-			case wndResizeType:
-				wnd.updateProps(msg)
-				onWindowResize(abst, wnd)
-			case keyDownType:
-				onKeyDown(abst, wnd, msg.valA, msg.repeated)
-			case keyUpType:
-				onKeyUp(abst, wnd, msg.valA)
-			case msMoveType:
-				wnd.updateProps(msg)
-				onMouseMove(abst, wnd)
-			case buttonDownType:
-				onButtonDown(abst, wnd, msg.valA, msg.repeated != 0)
-			case buttonUpType:
-				onButtonUp(abst, wnd, msg.valA, msg.repeated != 0)
-			case wheelType:
-				onWheel(abst, wnd, msg.valB)
-			case minimizeType:
-				onWindowMinimize(abst, wnd)
-			case restoreType:
-				onWindowRestore(abst, wnd)
-			case textureType:
-				onTextureLoaded(abst, wnd, msg.valA)
-			case updateType:
-				onUpdate(abst, wnd)
-			case closeType:
-				onQuitReq(abst, wnd)
-			case quitType:
-				onDestroy(abst, wnd)
+	/*
+		wnd := abst.impl()
+		for wnd.state != quitState {
+			msg := wnd.nextEvent()
+			if msg != nil {
+				wnd.Time.Curr = msg.nanos
+				switch msg.typeId {
+				case wndMoveType:
+					wnd.updateProps(msg)
+					onWindowMoved(abst, wnd)
+				case wndResizeType:
+					wnd.updateProps(msg)
+					onWindowResize(abst, wnd)
+				case msMoveType:
+					wnd.updateProps(msg)
+					onMouseMove(abst, wnd)
+				case buttonDownType:
+					onButtonDown(abst, wnd, msg.valA, msg.repeated != 0)
+				case buttonUpType:
+					onButtonUp(abst, wnd, msg.valA, msg.repeated != 0)
+				case wheelType:
+					onWheel(abst, wnd, msg.valB)
+				case minimizeType:
+					onWindowMinimize(abst, wnd)
+				case restoreType:
+					onWindowRestore(abst, wnd)
+				case textureType:
+					onTextureLoaded(abst, wnd, msg.valA)
+				case updateType:
+					onUpdate(abst, wnd)
+				}
 			}
 		}
-	}
-	wnd.gfxImpl.destroy()
-*/
+		wnd.gfxImpl.destroy()
+	*/
 }
 
 func (wnd *tWindow) onConfig() {
 	config := newConfiguration()
 	err := wnd.abst.OnConfig(config)
-	wnd.autoUpdate = config.AutoUpdate
+	wnd.impl.Props.AutoUpdate = config.AutoUpdate
+	wnd.impl.Props.Title = config.Title
 	if err == nil {
 		postReqest(&tCreateWindowRequest{wndId: wnd.id, config: config})
 	}
-/*
-	if err == nil {
-		toMainLoop.postMsg(&tCreateWindowRequest{abst: abst, config: config})
-	} else {
-		onLogicError(abst, wnd, 4999, err)
-	}
-*/
+	/*
+		if err == nil {
+			toMainLoop.postMsg(&tCreateWindowRequest{abst: abst, config: config})
+		} else {
+			onLogicError(abst, wnd, 4999, err)
+		}
+	*/
 }
 
 func (wnd *tWindow) onCreate() {
@@ -326,86 +366,134 @@ func (wnd *tWindow) onCreate() {
 	if err == nil {
 		postReqest(&tShowWindowRequest{wndId: wnd.id})
 	}
-/*
+	/*
+		if err == nil {
+			toMainLoop.postMsg(&tCreateWindowRequest{abst: abst, config: config})
+		} else {
+			onLogicError(abst, wnd, 4999, err)
+		}
+	*/
+}
+
+func (wnd *tWindow) onShow() {
+	props := wnd.impl.Props
+	err := wnd.abst.OnShow()
 	if err == nil {
-		toMainLoop.postMsg(&tCreateWindowRequest{abst: abst, config: config})
-	} else {
-		onLogicError(abst, wnd, 4999, err)
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postReqest(setPropsReq)
+		}
 	}
-*/
+}
+
+func (wnd *tWindow) onKeyDown(keyCode int, repeated uint) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnKeyDown(keyCode, repeated)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postReqest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onKeyUp(keyCode int) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnKeyUp(keyCode)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postReqest(setPropsReq)
+		}
+	}
 }
 
 func (wnd *tWindow) onClose() {
+	props := wnd.impl.Props
 	quit, err := wnd.abst.OnClose()
 	if err == nil {
 		if quit {
 			postReqest(&tDestroyWindowRequest{wndId: wnd.id})
+		} else {
+			setPropsReq := props.compare(&wnd.impl.Props)
+			if setPropsReq != nil {
+				setPropsReq.wndId = wnd.id
+				postReqest(setPropsReq)
+			}
 		}
 	}
-/*
-	if err == nil {
-		toMainLoop.postMsg(&tCreateWindowRequest{abst: abst, config: config})
-	} else {
-		onLogicError(abst, wnd, 4999, err)
-	}
-*/
 }
 
 func (wnd *tWindow) onDestroy() {
-/*
-	if wnd.wgt.Gfx.running {
-		wnd.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
-		<- wnd.wgt.Gfx.quitted
-	}
-*/
+	/*
+		if wnd.wgt.Gfx.running {
+			wnd.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
+			<- wnd.wgt.Gfx.quitted
+		}
+	*/
 	wnd.abst.OnDestroy()
-/*
-	wnd.wgt.quitted <- true
-	wnd.state = quitState
-	if err != nil {
-		setErrorSynced(err)
-	}
-*/
+	/*
+		wnd.wgt.quitted <- true
+		wnd.state = quitState
+		if err != nil {
+			setErrorSynced(err)
+		}
+	*/
 }
 
-func (wndImpl *WindowImpl) OnConfig(config *Configuration) error {
+func (wnd *WindowImpl) OnConfig(config *Configuration) error {
 	return nil
 }
 
-func (wndImpl *WindowImpl) OnCreate() error {
+func (wnd *WindowImpl) OnCreate() error {
 	return nil
 }
 
-func (wndImpl *WindowImpl) OnShow() error {
+func (wnd *WindowImpl) OnShow() error {
 	return nil
 }
 
-func (wndImpl *WindowImpl) OnResize() error {
+func (wnd *WindowImpl) OnResize() error {
 	return nil
 }
 
-func (wndImpl *WindowImpl) OnKeyDown(keyCode int, repeated uint) error {
+func (wnd *WindowImpl) OnKeyDown(keyCode int, repeated uint) error {
 	return nil
 }
 
-func (wndImpl *WindowImpl) OnKeyUp(keyCode int) error {
+func (wnd *WindowImpl) OnKeyUp(keyCode int) error {
 	return nil
 }
 
-func (wndImpl *WindowImpl) OnTextureLoaded(textureId int) error {
+func (wnd *WindowImpl) OnTextureLoaded(textureId int) error {
 	return nil
 }
 
-func (wndImpl *WindowImpl) OnUpdate() error {
+func (wnd *WindowImpl) OnUpdate() error {
 	return nil
 }
 
-func (wndImpl *WindowImpl) OnClose() (bool, error) {
+func (wnd *WindowImpl) OnClose() (bool, error) {
 	return true, nil
 }
 
-func (wndImpl *WindowImpl) OnDestroy() error {
+func (wnd *WindowImpl) OnDestroy() error {
 	return nil
+}
+
+func (wnd *WindowImpl) Close() {
+	postReqest(&tCloseWindowRequest{wndId: wnd.id})
+}
+
+func (wnd *WindowImpl) Quit() {
+	postReqest(&tDestroyWindowRequest{wndId: wnd.id})
+}
+
+func (wnd *WindowImpl) impl() *WindowImpl {
+	return wnd
 }
 
 func registerWnd(wnd *tWindow) int {

@@ -19,11 +19,17 @@ g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 	import (
 		"fmt"
 		"github.com/vbsw/g2d"
+		"runtime"
 	)
+
+	// Arrange that main.main runs on main thread.
+	func init() {
+		runtime.LockOSThread()
+	}
 
 	func Main() {
 		g2d.Init()
-		g2d.MainLoop(new(g2d.WindowImpl))
+		g2d.MainLoop(new(g2d.Window))
 		if g2d.Err != nil {
 			fmt.Println(g2d.Err.Error())
 		}

@@ -20,7 +20,7 @@ import (
 
 const (
 	functionFailedDummy = "g2d dummy window %s failed"
-	loadFunctionFailed = "g2d load %s function failed"
+	loadFunctionFailed  = "g2d load %s function failed"
 )
 
 func Init() {
@@ -65,17 +65,17 @@ func MainLoop(mainWindow Window) {
 					cleanUp()
 				} else {
 					mutex.Unlock()
-					panic("g2d MainLoop already running")
+					panic(alreadyRunning)
 				}
 			} else {
 				mutex.Unlock()
-				panic("g2d not initialized")
+				panic(notInitialized)
 			}
 		} else {
 			mutex.Unlock()
 		}
 	} else {
-		panic("main window must not be nil")
+		panic(mustNotBeNil)
 	}
 }
 
@@ -132,7 +132,7 @@ func (request *tCreateWindowRequest) process() {
 func (request *tShowWindowRequest) process() {
 	var err1, err2 C.longlong
 	wnd := wnds[request.wndId]
-	C.g2d_window_show(wnd.data, &err1, &err2);
+	C.g2d_window_show(wnd.data, &err1, &err2)
 	if err1 == 0 {
 		event := &tLogicEvent{typeId: showType}
 		event.props.update(wnd.data)
@@ -142,10 +142,17 @@ func (request *tShowWindowRequest) process() {
 	}
 }
 
+func (request *tCloseWindowRequest) process() {
+	wnd := wnds[request.wndId]
+	event := &tLogicEvent{typeId: closeType}
+	event.props.update(wnd.data)
+	wnd.eventsChan <- event
+}
+
 func (request *tDestroyWindowRequest) process() {
 	var err1, err2 C.longlong
 	wnd := wnds[request.wndId]
-	C.g2d_window_destroy(wnd.data, &err1, &err2);
+	C.g2d_window_destroy(wnd.data, &err1, &err2)
 	if err1 == 0 {
 	} else {
 		Err = toError(err1, err2, nil)
@@ -167,7 +174,7 @@ func (request *tSetPropertiesRequest) process() {
 		wx := C.int(request.props.ClientWidthMax)
 		hx := C.int(request.props.ClientHeightMax)
 		l, b, d, r := request.props.boolsToCInt()
-		C.g2d_window_style_set(wnd.data, wn, hn, wx, hx, l, b, d, r)
+		C.g2d_window_style_set(wnd.data, wn, hn, wx, hx, b, d, r, l)
 	}
 	if request.modFullscreen {
 		if request.props.Fullscreen {
@@ -203,22 +210,22 @@ func postReqest(request tRequest) {
 }
 
 func cleanUp() {
-/*
-	for _, abst := range abstCbs {
-		if abst != nil {
-			var err1, err2 C.longlong
-			wnd := abst.impl()
-			wnd.msgs <- (&tLogicMessage{typeId: quitType, nanos: time.Nanos()})
-			<-wnd.quitted
-			unregister(wnd.cbId)
-			C.g2d_window_destroy(wnd.dataC, &err1, &err2)
-			if err1 != 0 {
-				setError(toError(int64(err1), 0, int64(wnd.cbId), "", nil))
+	/*
+		for _, abst := range abstCbs {
+			if abst != nil {
+				var err1, err2 C.longlong
+				wnd := abst.impl()
+				wnd.msgs <- (&tLogicMessage{typeId: quitType, nanos: time.Nanos()})
+				<-wnd.quitted
+				unregister(wnd.cbId)
+				C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+				if err1 != 0 {
+					setError(toError(int64(err1), 0, int64(wnd.cbId), "", nil))
+				}
 			}
 		}
-	}
-	toMainLoop.quitMessageThread()
-*/
+		toMainLoop.quitMessageThread()
+	*/
 	C.g2d_clean_up()
 }
 
@@ -241,6 +248,20 @@ func g2dProcessRequest() {
 func g2dClose(id C.int) {
 	mutex.Lock()
 	wnds[id].eventsChan <- (&tLogicEvent{typeId: closeType})
+	mutex.Unlock()
+}
+
+//export g2dKeyDown
+func g2dKeyDown(id, code C.int, repeated C.uint) {
+	mutex.Lock()
+	wnds[id].eventsChan <- (&tLogicEvent{typeId: keyDownType, valA: int(code), repeated: uint(repeated)})
+	mutex.Unlock()
+}
+
+//export g2dKeyUp
+func g2dKeyUp(id, code C.int) {
+	mutex.Lock()
+	wnds[id].eventsChan <- (&tLogicEvent{typeId: keyUpType, valA: int(code)})
 	mutex.Unlock()
 }
 
@@ -307,7 +328,6 @@ func toError(err1, err2 C.longlong, errInfo *C.char) error {
 	}
 	return err
 }
-
 
 /*
 func Init(stub interface{}) {
@@ -551,21 +571,6 @@ func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) 
 	err := mgr.keyDownToWindow(code, repeated, nanos)
 	setErr(err)
 	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
-}
-
-//export g2dShow
-func g2dShow(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onShow(time())
-}
-
-//export g2dKeyDown
-func g2dKeyDown(objIdC, code C.int, repeated C.g2d_ui_t) {
-	cb.mgrs[int(objIdC)].onKeyDown(int(code), uint(repeated), time())
-}
-
-//export g2dKeyUp
-func g2dKeyUp(objIdC, code C.int) {
-	cb.mgrs[int(objIdC)].onKeyUp(int(code), time())
 }
 
 //export g2dUpdate

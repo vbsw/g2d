@@ -152,7 +152,7 @@ typedef struct {
 	struct { int x, y, double_clicked[5]; } mouse;
 	struct { int width_min, height_min, width_max, height_max, borderless, dragable, fullscreen, resizable, locked; DWORD style; } config;
 	struct { int dragging, dragging_cust, locked, minimized, maximized, resizing, focus, shown; } state;
-	int key_repeated[255];
+	unsigned int key_repeated[255];
 	int cb_id;
 /*
 	program_t prog;
@@ -184,6 +184,7 @@ void g2d_free(void *const data) {
 	free(data);
 }
 
+#include "win32_keys.h"
 #include "win32_init.h"
 #include "win32_main_loop.h"
 #include "win32_window.h"
