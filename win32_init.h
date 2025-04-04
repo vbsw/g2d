@@ -1,179 +1,134 @@
 /*
- *          Copyright 2022, Vitali Baumtrok.
+ *        Copyright 2023, 2025, Vitali Baumtrok.
  * Distributed under the Boost Software License, Version 1.0.
  *     (See accompanying file LICENSE or copy at
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-static PROC get_proc(LPCSTR const func_name, void **const err) {
-	PROC proc = NULL;
-	if (err[0] == NULL) {
-		// wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions).
-		proc = wglGetProcAddress(func_name);
-		const DWORD err_win32 = GetLastError();
-		if (err_win32) {
-			char *const err_str = (char*)malloc(sizeof(char) * 100);
-			proc = NULL;
-			if (err_str) {
-				const size_t length0 = strlen(func_name) + 1;
-				memcpy(err_str, func_name, length0);
-				err[0] = error_new(2, err_win32, err_str);
-			} else {
-				err[0] = error_new(1, 0, NULL);
-			}
-		}
-	}
-	return proc;
-}
+/* wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions). */
+#define LOAD_WGL(t, n) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_err = GetLastError(); if (last_err == 0) n = (t) proc; else { err1[0] = G2D_ERR_1000101; err2[0] = (long long)last_err; err_nfo[0] = #n; }}
+#define LOAD_OGL(t, n) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_err = GetLastError(); if (last_err == 0) n = (t) proc; else { err1[0] = G2D_ERR_1000102; err2[0] = (long long)last_err; err_nfo[0] = #n; }}
 
-static void module_init(void **const err) {
-	if (err[0] == NULL) {
+void g2d_init(int *const n1, int *const n2, long long *const err1, long long *const err2, char **const err_nfo) {
+	if (!initialized) {
+		/* module */
 		instance = GetModuleHandle(NULL);
-		if (!instance)
-			err[0] = error_new(2, GetLastError(), NULL);
-	}
-}
-
-static void dummy_class_init(window_t *const dummy, void **const err) {
-	if (err[0] == NULL) {
-		dummy[0].cls.cbSize = sizeof(WNDCLASSEX);
-		dummy[0].cls.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
-		dummy[0].cls.lpfnWndProc = DefWindowProc;
-		dummy[0].cls.cbClsExtra = 0;
-		dummy[0].cls.cbWndExtra = 0;
-		dummy[0].cls.hInstance = instance;
-		dummy[0].cls.hIcon = NULL;
-		dummy[0].cls.hCursor = NULL;
-		dummy[0].cls.hbrBackground = NULL;
-		dummy[0].cls.lpszMenuName = NULL;
-		dummy[0].cls.lpszClassName = TEXT("g2d_dummy");
-		dummy[0].cls.hIconSm = NULL;
-		if (RegisterClassEx(&dummy[0].cls) == INVALID_ATOM)
-			err[0] = error_new(3, GetLastError(), NULL);
-	}
-}
-
-static void dummy_window_create(window_t *const dummy, void **const err) {
-	if (err[0] == NULL) {
-		dummy[0].hndl = CreateWindow(dummy[0].cls.lpszClassName, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, dummy[0].cls.hInstance, NULL);
-		if (!dummy[0].hndl)
-			err[0] = error_new(4, GetLastError(), NULL);
-	}
-}
-
-static void dummy_context_init(window_t *const dummy, void **const err) {
-	if (err[0] == NULL) {
-		dummy[0].ctx.dc = GetDC(dummy[0].hndl);
-		if (dummy[0].ctx.dc) {
-			int pixelFormat;
-			PIXELFORMATDESCRIPTOR pixelFormatDesc;
-			ZeroMemory(&pixelFormatDesc, sizeof(PIXELFORMATDESCRIPTOR));
-			pixelFormatDesc.nSize = sizeof(PIXELFORMATDESCRIPTOR);
-			pixelFormatDesc.nVersion = 1;
-			pixelFormatDesc.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
-			pixelFormatDesc.iPixelType = PFD_TYPE_RGBA;
-			pixelFormatDesc.cColorBits = 32;
-			pixelFormatDesc.cAlphaBits = 8;
-			pixelFormatDesc.cDepthBits = 24;
-			pixelFormat = ChoosePixelFormat(dummy[0].ctx.dc, &pixelFormatDesc);
-			if (pixelFormat) {
-				if (SetPixelFormat(dummy[0].ctx.dc, pixelFormat, &pixelFormatDesc)) {
-					dummy[0].ctx.rc = wglCreateContext(dummy[0].ctx.dc);
-					if (!dummy[0].ctx.rc) {
-						err[0] = error_new(8, GetLastError(), NULL);
+		if (instance) {
+			/* dummy class */
+			WNDCLASSEX cls;
+			ZeroMemory(&cls, sizeof(WNDCLASSEX));
+			cls.cbSize = sizeof(WNDCLASSEX);
+			cls.style = CS_OWNDC;
+			cls.lpfnWndProc = DefWindowProc;
+			cls.hInstance = instance;
+			cls.lpszClassName = class_name_dummy;
+			if (RegisterClassEx(&cls) != INVALID_ATOM) {
+				/* dummy window */
+				HWND const dummy_hndl = CreateWindow(class_name_dummy, TEXT("Dummy"), WS_OVERLAPPEDWINDOW, 0, 0, 1, 1, NULL, NULL, instance, NULL);
+				if (dummy_hndl) {
+					/* dummy context */
+					HDC const dummy_dc = GetDC(dummy_hndl);
+					if (dummy_dc) {
+						int pixelFormat;
+						PIXELFORMATDESCRIPTOR pixelFormatDesc;
+						ZeroMemory(&pixelFormatDesc, sizeof(PIXELFORMATDESCRIPTOR));
+						pixelFormatDesc.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+						pixelFormatDesc.nVersion = 1;
+						pixelFormatDesc.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
+						pixelFormatDesc.iPixelType = PFD_TYPE_RGBA;
+						pixelFormatDesc.cColorBits = 32;
+						pixelFormatDesc.cAlphaBits = 8;
+						pixelFormatDesc.cDepthBits = 24;
+						pixelFormat = ChoosePixelFormat(dummy_dc, &pixelFormatDesc);
+						if (pixelFormat) {
+							if (SetPixelFormat(dummy_dc, pixelFormat, &pixelFormatDesc)) {
+								HGLRC const dummy_rc = wglCreateContext(dummy_dc);
+								if (dummy_rc) {
+									if (wglMakeCurrent(dummy_dc, dummy_rc)) {
+										glGetIntegerv(GL_MAX_TEXTURE_SIZE, n1);
+										glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, n2);
+										LOAD_WGL(PFNWGLCHOOSEPIXELFORMATARBPROC,    wglChoosePixelFormatARB)
+										LOAD_WGL(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB)
+										LOAD_WGL(PFNWGLSWAPINTERVALEXTPROC,         wglSwapIntervalEXT)
+										LOAD_WGL(PFNWGLGETSWAPINTERVALEXTPROC,      wglGetSwapIntervalEXT)
+										LOAD_OGL(PFNGLCREATESHADERPROC,             glCreateShader)
+										LOAD_OGL(PFNGLSHADERSOURCEPROC,             glShaderSource)
+										LOAD_OGL(PFNGLCOMPILESHADERPROC,            glCompileShader)
+										LOAD_OGL(PFNGLGETSHADERIVPROC,              glGetShaderiv)
+										LOAD_OGL(PFNGLGETSHADERINFOLOGPROC,         glGetShaderInfoLog)
+										LOAD_OGL(PFNGLCREATEPROGRAMPROC,            glCreateProgram)
+										LOAD_OGL(PFNGLATTACHSHADERPROC,             glAttachShader)
+										LOAD_OGL(PFNGLLINKPROGRAMPROC,              glLinkProgram)
+										LOAD_OGL(PFNGLVALIDATEPROGRAMPROC,          glValidateProgram)
+										LOAD_OGL(PFNGLGETPROGRAMIVPROC,             glGetProgramiv)
+										LOAD_OGL(PFNGLGETPROGRAMINFOLOGPROC,        glGetProgramInfoLog)
+										LOAD_OGL(PFNGLGENBUFFERSPROC,               glGenBuffers)
+										LOAD_OGL(PFNGLGENVERTEXARRAYSPROC,          glGenVertexArrays)
+										LOAD_OGL(PFNGLGETATTRIBLOCATIONPROC,        glGetAttribLocation)
+										LOAD_OGL(PFNGLBINDVERTEXARRAYPROC,          glBindVertexArray)
+										LOAD_OGL(PFNGLENABLEVERTEXATTRIBARRAYPROC,  glEnableVertexAttribArray)
+										LOAD_OGL(PFNGLVERTEXATTRIBPOINTERPROC,      glVertexAttribPointer)
+										LOAD_OGL(PFNGLBINDBUFFERPROC,               glBindBuffer)
+										LOAD_OGL(PFNGLBUFFERDATAPROC,               glBufferData)
+										LOAD_OGL(PFNGLBUFFERSUBDATAPROC,            glBufferSubData)
+										LOAD_OGL(PFNGLGETVERTEXATTRIBPOINTERVPROC,  glGetVertexAttribPointerv)
+										LOAD_OGL(PFNGLUSEPROGRAMPROC,               glUseProgram)
+										LOAD_OGL(PFNGLDELETEVERTEXARRAYSPROC,       glDeleteVertexArrays)
+										LOAD_OGL(PFNGLDELETEBUFFERSPROC,            glDeleteBuffers)
+										LOAD_OGL(PFNGLDELETEPROGRAMPROC,            glDeleteProgram)
+										LOAD_OGL(PFNGLDELETESHADERPROC,             glDeleteShader)
+										LOAD_OGL(PFNGLGETUNIFORMLOCATIONPROC,       glGetUniformLocation)
+										LOAD_OGL(PFNGLUNIFORMMATRIX3FVPROC,         glUniformMatrix3fv)
+										LOAD_OGL(PFNGLUNIFORM1FVPROC,               glUniform1fv)
+										LOAD_OGL(PFNGLUNIFORMMATRIX4FVPROC,         glUniformMatrix4fv)
+										LOAD_OGL(PFNGLUNIFORMMATRIX2X3FVPROC,       glUniformMatrix2x3fv)
+										LOAD_OGL(PFNGLGENERATEMIPMAPPROC,           glGenerateMipmap)
+										LOAD_OGL(PFNGLACTIVETEXTUREPROC,            glActiveTexture)
+										/* destroy dummy */
+										if (wglGetCurrentContext() == dummy_rc && !wglMakeCurrent(NULL, NULL) && err1[0] == 0) {
+											err1[0] = G2D_ERR_1000009; err2[0] = (long long)GetLastError();
+										}
+										if (!wglDeleteContext(dummy_rc) && err1[0] == 0) {
+											err1[0] = G2D_ERR_1000010; err2[0] = (long long)GetLastError();
+										}
+										ReleaseDC(dummy_hndl, dummy_dc);
+										if (!DestroyWindow(dummy_hndl) && err1[0] == 0) {
+											err1[0] = G2D_ERR_1000011; err2[0] = (long long)GetLastError();
+										}
+										if (!UnregisterClass(class_name_dummy, instance) && err1[0] == 0) {
+											err1[0] = G2D_ERR_1000012; err2[0] = (long long)GetLastError();
+										}
+										initialized = (BOOL)(err1[0] == 0);
+									} else {
+										err1[0] = G2D_ERR_1000008; err2[0] = (long long)GetLastError();
+										wglDeleteContext(dummy_rc); ReleaseDC(dummy_hndl, dummy_dc);
+										DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
+									}
+								} else {
+									err1[0] = G2D_ERR_1000007; err2[0] = (long long)GetLastError();
+									ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
+								}
+							} else {
+								err1[0] = G2D_ERR_1000006; err2[0] = (long long)GetLastError();
+								ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
+							}
+						} else {
+							err1[0] = G2D_ERR_1000005; err2[0] = (long long)GetLastError();
+							ReleaseDC(dummy_hndl, dummy_dc); DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
+						}
+					} else {
+						err1[0] = G2D_ERR_1000004;
+						DestroyWindow(dummy_hndl); UnregisterClass(class_name_dummy, instance);
 					}
 				} else {
-					err[0] = error_new(7, GetLastError(), NULL);
+					err1[0] = G2D_ERR_1000003; err2[0] = (long long)GetLastError();
+					UnregisterClass(class_name_dummy, instance);
 				}
 			} else {
-				err[0] = error_new(6, GetLastError(), NULL);
+				err1[0] = G2D_ERR_1000002; err2[0] = (long long)GetLastError();
 			}
 		} else {
-			err[0] = error_new(5, GetLastError(), NULL);
+			err1[0] = G2D_ERR_1000001; err2[0] = (long long)GetLastError();
 		}
 	}
-}
-
-static void dummy_make_context_current(window_t *const dummy, void **const err) {
-	if (err[0] == NULL)
-		if (!wglMakeCurrent(dummy[0].ctx.dc, dummy[0].ctx.rc))
-			err[0] = error_new(9, GetLastError(), NULL);
-}
-
-static void wgl_functions_init(void **const err) {
-	wglChoosePixelFormatARB    = (PFNWGLCHOOSEPIXELFORMATARBPROC)    get_proc("wglChoosePixelFormatARB",    err);
-	wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC) get_proc("wglCreateContextAttribsARB", err);
-	wglSwapIntervalEXT         = (PFNWGLSWAPINTERVALEXTPROC)         get_proc("wglSwapIntervalEXT",         err);
-	wglGetSwapIntervalEXT      = (PFNWGLGETSWAPINTERVALEXTPROC)      get_proc("wglGetSwapIntervalEXT",      err);
-}
-
-static void ogl_functions_init(void **const err) {
-	glCreateShader            = (PFNGLCREATESHADERPROC)            get_proc("glCreateShader",            err);
-	glShaderSource            = (PFNGLSHADERSOURCEPROC)            get_proc("glShaderSource",            err);
-	glCompileShader           = (PFNGLCOMPILESHADERPROC)           get_proc("glCompileShader",           err);
-	glGetShaderiv             = (PFNGLGETSHADERIVPROC)             get_proc("glGetShaderiv",             err);
-	glGetShaderInfoLog        = (PFNGLGETSHADERINFOLOGPROC)        get_proc("glGetShaderInfoLog",        err);
-	glCreateProgram           = (PFNGLCREATEPROGRAMPROC)           get_proc("glCreateProgram",           err);
-	glAttachShader            = (PFNGLATTACHSHADERPROC)            get_proc("glAttachShader",            err);
-	glLinkProgram             = (PFNGLLINKPROGRAMPROC)             get_proc("glLinkProgram",             err);
-	glValidateProgram         = (PFNGLVALIDATEPROGRAMPROC)         get_proc("glValidateProgram",         err);
-	glGetProgramiv            = (PFNGLGETPROGRAMIVPROC)            get_proc("glGetProgramiv",            err);
-	glGetProgramInfoLog       = (PFNGLGETPROGRAMINFOLOGPROC)       get_proc("glGetProgramInfoLog",       err);
-	glGenBuffers              = (PFNGLGENBUFFERSPROC)              get_proc("glGenBuffers",              err);
-	glGenVertexArrays         = (PFNGLGENVERTEXARRAYSPROC)         get_proc("glGenVertexArrays",         err);
-	glGetAttribLocation       = (PFNGLGETATTRIBLOCATIONPROC)       get_proc("glGetAttribLocation",       err);
-	glBindVertexArray         = (PFNGLBINDVERTEXARRAYPROC)         get_proc("glBindVertexArray",         err);
-	glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC) get_proc("glEnableVertexAttribArray", err);
-	glVertexAttribPointer     = (PFNGLVERTEXATTRIBPOINTERPROC)     get_proc("glVertexAttribPointer",     err);
-	glBindBuffer              = (PFNGLBINDBUFFERPROC)              get_proc("glBindBuffer",              err);
-	glBufferData              = (PFNGLBUFFERDATAPROC)              get_proc("glBufferData",              err);
-	glGetVertexAttribPointerv = (PFNGLGETVERTEXATTRIBPOINTERVPROC) get_proc("glGetVertexAttribPointerv", err);
-	glUseProgram              = (PFNGLUSEPROGRAMPROC)              get_proc("glUseProgram",              err);
-	glDeleteVertexArrays      = (PFNGLDELETEVERTEXARRAYSPROC)      get_proc("glDeleteVertexArrays",      err);
-	glDeleteBuffers           = (PFNGLDELETEBUFFERSPROC)           get_proc("glDeleteBuffers",           err);
-	glDeleteProgram           = (PFNGLDELETEPROGRAMPROC)           get_proc("glDeleteProgram",           err);
-	glDeleteShader            = (PFNGLDELETESHADERPROC)            get_proc("glDeleteShader",            err);
-	glGetUniformLocation      = (PFNGLGETUNIFORMLOCATIONPROC)      get_proc("glGetUniformLocation",      err);
-	glUniformMatrix3fv        = (PFNGLUNIFORMMATRIX3FVPROC)        get_proc("glUniformMatrix3fv",        err);
-	glUniformMatrix4fv        = (PFNGLUNIFORMMATRIX4FVPROC)        get_proc("glUniformMatrix4fv",        err);
-	glUniformMatrix2x3fv      = (PFNGLUNIFORMMATRIX2X3FVPROC)      get_proc("glUniformMatrix2x3fv",      err);
-	glGenerateMipmap          = (PFNGLGENERATEMIPMAPPROC)          get_proc("glGenerateMipmap",          err);
-	glActiveTexture           = (PFNGLACTIVETEXTUREPROC)           get_proc("glActiveTexture",           err);
-}
-
-static void dummy_destroy(window_t *const dummy, void **const err) {
-	if (dummy[0].ctx.rc) {
-		if (!wglMakeCurrent(NULL, NULL) && err[0] == NULL)
-			err[0] = error_new(10, GetLastError(), NULL);
-		wglDeleteContext(dummy[0].ctx.rc);
-	}
-	if (dummy[0].ctx.dc) {
-		ReleaseDC(dummy[0].hndl, dummy[0].ctx.dc);
-	}
-	if (dummy[0].hndl) {
-		if (!DestroyWindow(dummy[0].hndl) && err[0] == NULL)
-			err[0] = error_new(11, GetLastError(), NULL);
-	}
-	if (dummy[0].cls.lpszClassName) {
-		if (!UnregisterClass(dummy[0].cls.lpszClassName, dummy[0].cls.hInstance) && err[0] == NULL)
-			err[0] = error_new(12, GetLastError(), NULL);
-	}
-}
-
-void *g2d_init() {
-	void *err = NULL;
-	if (!initialized) {
-		window_t dummy;
-		ZeroMemory((void*)&dummy, sizeof(window_t));
-		module_init(&err);
-		dummy_class_init(&dummy, &err);
-		dummy_window_create(&dummy, &err);
-		dummy_context_init(&dummy, &err);
-		dummy_make_context_current(&dummy, &err);
-		wgl_functions_init(&err);
-		ogl_functions_init(&err);
-		dummy_destroy(&dummy, &err);
-		initialized = (BOOL)(err == NULL);
-	}
-	return err;
 }

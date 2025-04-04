@@ -11,17 +11,13 @@
 #include <windows.h>
 #include <gl/GL.h>
 #include "g2d.h"
+#include "win32_errors.h"
 
 /* Go functions can not be passed to c directly.            */
 /* They can only be called from c.                          */
 /* This code is an indirection to call Go callbacks.        */
 /* _cgo_export.h is generated automatically by cgo.         */
 #include "_cgo_export.h"
-
-/* Exported functions from Go are:                          */
-/* g2dClose                                                 */
-/* g2dDestroyBegin                                          */
-/* g2dDestroyEnd                                            */
 
 // from wgl.h
 #define WGL_SAMPLE_BUFFERS_ARB            0x2041
@@ -51,6 +47,21 @@
 #define WGL_SWAP_COPY_EXT                 0x2029
 #define WGL_SWAP_UNDEFINED_EXT            0x202A
 
+// copied from glcorearb.h
+#define GL_TEXTURE0                       0x84C0
+#define GL_ARRAY_BUFFER                   0x8892
+#define GL_ELEMENT_ARRAY_BUFFER           0x8893
+#define GL_STATIC_DRAW                    0x88E4
+#define GL_DYNAMIC_DRAW                   0x88E8
+#define GL_FRAGMENT_SHADER                0x8B30
+#define GL_VERTEX_SHADER                  0x8B31
+#define GL_COMPILE_STATUS                 0x8B81
+#define GL_INFO_LOG_LENGTH                0x8B84
+#define GL_LINK_STATUS                    0x8B82
+#define GL_VALIDATE_STATUS                0x8B83
+#define GL_CLAMP_TO_BORDER                0x812D
+#define GL_MAX_TEXTURE_IMAGE_UNITS        0x8872
+
 /* from wglext.h */
 typedef BOOL(WINAPI * PFNWGLCHOOSEPIXELFORMATARBPROC) (HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
 typedef HGLRC(WINAPI * PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareContext, const int *attribList);
@@ -60,6 +71,7 @@ typedef int (WINAPI * PFNWGLGETSWAPINTERVALEXTPROC) (void);
 // from glcorearb.h
 typedef char GLchar;
 typedef ptrdiff_t GLsizeiptr;
+typedef ptrdiff_t GLintptr;
 typedef GLuint(APIENTRY *PFNGLCREATESHADERPROC) (GLenum type);
 typedef void (APIENTRY *PFNGLSHADERSOURCEPROC) (GLuint shader, GLsizei count, const GLchar *const*string, const GLint *length);
 typedef void (APIENTRY *PFNGLCOMPILESHADERPROC) (GLuint shader);
@@ -79,6 +91,7 @@ typedef void (APIENTRY *PFNGLENABLEVERTEXATTRIBARRAYPROC) (GLuint index);
 typedef void (APIENTRY *PFNGLVERTEXATTRIBPOINTERPROC) (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid *pointer);
 typedef void (APIENTRY *PFNGLBINDBUFFERPROC) (GLenum target, GLuint buffer);
 typedef void (APIENTRY *PFNGLBUFFERDATAPROC) (GLenum target, GLsizeiptr size, const GLvoid *data, GLenum usage);
+typedef void (APIENTRY *PFNGLBUFFERSUBDATAPROC) (GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
 typedef void (APIENTRY *PFNGLGETVERTEXATTRIBPOINTERVPROC) (GLuint index, GLenum pname, GLvoid **pointer);
 typedef void (APIENTRY *PFNGLUSEPROGRAMPROC) (GLuint program);
 typedef void (APIENTRY *PFNGLDELETEVERTEXARRAYSPROC) (GLsizei n, const GLuint *arrays);
@@ -86,6 +99,7 @@ typedef void (APIENTRY *PFNGLDELETEBUFFERSPROC) (GLsizei n, const GLuint *buffer
 typedef void (APIENTRY *PFNGLDELETEPROGRAMPROC) (GLuint program);
 typedef void (APIENTRY *PFNGLDELETESHADERPROC) (GLuint shader);
 typedef GLint(APIENTRY *PFNGLGETUNIFORMLOCATIONPROC) (GLuint program, const GLchar *name);
+typedef void (APIENTRY *PFNGLUNIFORM1FVPROC) (GLint location, GLsizei count, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX4FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
@@ -94,6 +108,7 @@ typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
 #define CLASS_NAME TEXT("g2d")
 
+/*
 typedef struct {
 	int err_num;
 	g2d_ul_t err_win32;
@@ -144,9 +159,13 @@ static const WPARAM const MSG_ERROR = (WPARAM)"error";
 
 static error_t err_no_mem = {1, 0, NULL};
 static error_t *err_static = NULL;
+*/
+
+static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
 static HINSTANCE instance = NULL;
 static BOOL initialized = FALSE;
 static int active_windows = 0;
+
 /*
 static struct {
 	int count;
@@ -178,6 +197,7 @@ static PFNGLENABLEVERTEXATTRIBARRAYPROC  glEnableVertexAttribArray  = NULL;
 static PFNGLVERTEXATTRIBPOINTERPROC      glVertexAttribPointer      = NULL;
 static PFNGLBINDBUFFERPROC               glBindBuffer               = NULL;
 static PFNGLBUFFERDATAPROC               glBufferData               = NULL;
+static PFNGLBUFFERSUBDATAPROC            glBufferSubData            = NULL;
 static PFNGLGETVERTEXATTRIBPOINTERVPROC  glGetVertexAttribPointerv  = NULL;
 static PFNGLUSEPROGRAMPROC               glUseProgram               = NULL;
 static PFNGLDELETEVERTEXARRAYSPROC       glDeleteVertexArrays       = NULL;
@@ -185,12 +205,20 @@ static PFNGLDELETEBUFFERSPROC            glDeleteBuffers            = NULL;
 static PFNGLDELETEPROGRAMPROC            glDeleteProgram            = NULL;
 static PFNGLDELETESHADERPROC             glDeleteShader             = NULL;
 static PFNGLGETUNIFORMLOCATIONPROC       glGetUniformLocation       = NULL;
+static PFNGLUNIFORM1FVPROC               glUniform1fv               = NULL;
 static PFNGLUNIFORMMATRIX4FVPROC         glUniformMatrix4fv         = NULL;
 static PFNGLUNIFORMMATRIX3FVPROC         glUniformMatrix3fv         = NULL;
 static PFNGLUNIFORMMATRIX2X3FVPROC       glUniformMatrix2x3fv       = NULL;
 static PFNGLGENERATEMIPMAPPROC           glGenerateMipmap           = NULL;
 static PFNGLACTIVETEXTUREPROC            glActiveTexture            = NULL;
 
+void g2d_free(void *const data) {
+	free(data);
+}
+
+#include "win32_init.h"
+
+/*
 static void *error_new(const int err_num, const DWORD err_win32, char *const err_str) {
 	error_t *const err = (error_t*)malloc(sizeof(error_t));
 	if (err) {
@@ -303,6 +331,7 @@ void *g2d_post_err(void *const data) {
 		return error_new(68, 0, NULL);
 	return NULL;
 }
+*/
 
 /* #if defined(G2D_WIN32) */
 #endif

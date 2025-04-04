@@ -15,10 +15,101 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	timepkg "time"
 	"unsafe"
 )
 
+const (
+	functionFailedDummy = "g2d dummy window %s failed"
+	loadFunctionFailed = "g2d load %s function failed"
+)
+
+func Init() {
+	mutex.Lock()
+	if !initialized {
+		var n1, n2 C.int
+		var err1, err2 C.longlong
+		var errInfo *C.char
+		C.g2d_init(&n1, &n2, &err1, &err2, &errInfo)
+		if err1 == 0 {
+			MaxTexSize, MaxTexUnits = int(n1), int(n2)
+			initialized, initFailed, quitting = true, false, false
+		} else {
+			initFailed = true
+			Err = toError(int64(err1), int64(err2), errInfo)
+		}
+		mutex.Unlock()
+	} else {
+		mutex.Unlock()
+		panic("g2d engine is already initialized")
+	}
+}
+
+func toError(err1, err2 int64, errInfo *C.char) error {
+	var err error
+	if err1 > 0 {
+		var errStr, info string
+		if err1 < 1000001 {
+			errStr = "memory allocation failed"
+		} else if err1 < 1000101 {
+			switch err1 {
+			case 1000001:
+				errStr = "g2d GetModuleHandle failed"
+			case 1000002:
+				errStr = fmt.Sprintf(functionFailedDummy, "RegisterClassEx")
+			case 1000003:
+				errStr = fmt.Sprintf(functionFailedDummy, "CreateWindow")
+			case 1000004:
+				errStr = fmt.Sprintf(functionFailedDummy, "GetDC")
+			case 1000005:
+				errStr = fmt.Sprintf(functionFailedDummy, "ChoosePixelFormat")
+			case 1000006:
+				errStr = fmt.Sprintf(functionFailedDummy, "SetPixelFormat")
+			case 1000007:
+				errStr = fmt.Sprintf(functionFailedDummy, "wglCreateContext")
+			case 1000008:
+				errStr = fmt.Sprintf(functionFailedDummy, "wglMakeCurrent")
+			case 1000009:
+				errStr = fmt.Sprintf(functionFailedDummy, "wglMakeCurrent")
+			case 1000010:
+				errStr = fmt.Sprintf(functionFailedDummy, "wglDeleteContext")
+			case 1000011:
+				errStr = fmt.Sprintf(functionFailedDummy, "DestroyWindow")
+			case 1000012:
+				errStr = fmt.Sprintf(functionFailedDummy, "UnregisterClass")
+			}
+		} else if err1 < 1001001 {
+			switch err1 {
+			case 1000101:
+				errStr = fmt.Sprintf(loadFunctionFailed, "WGL")
+			case 1000102:
+				errStr = fmt.Sprintf(loadFunctionFailed, "OpenGL")
+			}
+		}
+		if len(errStr) == 0 {
+			errStr = "unknown"
+		}
+		errStr = errStr + " (" + strconv.FormatInt(err1, 10)
+		if err2 == 0 {
+			errStr = errStr + ")"
+		} else {
+			errStr = errStr + ", " + strconv.FormatInt(err2, 10) + ")"
+		}
+		if errInfo != nil {
+			info = C.GoString(errInfo)
+			if err1 != 1000101 && err1 != 1000102 {
+				C.g2d_free(unsafe.Pointer(errInfo))
+			}
+		}
+		if len(info) > 0 {
+			errStr = errStr + "; " + info
+		}
+		err = errors.New(errStr)
+	}
+	return err
+}
+
+
+/*
 func Init(stub interface{}) {
 	if !initialized {
 		errC := C.g2d_init()
@@ -385,7 +476,6 @@ func (mgr *tManagerNoThreads) onProps(nanos int64) {
 func (mgr *tManagerNoThreads) onError(nanos int64) {
 }
 
-/*
 func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) {
 	props := mgr.newProps()<
 	mgr.wndBase.resetPropsAndCmd(props)
@@ -393,7 +483,6 @@ func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) 
 	setErr(err)
 	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
 }
-*/
 
 //export g2dShow
 func g2dShow(objIdC C.int) {
@@ -563,3 +652,4 @@ func toError(errC unsafe.Pointer) error {
 	}
 	return nil
 }
+*/

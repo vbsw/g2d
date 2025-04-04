@@ -1,0 +1,41 @@
+/*
+ *          Copyright 2025, Vitali Baumtrok.
+ * Distributed under the Boost Software License, Version 1.0.
+ *     (See accompanying file LICENSE or copy at
+ *        http://www.boost.org/LICENSE_1_0.txt)
+ */
+
+#define G2D_ERR_0000001 1
+#define G2D_ERR_0000002 2
+#define G2D_ERR_0000003 3
+#define G2D_ERR_0000004 4
+#define G2D_ERR_0000005 5
+#define G2D_ERR_0000006 6
+#define G2D_ERR_0000007 7
+#define G2D_ERR_0000008 8
+#define G2D_ERR_0000009 9
+#define G2D_ERR_0000010 10
+#define G2D_ERR_0000011 11
+#define G2D_ERR_0000012 12
+#define G2D_ERR_0000013 3
+#define G2D_ERR_0000014 14
+#define G2D_ERR_0000015 15
+#define G2D_ERR_0000016 16
+
+#define G2D_ERR_1000001 1000001
+#define G2D_ERR_1000002 1000002
+#define G2D_ERR_1000003 1000003
+#define G2D_ERR_1000004 1000004
+#define G2D_ERR_1000005 1000005
+#define G2D_ERR_1000006 1000006
+#define G2D_ERR_1000007 1000007
+#define G2D_ERR_1000008 1000008
+#define G2D_ERR_1000009 1000009
+#define G2D_ERR_1000010 1000010
+#define G2D_ERR_1000011 1000011
+#define G2D_ERR_1000012 1000012
+
+#define G2D_ERR_1000101 1000101
+#define G2D_ERR_1000102 1000102
+
+#define G2D_ERR_1001001 1001001

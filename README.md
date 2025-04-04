@@ -6,7 +6,7 @@
 g2d is a framework to create 2D graphic applications. It is published on <https://github.com/vbsw/g2d> and <https://gitlab.com/vbsw/g2d>.
 
 ## Copyright
-Copyright 2022, Vitali Baumtrok (vbsw@mailbox.org).
+Copyright 2023, 2025, Vitali Baumtrok (vbsw@mailbox.org).
 
 g2d is distributed under the Boost Software License, version 1.0. (See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
 
@@ -21,23 +21,16 @@ g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 		"github.com/vbsw/g2d"
 	)
 
-	type MyEngine struct {
-		g2d.Engine
-		params MyParameters
+	type mainWindow struct {
+		g2d.WindowImpl
 	}
 
-	func (engine *MyEngine) ParseOSArgs() error {
-		infoOnly, err := engine.params.parseOSArgs()
-		engine.SetInfoOnly(infoOnly)
-		return err
-	}
-
-	func (engine *MyEngine) Info() {
-		fmt.Println("version 1.0.0")
-	}
-
-	func main() {
-		g2d.Start(new(MyEngine))
+	func Main() {
+		g2d.Init()
+		g2d.MainLoop(new(mainWindow))
+		if g2d.Err != nil {
+			fmt.Println(g2d.Err.Error())
+		}
 	}
 
 ## References

@@ -1,5 +1,5 @@
 /*
- *          Copyright 2022, Vitali Baumtrok.
+ *          Copyright 2025, Vitali Baumtrok.
  * Distributed under the Boost Software License, Version 1.0.
  *     (See accompanying file LICENSE or copy at
  *        http://www.boost.org/LICENSE_1_0.txt)
@@ -10,10 +10,55 @@ package g2d
 
 import "C"
 import (
-	timepkg "time"
-	"unsafe"
+	"sync"
 )
 
+const (
+	configState = iota
+	runningState
+	closingState
+	quitState
+)
+
+const (
+	configType = iota
+	createType
+	showType
+	wndMoveType
+	wndResizeType
+	keyDownType
+	keyUpType
+	msMoveType
+	buttonDownType
+	buttonUpType
+	wheelType
+	updateType
+	quitReqType
+	quitType
+	leaveType
+	refreshType
+	swapIntervType
+	imageType
+	textureType
+	minimizeType
+	restoreType
+)
+
+var (
+	MaxTexSize, MaxTexUnits int
+	Err error
+)
+
+var (
+	initialized, initFailed bool
+	running, quitting       bool
+	mutex                   sync.Mutex
+)
+
+type Window interface {
+}
+
+/*
 const (
 	notInitialized    = "g2d not initialized"
 	alreadyProcessing = "already processing events"
@@ -285,6 +330,7 @@ func newManagerNoThreads(data unsafe.Pointer, window AbstractWindow, params *Par
 	mgr.initBase(data, window, params)
 	return mgr
 }
+*/
 
 /*
 func newManagerLogicThread(data unsafe.Pointer, window AbstractWindow, params *Parameters) tManager {
@@ -294,6 +340,7 @@ func newManagerLogicThread(data unsafe.Pointer, window AbstractWindow, params *P
 }
 */
 
+/*
 func (mgr *tManagerBase) initBase(data unsafe.Pointer, window AbstractWindow, params *Parameters) {
 	mgr.data = data
 	mgr.wndBase = window.baseStruct()
@@ -315,3 +362,4 @@ func toCInt(b bool) C.int {
 	}
 	return C.int(0)
 }
+*/
