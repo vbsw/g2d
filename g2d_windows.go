@@ -119,6 +119,14 @@ func (wnd *tWindow) graphicsThread() {
 	}
 }
 
+func (wnd *tWindow) onGfxUpdate() {
+	wnd.impl.Gfx.mutex.Lock()
+	wnd.impl.Gfx.updating = false
+	wnd.impl.Gfx.mutex.Unlock()
+	//C.g2d_gfx_draw()
+	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
+}
+
 func (request *tCreateWindowRequest) process() {
 	var err1, err2 C.longlong
 	var data unsafe.Pointer
@@ -219,6 +227,12 @@ func (request *tSetPropertiesRequest) process() {
 	if request.modMouse {
 		C.g2d_mouse_pos_set(wnd.data, C.int(request.props.MouseX), C.int(request.props.MouseY), &err1, &err2)
 	}
+}
+
+func (request *tConfigWindowRequest) process() {
+	wnd := newWindow(request.window)
+	go wnd.logicThread()
+	wnd.eventsChan <- &tLogicEvent{typeId: configType, time: appTime.Millis()}
 }
 
 func postRequest(request tRequest) {

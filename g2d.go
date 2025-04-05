@@ -51,6 +51,7 @@ const (
 	restoreType
 	focusType
 	customType
+	refreshType
 )
 
 var (
@@ -93,6 +94,7 @@ type Window interface {
 	Update()
 	Close()
 	Quit()
+	Show(window Window)
 	impl() *WindowImpl
 }
 
@@ -173,6 +175,10 @@ type tGraphicsEvent struct {
 
 type tRequest interface {
 	process()
+}
+
+type tConfigWindowRequest struct {
+	window Window
 }
 
 type tCreateWindowRequest struct {
@@ -395,6 +401,8 @@ func (wnd *tWindow) logicThread() {
 				wnd.onFocus(event.valA != 0)
 			case customType:
 				wnd.onCustom(event.obj)
+			case refreshType:
+				wnd.impl.Stats.updateFPS()
 			}
 		}
 	}
@@ -627,12 +635,6 @@ func (wnd *tWindow) onFocus(focus bool) {
 	}
 }
 
-func (wnd *tWindow) onGfxUpdate() {
-	wnd.impl.Gfx.mutex.Lock()
-	wnd.impl.Gfx.updating = false
-	wnd.impl.Gfx.mutex.Unlock()
-}
-
 func (wnd *WindowImpl) OnConfig(config *Configuration) error {
 	return nil
 }
@@ -732,6 +734,10 @@ func (wnd *WindowImpl) Quit() {
 
 func (wnd *WindowImpl) Custom(obj interface{}) {
 	postRequest(&tCustomRequest{wndId: wnd.id, obj: obj})
+}
+
+func (wnd *WindowImpl) Show(window Window) {
+	postRequest(&tConfigWindowRequest{window: window})
 }
 
 func (wnd *WindowImpl) impl() *WindowImpl {

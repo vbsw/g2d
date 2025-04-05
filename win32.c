@@ -156,6 +156,7 @@ typedef struct {
 	struct { int dragging, minimized, maximized, resizing, focus, shown; } state;
 	unsigned int key_repeated[255];
 	int cb_id;
+	struct { int r, g, b, w, h, i; } gfx;
 /*
 	program_t prog;
 	rect_program_t rect_prog;

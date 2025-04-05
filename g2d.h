@@ -31,7 +31,7 @@ extern void g2d_mouse_pos_set(void *data, int x, int y, long long *err1, long lo
 
 extern void g2d_gfx_make_current(void *data, long long *err1, long long *err2);
 extern void g2d_gfx_release(void *data, long long *err1, long long *err2);
-extern void g2d_gfx_draw(void *data, long long *err1, long long *err2);
+extern void g2d_gfx_draw(void *data, int w, int h, int r, int g, int b, int i, long long *err1, long long *err2);
 
 /*
 typedef unsigned long g2d_ul_t;
