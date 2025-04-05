@@ -184,6 +184,7 @@ void g2d_free(void *const data) {
 	free(data);
 }
 
+#include "win32_debug.h"
 #include "win32_keys.h"
 #include "win32_init.h"
 #include "win32_main_loop.h"

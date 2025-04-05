@@ -159,6 +159,13 @@ func (request *tDestroyWindowRequest) process() {
 	}
 }
 
+func (request *tCustomRequest) process() {
+	wnd := wnds[request.wndId]
+	event := &tLogicEvent{typeId: customType, obj: request.obj}
+	event.props.update(wnd.data)
+	wnd.eventsChan <- event
+}
+
 func (request *tSetPropertiesRequest) process() {
 	var err1, err2 C.longlong
 	wnd := wnds[request.wndId]
@@ -201,11 +208,31 @@ func (request *tSetPropertiesRequest) process() {
 	}
 }
 
-func postReqest(request tRequest) {
+func (request *tUpdateRequest) process() {
+	wnd := wnds[request.wndId]
+	event := &tLogicEvent{typeId: updateType}
+	event.props.update(wnd.data)
+	wnd.eventsChan <- event
+	wnd.update = false
+}
+
+func postRequest(request tRequest) {
 	var err1, err2 C.longlong
 	mutex.Lock()
 	requests = append(requests, request)
 	C.g2d_post_request(&err1, &err2)
+	mutex.Unlock()
+}
+
+func postUpdateRequest(wndId int) {
+	mutex.Lock()
+	wnd := wnds[wndId]
+	if !wnd.update {
+		var err1, err2 C.longlong
+		wnd.update = true
+		requests = append(requests, &tUpdateRequest{wndId: wndId})
+		C.g2d_post_request(&err1, &err2)
+	}
 	mutex.Unlock()
 }
 
@@ -244,24 +271,42 @@ func g2dProcessRequest() {
 	mutex.Unlock()
 }
 
+func toEventsChan(id C.int, event *tLogicEvent) {
+	mutex.Lock()
+	wnd := wnds[id]
+	event.props.update(wnd.data)
+	wnd.eventsChan <- event
+	mutex.Unlock()
+}
+
 //export g2dClose
 func g2dClose(id C.int) {
-	mutex.Lock()
-	wnds[id].eventsChan <- (&tLogicEvent{typeId: closeType})
-	mutex.Unlock()
+	toEventsChan(id, &tLogicEvent{typeId: closeType})
 }
 
 //export g2dKeyDown
 func g2dKeyDown(id, code C.int, repeated C.uint) {
-	mutex.Lock()
-	wnds[id].eventsChan <- (&tLogicEvent{typeId: keyDownType, valA: int(code), repeated: uint(repeated)})
-	mutex.Unlock()
+	toEventsChan(id, &tLogicEvent{typeId: keyDownType, valA: int(code), repeated: uint(repeated)})
 }
 
 //export g2dKeyUp
 func g2dKeyUp(id, code C.int) {
+	toEventsChan(id, &tLogicEvent{typeId: keyUpType, valA: int(code)})
+}
+
+//export g2dWindowMove
+func g2dWindowMove(id C.int) {
+	toEventsChan(id, &tLogicEvent{typeId: wndMoveType})
+}
+
+//export g2dWindowResize
+func g2dWindowResize(id C.int) {
 	mutex.Lock()
-	wnds[id].eventsChan <- (&tLogicEvent{typeId: keyUpType, valA: int(code)})
+	wnd := wnds[id]
+	event := &tLogicEvent{typeId: wndResizeType}
+	event.props.update(wnd.data)
+	wnd.eventsChan <- event
+	// wnd.gfx.eventsChan <- &tGraphicsEvent{typeId: wndResizeType, valA: event.props.ClientWidth, valB: event.props.ClientHeight}
 	mutex.Unlock()
 }
 
@@ -327,6 +372,16 @@ func toError(err1, err2 C.longlong, errInfo *C.char) error {
 		err = errors.New(errStr)
 	}
 	return err
+}
+
+//export goDebug
+func goDebug(a, b C.int, c, d C.ulong) {
+	fmt.Println(a, b, c, d)
+}
+
+//export goDebugMessage
+func goDebugMessage(code C.ulong, strC *C.char) {
+	fmt.Println("Msg:", C.GoString(strC), code)
 }
 
 /*
@@ -601,16 +656,6 @@ func g2dProps(objIdC C.int) {
 //export g2dError
 func g2dError(objIdC C.int) {
 	cb.mgrs[int(objIdC)].onError(time())
-}
-
-//export goDebug
-func goDebug(a, b C.int, c, d C.g2d_ul_t) {
-	fmt.Println(a, b, c, d)
-}
-
-//export goDebugMessage
-func goDebugMessage(code C.g2d_ul_t, strC C.g2d_lpcstr) {
-	fmt.Println("Msg:", C.GoString(strC), code)
 }
 
 func setErr(err error) {

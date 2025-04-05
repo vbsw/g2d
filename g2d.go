@@ -49,6 +49,7 @@ const (
 	textureType
 	minimizeType
 	restoreType
+	customType
 )
 
 var (
@@ -70,12 +71,16 @@ type Window interface {
 	OnCreate() error
 	OnShow() error
 	OnResize() error
+	OnMove() error
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
+	OnCustom(obj interface{}) error
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy() error
+	Custom(obj interface{})
+	Update()
 	Close()
 	Quit()
 	impl() *WindowImpl
@@ -94,7 +99,6 @@ type Configuration struct {
 	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen, Centered   bool
-	AutoUpdate                        bool
 	Title                             string
 }
 
@@ -106,7 +110,6 @@ type Properties struct {
 	ClientWidthMax, ClientHeightMax   int
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen             bool
-	Update, AutoUpdate                bool
 	Title                             string
 }
 
@@ -115,7 +118,8 @@ type tWindow struct {
 	abst       Window
 	impl       *WindowImpl
 	data       unsafe.Pointer
-	id, state  int
+	id, state, time  int
+	update bool
 }
 
 type tLogicEvent struct {
@@ -149,6 +153,15 @@ type tDestroyWindowRequest struct {
 	wndId int
 }
 
+type tCustomRequest struct {
+	obj interface{}
+	wndId int
+}
+
+type tUpdateRequest struct {
+	wndId int
+}
+
 type tSetPropertiesRequest struct {
 	props                             Properties
 	modPos, modSize, modStyle         bool
@@ -172,7 +185,6 @@ func newConfiguration() *Configuration {
 	config.Resizable = true
 	config.Fullscreen = false
 	config.Centered = true
-	config.AutoUpdate = true
 	config.Title = "g2d - 0.1.0"
 	return config
 }
@@ -218,18 +230,14 @@ func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int) {
 }
 
 func (props *Properties) copyTo(target *Properties) {
-	updateTmp := target.Update
-	autoAupdateTmp := target.AutoUpdate
 	titleTmp := target.Title
-	target = props
-	target.Update = updateTmp
-	target.AutoUpdate = autoAupdateTmp
+	*target = *props
 	target.Title = titleTmp
 }
 
 func (props *Properties) compare(target *Properties) *tSetPropertiesRequest {
 	var req *tSetPropertiesRequest
-	if *props != *target && props.Update == target.Update && props.AutoUpdate == target.AutoUpdate {
+	if *props != *target {
 		req = new(tSetPropertiesRequest)
 		req.props = *target
 		req.modPos = bool(props.ClientX != target.ClientX || props.ClientY != target.ClientY)
@@ -256,35 +264,9 @@ func newWindow(abst Window) *tWindow {
 	return wnd
 }
 
-func (wnd *tWindow) nextEvent() *tLogicEvent {
-	var event *tLogicEvent
-	event = <-wnd.eventsChan
-	/*
-		if wnd.state > configState && wnd.state < closingState && wnd.autoUpdate {
-			select {
-			case msg := <-wnd.msgs:
-				event = msg
-			default:
-				wnd.update = false
-				event = &tLogicEvent{typeId: updateType, nanos: time.Nanos()}
-			}
-		} else {
-			event = <-wnd.msgs
-			if event == nil && wnd.update {
-				wnd.update = false
-				event = &tLogicEvent{typeId: updateType, nanos: time.Nanos()}
-			}
-		}
-		if wnd.state == closingState && event.typeId != quitType {
-			event = nil
-		}
-	*/
-	return event
-}
-
 func (wnd *tWindow) logicThread() {
 	for wnd.state != quitState {
-		event := wnd.nextEvent()
+		event := <-wnd.eventsChan
 		if event != nil {
 			if event.typeId != destroyType {
 				event.props.copyTo(&wnd.impl.Props)
@@ -296,10 +278,20 @@ func (wnd *tWindow) logicThread() {
 				wnd.onCreate()
 			case showType:
 				wnd.onShow()
+/*
+			case wndMoveType:
+				wnd.onMove()
+			case wndResizeType:
+				wnd.onResize()
+*/
 			case keyDownType:
 				wnd.onKeyDown(event.valA, event.repeated)
 			case keyUpType:
 				wnd.onKeyUp(event.valA)
+			case customType:
+				wnd.onCustom(event.obj)
+			case updateType:
+				wnd.onUpdate()
 			case closeType:
 				wnd.onClose()
 			case destroyType:
@@ -314,12 +306,6 @@ func (wnd *tWindow) logicThread() {
 			if msg != nil {
 				wnd.Time.Curr = msg.nanos
 				switch msg.typeId {
-				case wndMoveType:
-					wnd.updateProps(msg)
-					onWindowMoved(abst, wnd)
-				case wndResizeType:
-					wnd.updateProps(msg)
-					onWindowResize(abst, wnd)
 				case msMoveType:
 					wnd.updateProps(msg)
 					onMouseMove(abst, wnd)
@@ -335,8 +321,6 @@ func (wnd *tWindow) logicThread() {
 					onWindowRestore(abst, wnd)
 				case textureType:
 					onTextureLoaded(abst, wnd, msg.valA)
-				case updateType:
-					onUpdate(abst, wnd)
 				}
 			}
 		}
@@ -347,10 +331,9 @@ func (wnd *tWindow) logicThread() {
 func (wnd *tWindow) onConfig() {
 	config := newConfiguration()
 	err := wnd.abst.OnConfig(config)
-	wnd.impl.Props.AutoUpdate = config.AutoUpdate
 	wnd.impl.Props.Title = config.Title
 	if err == nil {
-		postReqest(&tCreateWindowRequest{wndId: wnd.id, config: config})
+		postRequest(&tCreateWindowRequest{wndId: wnd.id, config: config})
 	}
 	/*
 		if err == nil {
@@ -364,7 +347,7 @@ func (wnd *tWindow) onConfig() {
 func (wnd *tWindow) onCreate() {
 	err := wnd.abst.OnCreate()
 	if err == nil {
-		postReqest(&tShowWindowRequest{wndId: wnd.id})
+		postRequest(&tShowWindowRequest{wndId: wnd.id})
 	}
 	/*
 		if err == nil {
@@ -382,7 +365,31 @@ func (wnd *tWindow) onShow() {
 		setPropsReq := props.compare(&wnd.impl.Props)
 		if setPropsReq != nil {
 			setPropsReq.wndId = wnd.id
-			postReqest(setPropsReq)
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onMove() {
+	props := wnd.impl.Props
+	err := wnd.abst.OnMove()
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onResize() {
+	props := wnd.impl.Props
+	err := wnd.abst.OnResize()
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
 		}
 	}
 }
@@ -394,7 +401,7 @@ func (wnd *tWindow) onKeyDown(keyCode int, repeated uint) {
 		setPropsReq := props.compare(&wnd.impl.Props)
 		if setPropsReq != nil {
 			setPropsReq.wndId = wnd.id
-			postReqest(setPropsReq)
+			postRequest(setPropsReq)
 		}
 	}
 }
@@ -406,7 +413,31 @@ func (wnd *tWindow) onKeyUp(keyCode int) {
 		setPropsReq := props.compare(&wnd.impl.Props)
 		if setPropsReq != nil {
 			setPropsReq.wndId = wnd.id
-			postReqest(setPropsReq)
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onCustom(obj interface{}) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnCustom(obj)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onUpdate() {
+	props := wnd.impl.Props
+	err := wnd.abst.OnUpdate()
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
 		}
 	}
 }
@@ -416,12 +447,12 @@ func (wnd *tWindow) onClose() {
 	quit, err := wnd.abst.OnClose()
 	if err == nil {
 		if quit {
-			postReqest(&tDestroyWindowRequest{wndId: wnd.id})
+			postRequest(&tDestroyWindowRequest{wndId: wnd.id})
 		} else {
 			setPropsReq := props.compare(&wnd.impl.Props)
 			if setPropsReq != nil {
 				setPropsReq.wndId = wnd.id
-				postReqest(setPropsReq)
+				postRequest(setPropsReq)
 			}
 		}
 	}
@@ -453,10 +484,15 @@ func (wnd *WindowImpl) OnCreate() error {
 }
 
 func (wnd *WindowImpl) OnShow() error {
+	wnd.Update()
 	return nil
 }
 
 func (wnd *WindowImpl) OnResize() error {
+	return nil
+}
+
+func (wnd *WindowImpl) OnMove() error {
 	return nil
 }
 
@@ -465,6 +501,10 @@ func (wnd *WindowImpl) OnKeyDown(keyCode int, repeated uint) error {
 }
 
 func (wnd *WindowImpl) OnKeyUp(keyCode int) error {
+	return nil
+}
+
+func (wnd *WindowImpl) OnCustom(obj interface{}) error {
 	return nil
 }
 
@@ -485,11 +525,19 @@ func (wnd *WindowImpl) OnDestroy() error {
 }
 
 func (wnd *WindowImpl) Close() {
-	postReqest(&tCloseWindowRequest{wndId: wnd.id})
+	postRequest(&tCloseWindowRequest{wndId: wnd.id})
+}
+
+func (wnd *WindowImpl) Update() {
+	postUpdateRequest(wnd.id)
 }
 
 func (wnd *WindowImpl) Quit() {
-	postReqest(&tDestroyWindowRequest{wndId: wnd.id})
+	postRequest(&tDestroyWindowRequest{wndId: wnd.id})
+}
+
+func (wnd *WindowImpl) Custom(obj interface{}) {
+	postRequest(&tCustomRequest{wndId: wnd.id, obj: obj})
 }
 
 func (wnd *WindowImpl) impl() *WindowImpl {
@@ -518,148 +566,6 @@ func unregisterWnd(id int) *tWindow {
 }
 
 /*
-const (
-	notInitialized    = "g2d not initialized"
-	alreadyProcessing = "already processing events"
-	messageFailed     = "message post failed"
-	postToInactive    = "can't post event to inactive window"
-)
-
-var (
-	Err         error
-	initialized bool
-	processing  bool
-	cb          tCallback
-	timeStart   timepkg.Time
-)
-
-type Parameters struct {
-	ClientX, ClientY                  int
-	ClientWidth, ClientHeight         int
-	ClientWidthMin, ClientHeightMin   int
-	ClientWidthMax, ClientHeightMax   int
-	MouseLocked, Borderless, Dragable bool
-	Resizable, Fullscreen, Centered   bool
-	LogicThread, GraphicThread        bool
-	AutoUpdate                        bool
-	Title                             string
-}
-
-type Properties struct {
-	MouseX, MouseY                    int
-	ClientX, ClientY                  int
-	ClientWidth, ClientHeight         int
-	ClientWidthMin, ClientHeightMin   int
-	ClientWidthMax, ClientHeightMax   int
-	MouseLocked, Borderless, Dragable bool
-	Resizable, Fullscreen             bool
-	Title                             string
-}
-
-type Command struct {
-	CloseReq bool
-	CloseUnc bool
-	Update   bool
-}
-
-type Time struct {
-	NanosUpdate int64
-	NanosEvent  int64
-}
-
-type Queue struct {
-	events chan interface{}
-}
-
-type Window struct {
-	Props      Properties
-	Cmd        Command
-	Time       Time
-	Queue      Queue
-	destroying bool
-}
-
-type AbstractWindow interface {
-	Config(params *Parameters) error
-	Create() error
-	Show() error
-	KeyDown(key int, repeated uint) error
-	KeyUp(key int) error
-	Update() error
-	Close() (bool, error)
-	Destroy()
-	baseStruct() *Window
-}
-
-type tManager interface {
-	onCreate(nanos int64)
-	onShow(nanos int64)
-	onKeyDown(key int, repeated uint, nanos int64)
-	onKeyUp(key int, nanos int64)
-	onUpdate(nanos int64)
-	onClose(nanos int64)
-	onDestroy(nanos int64)
-	onProps(nanos int64)
-	onError(nanos int64)
-	destroy()
-}
-
-type tManagerBase struct {
-	data       unsafe.Pointer
-	wndAbst    AbstractWindow
-	wndBase    *Window
-	props      Properties
-	autoUpdate bool
-}
-
-type tManagerNoThreads struct {
-	tManagerBase
-	cmd Command
-}
-
-type tManagerLogicThread struct {
-	tManagerBase
-}
-
-type tManagerGraphicThread struct {
-}
-
-type tManagerLogicGraphicThread struct {
-}
-
-// tCallback holds objects identified by ids.
-type tCallback struct {
-	mgrs   []tManager
-	unused []int
-}
-
-type tModification struct {
-	mouse, style, title bool
-	fsToggle, pos, size bool
-}
-
-func newParameters() *Parameters {
-	params := new(Parameters)
-	params.ClientX = 50
-	params.ClientY = 50
-	params.ClientWidth = 640
-	params.ClientHeight = 480
-	params.ClientWidthMin = 0
-	params.ClientHeightMin = 0
-	params.ClientWidthMax = 99999
-	params.ClientHeightMax = 99999
-	params.MouseLocked = false
-	params.Borderless = false
-	params.Dragable = false
-	params.Resizable = true
-	params.Fullscreen = false
-	params.Centered = true
-	params.LogicThread = true
-	params.AutoUpdate = true
-	params.Title = "g2d - 0.1.0"
-	return params
-}
-
 func (t *Time) NanosNow() int64 {
 	return time()
 }

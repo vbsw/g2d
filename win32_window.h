@@ -77,23 +77,22 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 		if (wnd_data) {
 			if (!wnd_data[0].state.minimized) {
 				switch (message) {
-/*
 				case WM_MOVE:
-					client_update(wnd_data);
 					result = DefWindowProc(hWnd, message, wParam, lParam);
-					g2dWindowMove(wnd_data[0].cb_id);
+					// avoid move on create
+					if (wnd_data[0].state.shown) {
+						client_props_update(wnd_data);
+						g2dWindowMove(wnd_data[0].cb_id);
+					}
 					break;
 				case WM_SIZE:
-					// avoid resize on show
-					if (wnd_data[0].state.shown != 0) {
-						client_update(wnd_data);
-						g2dWindowResize(wnd_data[0].cb_id);
-					} else {
-						wnd_data[0].state.shown = 1;
-					}
 					result = DefWindowProc(hWnd, message, wParam, lParam);
+					// avoid resize on show
+					if (wnd_data[0].state.shown) {
+						client_props_update(wnd_data);
+						g2dWindowResize(wnd_data[0].cb_id);
+					}
 					break;
-*/
 				case WM_CLOSE:
 					g2dClose(wnd_data[0].cb_id);
 					break;
@@ -102,6 +101,14 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 						result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_KEYUP:
+					if (!key_up_process(wnd_data, message, wParam, lParam))
+						result = DefWindowProc(hWnd, message, wParam, lParam);
+					break;
+				case WM_SYSKEYDOWN:
+					if (!key_down_process(wnd_data, message, wParam, lParam))
+						result = DefWindowProc(hWnd, message, wParam, lParam);
+					break;
+				case WM_SYSKEYUP:
 					if (!key_up_process(wnd_data, message, wParam, lParam))
 						result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
@@ -337,6 +344,7 @@ void g2d_window_show(void *const data, long long *const err1, long long *const e
 		if (err1[0] == 0) {
 			client_props_update(wnd_data);
 			cursor_clip_update(wnd_data);
+			wnd_data[0].state.shown = 1;
 		}
 	}
 }

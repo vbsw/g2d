@@ -6,7 +6,7 @@
  */
 
 static int keycode(const UINT message, const WPARAM wParam, const LPARAM lParam) {
-	const int key = (int)(HIWORD(lParam) & 0xff);
+	const int key = (int)(LOBYTE(HIWORD(lParam)));
 	switch (key)
 	{
 	case 0:  return 0;
@@ -38,12 +38,12 @@ static int keycode(const UINT message, const WPARAM wParam, const LPARAM lParam)
 	case 26: return 47;        // [           0x2F
 	case 27: return 48;        // ]           0x30
 	case 28:
-		if (HIWORD(lParam) >> 8 & 0x1)
+		if (HIBYTE(HIWORD(lParam)) & 0x1)
 			return 88;         // pad ENTER   0x58
 		return 40;             // board ENTER 0x28
 	case 29:
 		if (wParam == VK_CONTROL) {
-			if (HIWORD(lParam) >> 8 & 0x1)
+			if (HIBYTE(HIWORD(lParam)) & 0x1)
 				return 228;    // RCTRL       0xE4
 			return 224;        // LCTRL       0xE0
 		}
