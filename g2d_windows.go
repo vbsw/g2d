@@ -55,6 +55,7 @@ func MainLoop(mainWindow Window) {
 					wnds = make([]*tWindow, 0, 2)
 					wndNextId = make([]int, 0, 2)
 					requests = make([]tRequest, 0, 2)
+					appTime.Reset()
 					wnd := newWindow(mainWindow)
 					go wnd.logicThread()
 					mutex.Unlock()
@@ -121,7 +122,7 @@ func (request *tCreateWindowRequest) process() {
 	if err1 == 0 {
 		wnd := wnds[request.wndId]
 		wnd.data = data
-		event := &tLogicEvent{typeId: createType}
+		event := &tLogicEvent{typeId: createType, time: appTime.Millis()}
 		event.props.update(data)
 		wnd.eventsChan <- event
 	} else {
@@ -134,7 +135,7 @@ func (request *tShowWindowRequest) process() {
 	wnd := wnds[request.wndId]
 	C.g2d_window_show(wnd.data, &err1, &err2)
 	if err1 == 0 {
-		event := &tLogicEvent{typeId: showType}
+		event := &tLogicEvent{typeId: showType, time: appTime.Millis()}
 		event.props.update(wnd.data)
 		wnd.eventsChan <- event
 	} else {
@@ -144,7 +145,7 @@ func (request *tShowWindowRequest) process() {
 
 func (request *tCloseWindowRequest) process() {
 	wnd := wnds[request.wndId]
-	event := &tLogicEvent{typeId: closeType}
+	event := &tLogicEvent{typeId: closeType, time: appTime.Millis()}
 	event.props.update(wnd.data)
 	wnd.eventsChan <- event
 }
@@ -201,31 +202,11 @@ func (request *tSetPropertiesRequest) process() {
 	}
 }
 
-func (request *tUpdateRequest) process() {
-	wnd := wnds[request.wndId]
-	event := &tLogicEvent{typeId: updateType}
-	event.props.update(wnd.data)
-	wnd.eventsChan <- event
-	wnd.update = false
-}
-
 func postRequest(request tRequest) {
 	var err1, err2 C.longlong
 	mutex.Lock()
 	requests = append(requests, request)
 	C.g2d_post_request(&err1, &err2)
-	mutex.Unlock()
-}
-
-func postUpdateRequest(wndId int) {
-	mutex.Lock()
-	wnd := wnds[wndId]
-	if !wnd.update {
-		var err1, err2 C.longlong
-		wnd.update = true
-		requests = append(requests, &tUpdateRequest{wndId: wndId})
-		C.g2d_post_request(&err1, &err2)
-	}
 	mutex.Unlock()
 }
 
@@ -263,7 +244,7 @@ func toEventsChan(id C.int, event *tLogicEvent) {
 
 //export g2dMainLoopStarted
 func g2dMainLoopStarted() {
-	wnds[0].eventsChan <- &tLogicEvent{typeId: configType}
+	wnds[0].eventsChan <- &tLogicEvent{typeId: configType, time: appTime.Millis()}
 }
 
 //export g2dProcessRequest
@@ -280,7 +261,7 @@ func g2dProcessRequest() {
 
 //export g2dClose
 func g2dClose(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: closeType})
+	toEventsChan(id, &tLogicEvent{typeId: closeType, time: appTime.Millis()})
 }
 
 //export g2dKeyDown
@@ -295,12 +276,12 @@ func g2dKeyUp(id, code C.int) {
 
 //export g2dMouseMove
 func g2dMouseMove(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: msMoveType})
+	toEventsChan(id, &tLogicEvent{typeId: msMoveType, time: appTime.Millis()})
 }
 
 //export g2dWindowMove
 func g2dWindowMove(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: wndMoveType})
+	toEventsChan(id, &tLogicEvent{typeId: wndMoveType, time: appTime.Millis()})
 }
 
 //export g2dWindowResize
@@ -309,7 +290,7 @@ func g2dWindowResize(id C.int) {
 		mutex.Lock()
 	}
 	wnd := wnds[id]
-	event := &tLogicEvent{typeId: wndResizeType}
+	event := &tLogicEvent{typeId: wndResizeType, time: appTime.Millis()}
 	event.props.update(wnd.data)
 	wnd.eventsChan <- event
 	// wnd.gfx.eventsChan <- &tGraphicsEvent{typeId: wndResizeType, valA: event.props.ClientWidth, valB: event.props.ClientHeight}
@@ -335,12 +316,17 @@ func g2dWheel(id C.int, wheel C.float) {
 
 //export g2dWindowMinimize
 func g2dWindowMinimize(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: minimizeType})
+	toEventsChan(id, &tLogicEvent{typeId: minimizeType, time: appTime.Millis()})
 }
 
 //export g2dWindowRestore
 func g2dWindowRestore(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: restoreType})
+	toEventsChan(id, &tLogicEvent{typeId: restoreType, time: appTime.Millis()})
+}
+
+//export g2dOnFocus
+func g2dOnFocus(id, focus C.int) {
+	toEventsChan(id, &tLogicEvent{typeId: focusType, valA: int(focus)})
 }
 
 func toError(err1, err2 C.longlong, errInfo *C.char) error {

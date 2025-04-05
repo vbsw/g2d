@@ -13,6 +13,8 @@
 #include "g2d.h"
 #include "win32_errors.h"
 
+#define G2D_RESIZE_BORDER 4
+
 /* Go functions can not be passed to c directly.            */
 /* They can only be called from c.                          */
 /* This code is an indirection to call Go callbacks.        */
@@ -151,7 +153,7 @@ typedef struct {
 	struct { int x, y, width, height; } client_bak;
 	struct { int x, y, double_clicked[5]; } mouse;
 	struct { int width_min, height_min, width_max, height_max, borderless, dragable, fullscreen, resizable, locked; DWORD style; } config;
-	struct { int minimized, maximized, resizing, focus, shown; } state;
+	struct { int dragging, minimized, maximized, resizing, focus, shown; } state;
 	unsigned int key_repeated[255];
 	int cb_id;
 /*

@@ -11,6 +11,7 @@ package g2d
 import "C"
 import (
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -22,7 +23,7 @@ const (
 
 const (
 	configState = iota
-	runningState
+	showingState
 	closingState
 	quitState
 )
@@ -49,6 +50,7 @@ const (
 	textureType
 	minimizeType
 	restoreType
+	focusType
 	customType
 )
 
@@ -60,11 +62,12 @@ var (
 var (
 	initialized, initFailed bool
 	running, quitting       bool
-	processingRequests bool
+	processingRequests      bool
 	mutex                   sync.Mutex
 	wnds                    []*tWindow
 	wndNextId               []int
 	requests                []tRequest
+	appTime                 tAppTime
 )
 
 type Window interface {
@@ -86,6 +89,7 @@ type Window interface {
 	OnDestroy() error
 	OnMinimize() error
 	OnRestore() error
+	OnFocus(focus bool) error
 	Custom(obj interface{})
 	Update()
 	Close()
@@ -93,10 +97,16 @@ type Window interface {
 	impl() *WindowImpl
 }
 
+type Stats struct {
+	CurrTime, DeltaTime int
+	UPS, FPS            int
+}
+
 // WindowImpl is the implementation of Window.
 type WindowImpl struct {
 	Props Properties
-	id int
+	Stats Stats
+	id    int
 }
 
 type Configuration struct {
@@ -121,12 +131,12 @@ type Properties struct {
 }
 
 type tWindow struct {
-	eventsChan chan *tLogicEvent
-	abst       Window
-	impl       *WindowImpl
-	data       unsafe.Pointer
-	id, state, time  int
-	update bool
+	eventsChan      chan *tLogicEvent
+	abst            Window
+	impl            *WindowImpl
+	data            unsafe.Pointer
+	id, state, time int
+	update          bool
 }
 
 type tLogicEvent struct {
@@ -161,7 +171,7 @@ type tDestroyWindowRequest struct {
 }
 
 type tCustomRequest struct {
-	obj interface{}
+	obj   interface{}
 	wndId int
 }
 
@@ -171,9 +181,13 @@ type tUpdateRequest struct {
 
 type tSetPropertiesRequest struct {
 	props                             Properties
-	modPosSize, modStyle         bool
+	modPosSize, modStyle              bool
 	modFullscreen, modMouse, modTitle bool
 	wndId                             int
+}
+
+type tAppTime struct {
+	start time.Time
 }
 
 func newConfiguration() *Configuration {
@@ -281,6 +295,10 @@ func (wnd *tWindow) logicThread() {
 			if event.typeId != destroyType {
 				event.props.copyTo(&wnd.impl.Props)
 			}
+			if event.typeId != configType {
+				wnd.impl.Stats.DeltaTime = event.time - wnd.impl.Stats.CurrTime
+			}
+			wnd.impl.Stats.CurrTime = event.time
 			switch event.typeId {
 			case configType:
 				wnd.onConfig()
@@ -314,6 +332,8 @@ func (wnd *tWindow) logicThread() {
 				wnd.onMinimize()
 			case restoreType:
 				wnd.onRestore()
+			case focusType:
+				wnd.onFocus(event.valA != 0)
 			case customType:
 				wnd.onCustom(event.obj)
 			}
@@ -367,6 +387,7 @@ func (wnd *tWindow) onCreate() {
 
 func (wnd *tWindow) onShow() {
 	props := wnd.impl.Props
+	wnd.state = showingState
 	err := wnd.abst.OnShow()
 	if err == nil {
 		setPropsReq := props.compare(&wnd.impl.Props)
@@ -474,6 +495,7 @@ func (wnd *tWindow) onWheel(rotation float32) {
 }
 
 func (wnd *tWindow) onUpdate() {
+	wnd.update = false
 	props := wnd.impl.Props
 	err := wnd.abst.OnUpdate()
 	if err == nil {
@@ -554,6 +576,20 @@ func (wnd *tWindow) onRestore() {
 	}
 }
 
+func (wnd *tWindow) onFocus(focus bool) {
+	if wnd.state > configState {
+		props := wnd.impl.Props
+		err := wnd.abst.OnFocus(focus)
+		if err == nil {
+			setPropsReq := props.compare(&wnd.impl.Props)
+			if setPropsReq != nil {
+				setPropsReq.wndId = wnd.id
+				postRequest(setPropsReq)
+			}
+		}
+	}
+}
+
 func (wnd *WindowImpl) OnConfig(config *Configuration) error {
 	return nil
 }
@@ -627,12 +663,24 @@ func (wnd *WindowImpl) OnRestore() error {
 	return nil
 }
 
+func (wnd *WindowImpl) OnFocus(focus bool) error {
+	return nil
+}
+
 func (wnd *WindowImpl) Close() {
 	postRequest(&tCloseWindowRequest{wndId: wnd.id})
 }
 
 func (wnd *WindowImpl) Update() {
-	postUpdateRequest(wnd.id)
+	mutex.Lock()
+	wndWrapper := wnds[wnd.id]
+	if !wndWrapper.update {
+		wndWrapper.update = true
+		event := &tLogicEvent{typeId: updateType, time: appTime.Millis()}
+		event.props.update(wndWrapper.data)
+		wndWrapper.eventsChan <- event
+	}
+	mutex.Unlock()
 }
 
 func (wnd *WindowImpl) Quit() {
@@ -645,6 +693,22 @@ func (wnd *WindowImpl) Custom(obj interface{}) {
 
 func (wnd *WindowImpl) impl() *WindowImpl {
 	return wnd
+}
+
+func (t *tAppTime) Reset() {
+	t.start = time.Now()
+}
+
+func (t *tAppTime) Nanos() int64 {
+	now := time.Now()
+	delta := now.Sub(t.start)
+	return delta.Nanoseconds()
+}
+
+func (t *tAppTime) Millis() int {
+	now := time.Now()
+	delta := now.Sub(t.start)
+	return int(delta.Milliseconds())
 }
 
 func registerWnd(wnd *tWindow) int {

@@ -46,6 +46,16 @@ static void style_update(window_data_t *const wnd_data) {
 			wnd_data[0].config.style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
 }
 
+static void mouse_update(window_data_t *const wnd_data) {
+	POINT point;
+	if (GetCursorPos(&point)) {
+		if (ScreenToClient(wnd_data[0].wnd.hndl, &point)) {
+			wnd_data[0].mouse.x = (int)point.x;
+			wnd_data[0].mouse.y = (int)point.y;
+		}
+	}
+}
+
 static void client_props_update(window_data_t *const wnd_data) {
 	RECT rect;
 	POINT point = {0, 0};
@@ -58,9 +68,10 @@ static void client_props_update(window_data_t *const wnd_data) {
 }
 
 static void cursor_clip_update(window_data_t *const wnd_data) {
-	if (wnd_data[0].config.locked) {
+	if (wnd_data[0].config.locked && !wnd_data[0].config.dragable) {
 		const RECT rect = { wnd_data[0].client.x, wnd_data[0].client.y, wnd_data[0].client.x + wnd_data[0].client.width, wnd_data[0].client.y + wnd_data[0].client.height };
 		ClipCursor(&rect);
+		wnd_data[0].state.focus = 1;
 	}
 }
 
@@ -102,8 +113,73 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					}
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
+				case WM_SETFOCUS:
+					result = DefWindowProc(hWnd, WM_NCHITTEST, wParam, lParam);
+					if (result == HTCLIENT) {
+						wnd_data[0].state.focus = 1;
+						cursor_clip_update(wnd_data);
+					} else {
+						wnd_data[0].state.focus = 2;
+					}
+					g2dOnFocus(wnd_data[0].cb_id, 1);
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+					break;
+				case WM_KILLFOCUS:
+					wnd_data[0].state.focus = 0;
+					g2dOnFocus(wnd_data[0].cb_id, 0);
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+					break;
 				case WM_CLOSE:
 					g2dClose(wnd_data[0].cb_id);
+					break;
+				case WM_NCHITTEST:
+					result = DefWindowProc(hWnd, message, wParam, lParam);
+					if (result == HTCLIENT && !wnd_data[0].config.fullscreen) {
+						if (wnd_data[0].config.dragable) {
+							result = HTCAPTION;
+						}
+						if (wnd_data[0].config.borderless) {
+							if (wnd_data[0].mouse.y >= 0 && wnd_data[0].mouse.y < G2D_RESIZE_BORDER) {
+								if (wnd_data[0].mouse.x >= 0 && wnd_data[0].mouse.x < G2D_RESIZE_BORDER)
+									result = HTTOPLEFT;
+								else if (wnd_data[0].mouse.x >= G2D_RESIZE_BORDER && wnd_data[0].mouse.x < wnd_data[0].client.width - G2D_RESIZE_BORDER)
+									result = HTTOP;
+								else if (wnd_data[0].mouse.x >= wnd_data[0].client.width - G2D_RESIZE_BORDER && wnd_data[0].mouse.x < wnd_data[0].client.width)
+									result = HTTOPRIGHT;
+							} else if (wnd_data[0].mouse.y >= G2D_RESIZE_BORDER && wnd_data[0].mouse.y < wnd_data[0].client.height - G2D_RESIZE_BORDER) {
+								if (wnd_data[0].mouse.x >= 0 && wnd_data[0].mouse.x < G2D_RESIZE_BORDER)
+									result = HTLEFT;
+								else if (wnd_data[0].mouse.x >= wnd_data[0].client.width - G2D_RESIZE_BORDER && wnd_data[0].mouse.x < wnd_data[0].client.width)
+									result = HTRIGHT;
+							} else if (wnd_data[0].mouse.y >= wnd_data[0].client.height - G2D_RESIZE_BORDER && wnd_data[0].mouse.y < wnd_data[0].client.height) {
+								if (wnd_data[0].mouse.x >= 0 && wnd_data[0].mouse.x < G2D_RESIZE_BORDER)
+									result = HTBOTTOMLEFT;
+								else if (wnd_data[0].mouse.x >= G2D_RESIZE_BORDER && wnd_data[0].mouse.x < wnd_data[0].client.width - G2D_RESIZE_BORDER)
+									result = HTBOTTOM;
+								else if (wnd_data[0].mouse.x >= wnd_data[0].client.width - G2D_RESIZE_BORDER && wnd_data[0].mouse.x < wnd_data[0].client.width)
+									result = HTBOTTOMRIGHT;
+							}
+						}
+					}
+					break;
+				case WM_NCMOUSEMOVE:
+					result = DefWindowProc(hWnd, WM_NCHITTEST, wParam, lParam);
+					if (result == HTCLIENT) {
+						// avoid "mouse move" at button release
+						if (wnd_data[0].state.dragging) {
+							wnd_data[0].state.dragging = 0;
+						} else {
+							mouse_update(wnd_data);
+							g2dMouseMove(wnd_data[0].cb_id);
+						}
+						result = DefWindowProc(hWnd, message, wParam, lParam);
+					}
+					break;
+				case WM_NCLBUTTONDOWN:
+					result = DefWindowProc(hWnd, WM_NCHITTEST, wParam, lParam);
+					if (result == HTCLIENT)
+						wnd_data[0].state.dragging = 1;
+					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_KEYDOWN:
 					if (!key_down_process(wnd_data, message, wParam, lParam))
@@ -132,18 +208,9 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					wnd_data[0].mouse.x = ((int)(short)LOWORD(lParam));
 					wnd_data[0].mouse.y = ((int)(short)HIWORD(lParam));
 					g2dMouseMove(wnd_data[0].cb_id);
-					result = DefWindowProc(hWnd, message, wParam, lParam);
-/*
-					if (wnd_data[0].state.dragging_cust && !wnd_data[0].state.maximized) {
-						move_window(client.x + (int)(short)LOWORD(lParam) - mouse.x, client.y + (int)(short)HIWORD(lParam) - mouse.y, client.width, client.height);
-					} else {
-						wnd_data[0].mouse.x = ((int)(short)LOWORD(lParam));
-						wnd_data[0].mouse.y = ((int)(short)HIWORD(lParam));
-						result = DefWindowProc(hWnd, message, wParam, lParam);
-					}
-					if (wnd_data[0].config.locked && !wnd_data[0].state.locked && wnd_data[0].state.focus)
+					if (wnd_data[0].state.focus == 2)
 						cursor_clip_update(wnd_data);
-*/
+					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_LBUTTONDOWN:
 					button_down(wnd_data, 0, 0);
@@ -341,8 +408,10 @@ void g2d_window_show(void *const data, long long *const err1, long long *const e
 		ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
 		if (wnd_data[0].config.fullscreen)
 			g2d_window_fullscreen_set(wnd_data, err1, err2);
-		if (err1[0] == 0)
+		if (err1[0] == 0) {
+			cursor_clip_update(wnd_data);
 			wnd_data[0].state.shown = 1;
+		}
 	}
 }
 
