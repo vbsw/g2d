@@ -20,9 +20,8 @@ extern void g2d_window_show(void *data, long long *err1, long long *err2);
 extern void g2d_window_props(void *data, int *mx, int *my, int *x, int *y, int *w, int *h, int *wn, int *hn, int *wx, int *hx, int *b, int *d, int *r, int *f, int *l);
 extern void g2d_window_destroy(void *data, long long *err1, long long *err2);
 
-extern void g2d_window_pos_set(void *data, int x, int y);
-extern void g2d_window_size_set(void *data, int width, int height);
-extern void g2d_window_style_set(void *data, int wn, int hn, int wx, int hx, int b, int d, int r, int l);
+extern void g2d_window_pos_size_set(void *data, int x, int y, int width, int height);
+extern void g2d_window_style_set(void *data, int wn, int hn, int wx, int hx, int b, int d, int r, int f, int l);
 extern void g2d_window_fullscreen_set(void *data, long long *err1, long long *err2);
 extern void g2d_window_restore_bak(void *data);
 extern void g2d_window_pos_apply(void *data, long long *err1, long long *err2);

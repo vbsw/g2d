@@ -61,8 +61,19 @@ static void cursor_clip_update(window_data_t *const wnd_data) {
 	if (wnd_data[0].config.locked) {
 		const RECT rect = { wnd_data[0].client.x, wnd_data[0].client.y, wnd_data[0].client.x + wnd_data[0].client.width, wnd_data[0].client.y + wnd_data[0].client.height };
 		ClipCursor(&rect);
-		wnd_data[0].state.locked = 1;
 	}
+}
+
+static void button_down(window_data_t *const wnd_data, const int button_idx, const int double_click) {
+	g2dButtonDown(wnd_data[0].cb_id, button_idx, double_click);
+	wnd_data[0].mouse.double_clicked[button_idx] = double_click;
+	SetCapture(wnd_data[0].wnd.hndl);
+}
+
+static void button_up(window_data_t *const wnd_data, const int button_idx) {
+	g2dButtonUp(wnd_data[0].cb_id, button_idx, wnd_data[0].mouse.double_clicked[button_idx]);
+	wnd_data[0].mouse.double_clicked[button_idx] = 0;
+	ReleaseCapture();
 }
 
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -78,20 +89,18 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 			if (!wnd_data[0].state.minimized) {
 				switch (message) {
 				case WM_MOVE:
-					result = DefWindowProc(hWnd, message, wParam, lParam);
-					// avoid move on create
 					if (wnd_data[0].state.shown) {
 						client_props_update(wnd_data);
 						g2dWindowMove(wnd_data[0].cb_id);
 					}
+					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_SIZE:
-					result = DefWindowProc(hWnd, message, wParam, lParam);
-					// avoid resize on show
 					if (wnd_data[0].state.shown) {
 						client_props_update(wnd_data);
 						g2dWindowResize(wnd_data[0].cb_id);
 					}
+					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_CLOSE:
 					g2dClose(wnd_data[0].cb_id);
@@ -112,7 +121,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					if (!key_up_process(wnd_data, message, wParam, lParam))
 						result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
-/*
 				case WM_SYSCOMMAND:
 					if (wParam == SC_MINIMIZE) {
 						wnd_data[0].state.minimized = 1;
@@ -125,22 +133,17 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					wnd_data[0].mouse.y = ((int)(short)HIWORD(lParam));
 					g2dMouseMove(wnd_data[0].cb_id);
 					result = DefWindowProc(hWnd, message, wParam, lParam);
-*/
-
-
 /*
-					if (state.dragging_cust && !state.maximized) {
+					if (wnd_data[0].state.dragging_cust && !wnd_data[0].state.maximized) {
 						move_window(client.x + (int)(short)LOWORD(lParam) - mouse.x, client.y + (int)(short)HIWORD(lParam) - mouse.y, client.width, client.height);
 					} else {
-						mouse.x = ((int)(short)LOWORD(lParam));
-						mouse.y = ((int)(short)HIWORD(lParam));
+						wnd_data[0].mouse.x = ((int)(short)LOWORD(lParam));
+						wnd_data[0].mouse.y = ((int)(short)HIWORD(lParam));
 						result = DefWindowProc(hWnd, message, wParam, lParam);
 					}
-					if (config.locked && !state.locked && state.focus)
-						update_clip_cursor();
+					if (wnd_data[0].config.locked && !wnd_data[0].state.locked && wnd_data[0].state.focus)
+						cursor_clip_update(wnd_data);
 */
-
-/*
 					break;
 				case WM_LBUTTONDOWN:
 					button_down(wnd_data, 0, 0);
@@ -190,7 +193,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					else if (HIWORD(wParam) == XBUTTON2)
 						button_down(wnd_data, 4, 1);
 					break;
-*/
 				default:
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 				}
@@ -198,12 +200,10 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 				result = DefWindowProc(hWnd, message, wParam, lParam);
 				if (message == WM_SETFOCUS) {
 					// restore from minimized and avoid move/resize events
-/*
 					if (wnd_data[0].state.minimized) {
 						wnd_data[0].state.minimized = 0;
 						g2dWindowRestore(wnd_data[0].cb_id);
 					}
-*/
 				}
 			}
 		} else {
@@ -341,11 +341,8 @@ void g2d_window_show(void *const data, long long *const err1, long long *const e
 		ShowWindow(wnd_data[0].wnd.hndl, SW_SHOWDEFAULT);
 		if (wnd_data[0].config.fullscreen)
 			g2d_window_fullscreen_set(wnd_data, err1, err2);
-		if (err1[0] == 0) {
-			client_props_update(wnd_data);
-			cursor_clip_update(wnd_data);
+		if (err1[0] == 0)
 			wnd_data[0].state.shown = 1;
-		}
 	}
 }
 
@@ -389,29 +386,22 @@ void g2d_window_props(void *const data, int *const mx, int *const my, int *const
 	l[0] = wnd_data[0].config.locked;
 }
 
-void g2d_window_pos_set(void *const data, const int x, const int y) {
+void g2d_window_pos_size_set(void *const data, const int x, const int y, const int width, const int height) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (wnd_data[0].config.fullscreen) {
 		wnd_data[0].client_bak.x = x;
 		wnd_data[0].client_bak.y = y;
-	} else {
-		wnd_data[0].client.x = x;
-		wnd_data[0].client.y = y;
-	}
-}
-
-void g2d_window_size_set(void *const data, const int width, const int height) {
-	window_data_t *const wnd_data = (window_data_t*)data;
-	if (wnd_data[0].config.fullscreen) {
 		wnd_data[0].client_bak.width = width;
 		wnd_data[0].client_bak.height = height;
 	} else {
+		wnd_data[0].client.x = x;
+		wnd_data[0].client.y = y;
 		wnd_data[0].client.width = width;
 		wnd_data[0].client.height = height;
 	}
 }
 
-void g2d_window_style_set(void *const data, const int wn, const int hn, const int wx, const int hx, const int b, const int d, const int r, const int l) {
+void g2d_window_style_set(void *const data, const int wn, const int hn, const int wx, const int hx, const int b, const int d, const int r, const int f, const int l) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	wnd_data[0].config.width_min = wn;
 	wnd_data[0].config.height_min = hn;
@@ -419,37 +409,57 @@ void g2d_window_style_set(void *const data, const int wn, const int hn, const in
 	wnd_data[0].config.height_max = hx;
 	wnd_data[0].config.borderless = b;
 	wnd_data[0].config.dragable = d;
+	wnd_data[0].config.fullscreen = f;
 	wnd_data[0].config.resizable = r;
+	style_update(wnd_data);
 }
 
 void g2d_window_fullscreen_set(void *const data, long long *const err1, long long *const err2) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	int mx, my, mw, mh; monitor_metrics(MonitorFromWindow(wnd_data[0].wnd.hndl, MONITOR_DEFAULTTONEAREST), &mx, &my, &mw, &mh);
-	wnd_data[0].client_bak.x = wnd_data[0].client.x;
-	wnd_data[0].client_bak.y = wnd_data[0].client.y;
-	wnd_data[0].client_bak.width = wnd_data[0].client.width;
-	wnd_data[0].client_bak.height = wnd_data[0].client.height;
-	const LONG_PTR style = SetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE, 0);
-	if (style && SetWindowPos(wnd_data[0].wnd.hndl, HWND_TOP, mx, my, mw, mh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
-		wnd_data[0].config.fullscreen = 1;
+	if (wnd_data[0].config.fullscreen) {
+		int mx, my, mw, mh; monitor_metrics(MonitorFromWindow(wnd_data[0].wnd.hndl, MONITOR_DEFAULTTONEAREST), &mx, &my, &mw, &mh);
+		wnd_data[0].client_bak.x = wnd_data[0].client.x;
+		wnd_data[0].client_bak.y = wnd_data[0].client.y;
+		wnd_data[0].client_bak.width = wnd_data[0].client.width;
+		wnd_data[0].client_bak.height = wnd_data[0].client.height;
+		SetLastError(0); SetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE, 0);
+		err2[0] = (long long)GetLastError();
+		if (err2[0] == 0) {
+			if (SetWindowPos(wnd_data[0].wnd.hndl, HWND_TOP, mx, my, mw, mh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
+				client_props_update(wnd_data);
+				cursor_clip_update(wnd_data);
+			} else {
+				err1[0] = 70; err2[0] = (long long)GetLastError();
+			}
+		} else {
+			err1[0] = 70;
+		}
 	} else {
-		err1[0] = 70; err2[0] = (long long)GetLastError();
+		wnd_data[0].client.x = wnd_data[0].client_bak.x;
+		wnd_data[0].client.y = wnd_data[0].client_bak.y;
+		wnd_data[0].client.width = wnd_data[0].client_bak.width;
+		wnd_data[0].client.height = wnd_data[0].client_bak.height;
+		int wx, wy, ww, wh; window_metrics(wnd_data, &wx, &wy, &ww, &wh);
+		SetLastError(0); SetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE, wnd_data[0].config.style);
+		err2[0] = (long long)GetLastError();
+		if (err2[0] == 0) {
+			if (SetWindowPos(wnd_data[0].wnd.hndl, HWND_NOTOPMOST, wx, wy, ww, wh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
+				cursor_clip_update(wnd_data);
+			} else {
+				err1[0] = 71; err2[0] = (long long)GetLastError();
+			}
+		} else {
+			err1[0] = 71;
+		}
 	}
-}
-
-void g2d_window_restore_bak(void *const data) {
-	window_data_t *const wnd_data = (window_data_t*)data;
-	wnd_data[0].client.x = wnd_data[0].client_bak.x;
-	wnd_data[0].client.y = wnd_data[0].client_bak.y;
-	wnd_data[0].client.width = wnd_data[0].client_bak.width;
-	wnd_data[0].client.height = wnd_data[0].client_bak.height;
 }
 
 void g2d_window_pos_apply(void *const data, long long *const err1, long long *const err2) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	int wx, wy, ww, wh; window_metrics(wnd_data, &wx, &wy, &ww, &wh);
-	const LONG_PTR style = GetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE);
-	if (style == SetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE, wnd_data[0].config.style)) {
+	SetLastError(0); SetWindowLongPtr(wnd_data[0].wnd.hndl, GWL_STYLE, wnd_data[0].config.style);
+	err2[0] = (long long)GetLastError();
+	if (err2[0] == 0) {
 		if (SetWindowPos(wnd_data[0].wnd.hndl, HWND_NOTOPMOST, wx, wy, ww, wh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
 			wnd_data[0].config.fullscreen = 0;
 			cursor_clip_update(wnd_data);
@@ -457,7 +467,7 @@ void g2d_window_pos_apply(void *const data, long long *const err1, long long *co
 			err1[0] = 71; err2[0] = (long long)GetLastError();
 		}
 	} else {
-		err1[0] = 71; err2[0] = (long long)GetLastError();
+		err1[0] = 71;
 	}
 }
 

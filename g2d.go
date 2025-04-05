@@ -60,6 +60,7 @@ var (
 var (
 	initialized, initFailed bool
 	running, quitting       bool
+	processingRequests bool
 	mutex                   sync.Mutex
 	wnds                    []*tWindow
 	wndNextId               []int
@@ -74,11 +75,17 @@ type Window interface {
 	OnMove() error
 	OnKeyDown(keyCode int, repeated uint) error
 	OnKeyUp(keyCode int) error
+	OnMouseMove() error
+	OnButtonDown(buttonCode int, doubleClicked bool) error
+	OnButtonUp(buttonCode int, doubleClicked bool) error
+	OnWheel(rotation float32) error
 	OnCustom(obj interface{}) error
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy() error
+	OnMinimize() error
+	OnRestore() error
 	Custom(obj interface{})
 	Update()
 	Close()
@@ -164,7 +171,7 @@ type tUpdateRequest struct {
 
 type tSetPropertiesRequest struct {
 	props                             Properties
-	modPos, modSize, modStyle         bool
+	modPosSize, modStyle         bool
 	modFullscreen, modMouse, modTitle bool
 	wndId                             int
 }
@@ -212,8 +219,8 @@ func (config *Configuration) boolsToCInt() (C.int, C.int, C.int, C.int, C.int, C
 	return c, l, b, d, r, f
 }
 
-func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int) {
-	var l, b, d, r C.int
+func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int, C.int) {
+	var l, b, d, r, f C.int
 	if props.MouseLocked {
 		l = 1
 	}
@@ -226,7 +233,10 @@ func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int) {
 	if props.Resizable {
 		r = 1
 	}
-	return l, b, d, r
+	if props.Fullscreen {
+		f = 1
+	}
+	return l, b, d, r, f
 }
 
 func (props *Properties) copyTo(target *Properties) {
@@ -240,8 +250,8 @@ func (props *Properties) compare(target *Properties) *tSetPropertiesRequest {
 	if *props != *target {
 		req = new(tSetPropertiesRequest)
 		req.props = *target
-		req.modPos = bool(props.ClientX != target.ClientX || props.ClientY != target.ClientY)
-		req.modSize = bool(props.ClientWidth != target.ClientWidth || props.ClientHeight != target.ClientHeight)
+		req.modPosSize = bool(props.ClientX != target.ClientX || props.ClientY != target.ClientY)
+		req.modPosSize = bool(req.modPosSize || props.ClientWidth != target.ClientWidth || props.ClientHeight != target.ClientHeight)
 		req.modStyle = bool(props.ClientWidthMin != target.ClientWidthMin || props.ClientHeightMin != target.ClientHeightMin)
 		req.modStyle = bool(req.modStyle || props.ClientWidthMax != target.ClientWidthMax || props.ClientHeightMax != target.ClientHeightMax)
 		req.modStyle = bool(req.modStyle || props.MouseLocked != target.MouseLocked || props.Borderless != target.Borderless)
@@ -278,24 +288,34 @@ func (wnd *tWindow) logicThread() {
 				wnd.onCreate()
 			case showType:
 				wnd.onShow()
-/*
 			case wndMoveType:
 				wnd.onMove()
 			case wndResizeType:
 				wnd.onResize()
-*/
 			case keyDownType:
 				wnd.onKeyDown(event.valA, event.repeated)
 			case keyUpType:
 				wnd.onKeyUp(event.valA)
-			case customType:
-				wnd.onCustom(event.obj)
+			case msMoveType:
+				wnd.onMouseMove()
+			case buttonDownType:
+				wnd.onButtonDown(event.valA, event.repeated != 0)
+			case buttonUpType:
+				wnd.onButtonUp(event.valA, event.repeated != 0)
+			case wheelType:
+				wnd.onWheel(event.valB)
 			case updateType:
 				wnd.onUpdate()
 			case closeType:
 				wnd.onClose()
 			case destroyType:
 				wnd.onDestroy()
+			case minimizeType:
+				wnd.onMinimize()
+			case restoreType:
+				wnd.onRestore()
+			case customType:
+				wnd.onCustom(event.obj)
 			}
 		}
 	}
@@ -306,19 +326,6 @@ func (wnd *tWindow) logicThread() {
 			if msg != nil {
 				wnd.Time.Curr = msg.nanos
 				switch msg.typeId {
-				case msMoveType:
-					wnd.updateProps(msg)
-					onMouseMove(abst, wnd)
-				case buttonDownType:
-					onButtonDown(abst, wnd, msg.valA, msg.repeated != 0)
-				case buttonUpType:
-					onButtonUp(abst, wnd, msg.valA, msg.repeated != 0)
-				case wheelType:
-					onWheel(abst, wnd, msg.valB)
-				case minimizeType:
-					onWindowMinimize(abst, wnd)
-				case restoreType:
-					onWindowRestore(abst, wnd)
 				case textureType:
 					onTextureLoaded(abst, wnd, msg.valA)
 				}
@@ -418,9 +425,45 @@ func (wnd *tWindow) onKeyUp(keyCode int) {
 	}
 }
 
-func (wnd *tWindow) onCustom(obj interface{}) {
+func (wnd *tWindow) onMouseMove() {
 	props := wnd.impl.Props
-	err := wnd.abst.OnCustom(obj)
+	err := wnd.abst.OnMouseMove()
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onButtonDown(buttonCode int, doubleClicked bool) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnButtonDown(buttonCode, doubleClicked)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onButtonUp(buttonCode int, doubleClicked bool) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnButtonUp(buttonCode, doubleClicked)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onWheel(rotation float32) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnWheel(rotation)
 	if err == nil {
 		setPropsReq := props.compare(&wnd.impl.Props)
 		if setPropsReq != nil {
@@ -475,6 +518,42 @@ func (wnd *tWindow) onDestroy() {
 	*/
 }
 
+func (wnd *tWindow) onCustom(obj interface{}) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnCustom(obj)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onMinimize() {
+	props := wnd.impl.Props
+	err := wnd.abst.OnMinimize()
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	}
+}
+
+func (wnd *tWindow) onRestore() {
+	props := wnd.impl.Props
+	err := wnd.abst.OnRestore()
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	}
+}
+
 func (wnd *WindowImpl) OnConfig(config *Configuration) error {
 	return nil
 }
@@ -504,6 +583,22 @@ func (wnd *WindowImpl) OnKeyUp(keyCode int) error {
 	return nil
 }
 
+func (wnd *WindowImpl) OnMouseMove() error {
+	return nil
+}
+
+func (wnd *WindowImpl) OnButtonDown(buttonCode int, doubleClicked bool) error {
+	return nil
+}
+
+func (wnd *WindowImpl) OnButtonUp(buttonCode int, doubleClicked bool) error {
+	return nil
+}
+
+func (wnd *WindowImpl) OnWheel(rotation float32) error {
+	return nil
+}
+
 func (wnd *WindowImpl) OnCustom(obj interface{}) error {
 	return nil
 }
@@ -521,6 +616,14 @@ func (wnd *WindowImpl) OnClose() (bool, error) {
 }
 
 func (wnd *WindowImpl) OnDestroy() error {
+	return nil
+}
+
+func (wnd *WindowImpl) OnMinimize() error {
+	return nil
+}
+
+func (wnd *WindowImpl) OnRestore() error {
 	return nil
 }
 

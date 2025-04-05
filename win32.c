@@ -151,7 +151,7 @@ typedef struct {
 	struct { int x, y, width, height; } client_bak;
 	struct { int x, y, double_clicked[5]; } mouse;
 	struct { int width_min, height_min, width_max, height_max, borderless, dragable, fullscreen, resizable, locked; DWORD style; } config;
-	struct { int dragging, dragging_cust, locked, minimized, maximized, resizing, focus, shown; } state;
+	struct { int minimized, maximized, resizing, focus, shown; } state;
 	unsigned int key_repeated[255];
 	int cb_id;
 /*

@@ -169,29 +169,22 @@ func (request *tCustomRequest) process() {
 func (request *tSetPropertiesRequest) process() {
 	var err1, err2 C.longlong
 	wnd := wnds[request.wndId]
-	if request.modPos {
-		C.g2d_window_pos_set(wnd.data, C.int(request.props.ClientX), C.int(request.props.ClientY))
+	if request.modPosSize {
+		C.g2d_window_pos_size_set(wnd.data, C.int(request.props.ClientX), C.int(request.props.ClientY), C.int(request.props.ClientWidth), C.int(request.props.ClientHeight))
 	}
-	if request.modSize {
-		C.g2d_window_size_set(wnd.data, C.int(request.props.ClientWidth), C.int(request.props.ClientHeight))
-	}
-	if request.modStyle {
+	if request.modStyle || request.modFullscreen {
 		wn := C.int(request.props.ClientWidthMin)
 		hn := C.int(request.props.ClientHeightMin)
 		wx := C.int(request.props.ClientWidthMax)
 		hx := C.int(request.props.ClientHeightMax)
-		l, b, d, r := request.props.boolsToCInt()
-		C.g2d_window_style_set(wnd.data, wn, hn, wx, hx, b, d, r, l)
+		l, b, d, r, f := request.props.boolsToCInt()
+		C.g2d_window_style_set(wnd.data, wn, hn, wx, hx, b, d, r, f, l)
 	}
 	if request.modFullscreen {
-		if request.props.Fullscreen {
-			C.g2d_window_fullscreen_set(wnd.data, &err1, &err2)
-		} else {
-			C.g2d_window_restore_bak(wnd.data)
-		}
-	} else if request.modStyle {
+		C.g2d_window_fullscreen_set(wnd.data, &err1, &err2)
+	} else if request.modStyle && !request.props.Fullscreen {
 		C.g2d_window_pos_apply(wnd.data, &err1, &err2)
-	} else if request.modPos || request.modSize {
+	} else if request.modPosSize {
 		C.g2d_window_move(wnd.data, &err1, &err2)
 	}
 	if request.modTitle {
@@ -256,6 +249,18 @@ func cleanUp() {
 	C.g2d_clean_up()
 }
 
+func toEventsChan(id C.int, event *tLogicEvent) {
+	if !processingRequests {
+		mutex.Lock()
+	}
+	wnd := wnds[id]
+	event.props.update(wnd.data)
+	wnd.eventsChan <- event
+	if !processingRequests {
+		mutex.Unlock()
+	}
+}
+
 //export g2dMainLoopStarted
 func g2dMainLoopStarted() {
 	wnds[0].eventsChan <- &tLogicEvent{typeId: configType}
@@ -264,18 +269,12 @@ func g2dMainLoopStarted() {
 //export g2dProcessRequest
 func g2dProcessRequest() {
 	mutex.Lock()
+	processingRequests = true
 	for _, request := range requests {
 		request.process()
 	}
 	requests = requests[:0]
-	mutex.Unlock()
-}
-
-func toEventsChan(id C.int, event *tLogicEvent) {
-	mutex.Lock()
-	wnd := wnds[id]
-	event.props.update(wnd.data)
-	wnd.eventsChan <- event
+	processingRequests = false
 	mutex.Unlock()
 }
 
@@ -294,6 +293,11 @@ func g2dKeyUp(id, code C.int) {
 	toEventsChan(id, &tLogicEvent{typeId: keyUpType, valA: int(code)})
 }
 
+//export g2dMouseMove
+func g2dMouseMove(id C.int) {
+	toEventsChan(id, &tLogicEvent{typeId: msMoveType})
+}
+
 //export g2dWindowMove
 func g2dWindowMove(id C.int) {
 	toEventsChan(id, &tLogicEvent{typeId: wndMoveType})
@@ -301,13 +305,42 @@ func g2dWindowMove(id C.int) {
 
 //export g2dWindowResize
 func g2dWindowResize(id C.int) {
-	mutex.Lock()
+	if !processingRequests {
+		mutex.Lock()
+	}
 	wnd := wnds[id]
 	event := &tLogicEvent{typeId: wndResizeType}
 	event.props.update(wnd.data)
 	wnd.eventsChan <- event
 	// wnd.gfx.eventsChan <- &tGraphicsEvent{typeId: wndResizeType, valA: event.props.ClientWidth, valB: event.props.ClientHeight}
-	mutex.Unlock()
+	if !processingRequests {
+		mutex.Unlock()
+	}
+}
+
+//export g2dButtonDown
+func g2dButtonDown(id, code, doubleClick C.int) {
+	toEventsChan(id, &tLogicEvent{typeId: buttonDownType, valA: int(code), repeated: uint(doubleClick)})
+}
+
+//export g2dButtonUp
+func g2dButtonUp(id, code, doubleClick C.int) {
+	toEventsChan(id, &tLogicEvent{typeId: buttonUpType, valA: int(code), repeated: uint(doubleClick)})
+}
+
+//export g2dWheel
+func g2dWheel(id C.int, wheel C.float) {
+	toEventsChan(id, &tLogicEvent{typeId: wheelType, valB: float32(wheel)})
+}
+
+//export g2dWindowMinimize
+func g2dWindowMinimize(id C.int) {
+	toEventsChan(id, &tLogicEvent{typeId: minimizeType})
+}
+
+//export g2dWindowRestore
+func g2dWindowRestore(id C.int) {
+	toEventsChan(id, &tLogicEvent{typeId: restoreType})
 }
 
 func toError(err1, err2 C.longlong, errInfo *C.char) error {
@@ -375,7 +408,7 @@ func toError(err1, err2 C.longlong, errInfo *C.char) error {
 }
 
 //export goDebug
-func goDebug(a, b C.int, c, d C.ulong) {
+func goDebug(a, b C.int, c, d C.longlong) {
 	fmt.Println(a, b, c, d)
 }
 
