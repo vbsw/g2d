@@ -44,7 +44,6 @@ const (
 	closeType
 	destroyType
 	leaveType
-	refreshType
 	swapIntervType
 	imageType
 	textureType
@@ -97,18 +96,15 @@ type Window interface {
 	impl() *WindowImpl
 }
 
-type Stats struct {
-	CurrTime, DeltaTime int
-	UPS, FPS            int
-}
-
 // WindowImpl is the implementation of Window.
 type WindowImpl struct {
 	Props Properties
 	Stats Stats
+	Gfx   Graphics
 	id    int
 }
 
+// Configuration for the starting window.
 type Configuration struct {
 	ClientX, ClientY                  int
 	ClientWidth, ClientHeight         int
@@ -119,6 +115,7 @@ type Configuration struct {
 	Title                             string
 }
 
+// Properties of the current window.
 type Properties struct {
 	MouseX, MouseY                    int
 	ClientX, ClientY                  int
@@ -128,6 +125,23 @@ type Properties struct {
 	MouseLocked, Borderless, Dragable bool
 	Resizable, Fullscreen             bool
 	Title                             string
+}
+
+// Stats holds time in milliseconds.
+type Stats struct {
+	AppTime, DeltaTime int
+	lastUpdate         int
+	UPS, FPS           int
+	ups, lastUPSTime   int
+	fps, lastFPSTime   int
+}
+
+// Graphics functions to draw in window.
+type Graphics struct {
+	eventsChan chan *tGraphicsEvent
+	mutex      sync.Mutex
+	state      int
+	updating   bool
 }
 
 type tWindow struct {
@@ -147,6 +161,14 @@ type tLogicEvent struct {
 	time     int
 	props    Properties
 	obj      interface{}
+}
+
+type tGraphicsEvent struct {
+	typeId int
+	valA   int
+	valB   int
+	valC   interface{}
+	err    error
 }
 
 type tRequest interface {
@@ -188,6 +210,45 @@ type tSetPropertiesRequest struct {
 
 type tAppTime struct {
 	start time.Time
+}
+
+func (stats *Stats) updateUPS() {
+	diff := stats.AppTime - stats.lastUPSTime
+	if diff < 1000 {
+		stats.ups++
+	} else if diff < 2000 {
+		stats.UPS = stats.ups
+		stats.ups = 1
+		stats.lastUPSTime += 1000
+	} else {
+		stats.UPS = 0
+		stats.ups = 1
+		stats.lastUPSTime += diff % 1000 * 1000
+	}
+}
+
+func (stats *Stats) updateFPS() {
+	diff := stats.AppTime - stats.lastFPSTime
+	if diff < 1000 {
+		stats.fps++
+	} else if diff < 2000 {
+		stats.FPS = stats.fps
+		stats.fps = 1
+		stats.lastFPSTime += 1000
+	} else {
+		stats.FPS = 0
+		stats.fps = 1
+		stats.lastFPSTime += diff % 1000 * 1000
+	}
+}
+
+func (gfx *Graphics) Update() {
+	gfx.mutex.Lock()
+	if !gfx.updating {
+		gfx.updating = true
+		gfx.eventsChan <- &tGraphicsEvent{typeId: updateType}
+	}
+	gfx.mutex.Unlock()
 }
 
 func newConfiguration() *Configuration {
@@ -285,6 +346,7 @@ func newWindow(abst Window) *tWindow {
 	wnd.impl = abst.impl()
 	wnd.state = configState
 	wnd.impl.id = wnd.id
+	wnd.impl.Gfx.eventsChan = make(chan *tGraphicsEvent, 1000)
 	return wnd
 }
 
@@ -295,10 +357,7 @@ func (wnd *tWindow) logicThread() {
 			if event.typeId != destroyType {
 				event.props.copyTo(&wnd.impl.Props)
 			}
-			if event.typeId != configType {
-				wnd.impl.Stats.DeltaTime = event.time - wnd.impl.Stats.CurrTime
-			}
-			wnd.impl.Stats.CurrTime = event.time
+			wnd.impl.Stats.AppTime = event.time
 			switch event.typeId {
 			case configType:
 				wnd.onConfig()
@@ -339,20 +398,6 @@ func (wnd *tWindow) logicThread() {
 			}
 		}
 	}
-	/*
-		wnd := abst.impl()
-		for wnd.state != quitState {
-			msg := wnd.nextEvent()
-			if msg != nil {
-				wnd.Time.Curr = msg.nanos
-				switch msg.typeId {
-				case textureType:
-					onTextureLoaded(abst, wnd, msg.valA)
-				}
-			}
-		}
-		wnd.gfxImpl.destroy()
-	*/
 }
 
 func (wnd *tWindow) onConfig() {
@@ -362,32 +407,21 @@ func (wnd *tWindow) onConfig() {
 	if err == nil {
 		postRequest(&tCreateWindowRequest{wndId: wnd.id, config: config})
 	}
-	/*
-		if err == nil {
-			toMainLoop.postMsg(&tCreateWindowRequest{abst: abst, config: config})
-		} else {
-			onLogicError(abst, wnd, 4999, err)
-		}
-	*/
 }
 
 func (wnd *tWindow) onCreate() {
 	err := wnd.abst.OnCreate()
 	if err == nil {
+		go wnd.graphicsThread()
+		wnd.impl.Gfx.eventsChan <- &tGraphicsEvent{typeId: updateType}
 		postRequest(&tShowWindowRequest{wndId: wnd.id})
 	}
-	/*
-		if err == nil {
-			toMainLoop.postMsg(&tCreateWindowRequest{abst: abst, config: config})
-		} else {
-			onLogicError(abst, wnd, 4999, err)
-		}
-	*/
 }
 
 func (wnd *tWindow) onShow() {
 	props := wnd.impl.Props
 	wnd.state = showingState
+	wnd.impl.Stats.lastUPSTime = wnd.impl.Stats.AppTime
 	err := wnd.abst.OnShow()
 	if err == nil {
 		setPropsReq := props.compare(&wnd.impl.Props)
@@ -496,6 +530,9 @@ func (wnd *tWindow) onWheel(rotation float32) {
 
 func (wnd *tWindow) onUpdate() {
 	wnd.update = false
+	wnd.impl.Stats.DeltaTime = wnd.impl.Stats.AppTime - wnd.impl.Stats.lastUpdate
+	wnd.impl.Stats.lastUpdate = wnd.impl.Stats.AppTime
+	wnd.impl.Stats.updateUPS()
 	props := wnd.impl.Props
 	err := wnd.abst.OnUpdate()
 	if err == nil {
@@ -588,6 +625,12 @@ func (wnd *tWindow) onFocus(focus bool) {
 			}
 		}
 	}
+}
+
+func (wnd *tWindow) onGfxUpdate() {
+	wnd.impl.Gfx.mutex.Lock()
+	wnd.impl.Gfx.updating = false
+	wnd.impl.Gfx.mutex.Unlock()
 }
 
 func (wnd *WindowImpl) OnConfig(config *Configuration) error {

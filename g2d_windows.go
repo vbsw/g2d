@@ -14,6 +14,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"unsafe"
 )
@@ -98,6 +99,24 @@ func (props *Properties) update(data unsafe.Pointer) {
 	props.Resizable = bool(r != 0)
 	props.Fullscreen = bool(f != 0)
 	props.MouseLocked = bool(l != 0)
+}
+
+func (wnd *tWindow) graphicsThread() {
+	var err1, err2 C.longlong
+	runtime.LockOSThread()
+	C.g2d_gfx_make_current(wnd.data, &err1, &err2)
+	if err1 == 0 {
+		for wnd.state != quitState {
+			event := <-wnd.impl.Gfx.eventsChan
+			if event != nil {
+				switch event.typeId {
+				case updateType:
+					wnd.onGfxUpdate()
+				}
+			}
+		}
+		C.g2d_gfx_release(wnd.data, &err1, &err2)
+	}
 }
 
 func (request *tCreateWindowRequest) process() {

@@ -191,6 +191,7 @@ void g2d_free(void *const data) {
 #include "win32_init.h"
 #include "win32_main_loop.h"
 #include "win32_window.h"
+#include "win32_graphics.h"
 
 void g2d_post_request(long long *const err1, long long *const err2) {
 	if (!PostThreadMessage(thread_id, WM_APP, g2d_REQUEST_EVENT, 0)) {
