@@ -67,6 +67,7 @@
 /* from wglext.h */
 typedef BOOL(WINAPI * PFNWGLCHOOSEPIXELFORMATARBPROC) (HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
 typedef HGLRC(WINAPI * PFNWGLCREATECONTEXTATTRIBSARBPROC) (HDC hDC, HGLRC hShareContext, const int *attribList);
+typedef const char *(WINAPI * PFNWGLGETEXTENSIONSSTRINGARBPROC) (HDC hdc);
 typedef BOOL(WINAPI * PFNWGLSWAPINTERVALEXTPROC) (int interval);
 typedef int (WINAPI * PFNWGLGETSWAPINTERVALEXTPROC) (void);
 
@@ -110,6 +111,7 @@ typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
+static PFNWGLGETEXTENSIONSSTRINGARBPROC  wglGetExtensionsStringARB  = NULL;
 static PFNWGLSWAPINTERVALEXTPROC         wglSwapIntervalEXT         = NULL;
 static PFNWGLGETSWAPINTERVALEXTPROC      wglGetSwapIntervalEXT      = NULL;
 
@@ -156,12 +158,11 @@ typedef struct {
 	struct { int dragging, minimized, maximized, resizing, focus, shown; } state;
 	unsigned int key_repeated[255];
 	int cb_id;
-	struct { int r, g, b, w, h, i; } gfx;
+	struct { int r, g, b, w, h, i; float projection_mat[4*4]; } gfx;
 /*
 	program_t prog;
 	rect_program_t rect_prog;
 	image_program_t image_prog;
-	float projection_mat[4*4];
 */
 } window_data_t;
 
@@ -169,6 +170,8 @@ static const WPARAM g2d_REQUEST_EVENT  = (WPARAM)"g2dc";
 static const WPARAM g2d_QUIT_EVENT    = (WPARAM)"g2dq";
 static LPCTSTR const class_name       = TEXT("g2d");
 static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
+
+static const float default_projection_mat[4*4] = { 2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, -1.0f, 1.0f, 0.0f, 1.0f };
 
 static HINSTANCE instance = NULL;
 static BOOL initialized   = FALSE;

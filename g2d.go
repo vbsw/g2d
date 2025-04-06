@@ -56,6 +56,8 @@ const (
 
 var (
 	MaxTexSize, MaxTexUnits int
+	VSyncAvailable          bool
+	AVSyncAvailable         bool
 	Err                     error
 )
 
@@ -140,10 +142,16 @@ type Stats struct {
 
 // Graphics functions to draw in window.
 type Graphics struct {
-	eventsChan chan *tGraphicsEvent
-	mutex      sync.Mutex
-	state      int
-	updating   bool
+	BgR, BgG, BgB float32
+	VSync, AVSync bool
+	eventsChan    chan *tGraphicsEvent
+	mutex         sync.Mutex
+	w, h          int
+	read          *tGraphics
+	buffer        *tGraphics
+	write         *tGraphics
+	bufferReady   bool
+	updating      bool
 }
 
 type tWindow struct {
@@ -153,6 +161,11 @@ type tWindow struct {
 	data            unsafe.Pointer
 	id, state, time int
 	update          bool
+}
+
+type tGraphics struct {
+	w, h, i C.int
+	r, g, b C.float
 }
 
 type tLogicEvent struct {
@@ -248,12 +261,20 @@ func (stats *Stats) updateFPS() {
 	}
 }
 
-func (gfx *Graphics) Update() {
+func (gfx *Graphics) update() {
+	var i int
 	gfx.mutex.Lock()
 	if !gfx.updating {
 		gfx.updating = true
 		gfx.eventsChan <- &tGraphicsEvent{typeId: updateType}
 	}
+	if gfx.VSync {
+		i = 1
+	} else if gfx.AVSync {
+		i = -1
+	}
+	gfx.write.copyTo(gfx.buffer, gfx.w, gfx.h, i, gfx.BgR, gfx.BgG, gfx.BgB)
+	gfx.bufferReady = true
 	gfx.mutex.Unlock()
 }
 
@@ -320,10 +341,10 @@ func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int, C.int) {
 	return l, b, d, r, f
 }
 
-func (props *Properties) copyTo(target *Properties) {
-	titleTmp := target.Title
-	*target = *props
-	target.Title = titleTmp
+func (props *Properties) copyTo(dest *Properties) {
+	titleTmp := dest.Title
+	*dest = *props
+	dest.Title = titleTmp
 }
 
 func (props *Properties) compare(target *Properties) *tSetPropertiesRequest {
@@ -353,6 +374,9 @@ func newWindow(abst Window) *tWindow {
 	wnd.state = configState
 	wnd.impl.id = wnd.id
 	wnd.impl.Gfx.eventsChan = make(chan *tGraphicsEvent, 1000)
+	wnd.impl.Gfx.read = new(tGraphics)
+	wnd.impl.Gfx.buffer = new(tGraphics)
+	wnd.impl.Gfx.write = new(tGraphics)
 	return wnd
 }
 
@@ -421,7 +445,7 @@ func (wnd *tWindow) onCreate() {
 	err := wnd.abst.OnCreate()
 	if err == nil {
 		go wnd.graphicsThread()
-		wnd.impl.Gfx.eventsChan <- &tGraphicsEvent{typeId: updateType}
+		wnd.impl.Gfx.update()
 		postRequest(&tShowWindowRequest{wndId: wnd.id})
 	}
 }
@@ -454,6 +478,7 @@ func (wnd *tWindow) onMove() {
 
 func (wnd *tWindow) onResize() {
 	props := wnd.impl.Props
+	wnd.impl.Gfx.w, wnd.impl.Gfx.h = props.ClientWidth, props.ClientHeight
 	err := wnd.abst.OnResize()
 	if err == nil {
 		setPropsReq := props.compare(&wnd.impl.Props)
@@ -544,6 +569,7 @@ func (wnd *tWindow) onUpdate() {
 	props := wnd.impl.Props
 	err := wnd.abst.OnUpdate()
 	if err == nil {
+		wnd.impl.Gfx.update()
 		setPropsReq := props.compare(&wnd.impl.Props)
 		if setPropsReq != nil {
 			setPropsReq.wndId = wnd.id
@@ -635,6 +661,11 @@ func (wnd *tWindow) onFocus(focus bool) {
 	}
 }
 
+func (gfx *tGraphics) copyTo(dest *tGraphics, w, h, i int, r, g, b float32) {
+	dest.w, dest.h, dest.i = C.int(w), C.int(h), C.int(i)
+	dest.r, dest.g, dest.b = C.float(r), C.float(g), C.float(b)
+}
+
 func (wnd *WindowImpl) OnConfig(config *Configuration) error {
 	return nil
 }
@@ -644,11 +675,11 @@ func (wnd *WindowImpl) OnCreate() error {
 }
 
 func (wnd *WindowImpl) OnShow() error {
-	wnd.Update()
 	return nil
 }
 
 func (wnd *WindowImpl) OnResize() error {
+	wnd.Update()
 	return nil
 }
 
@@ -657,6 +688,11 @@ func (wnd *WindowImpl) OnMove() error {
 }
 
 func (wnd *WindowImpl) OnKeyDown(keyCode int, repeated uint) error {
+	if repeated == 0 {
+		if keyCode == 41 { // ESC
+			wnd.Close()
+		}
+	}
 	return nil
 }
 

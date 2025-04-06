@@ -27,13 +27,14 @@ const (
 func Init() {
 	mutex.Lock()
 	if !initialized {
-		var n1, n2 C.int
+		var n1, n2, n3, n4 C.int
 		var err1, err2 C.longlong
 		var errInfo *C.char
-		C.g2d_init(&n1, &n2, &err1, &err2, &errInfo)
+		C.g2d_init(&n1, &n2, &n3, &n4, &err1, &err2, &errInfo)
 		if err1 == 0 {
 			Err = nil
 			MaxTexSize, MaxTexUnits = int(n1), int(n2)
+			VSyncAvailable, AVSyncAvailable = (n3 != 0), (n4 != 0)
 			initialized, initFailed, quitting = true, false, false
 		} else {
 			initFailed = true
@@ -112,6 +113,8 @@ func (wnd *tWindow) graphicsThread() {
 				switch event.typeId {
 				case updateType:
 					wnd.onGfxUpdate()
+				case wndResizeType:
+					wnd.impl.Gfx.w, wnd.impl.Gfx.h = event.valA, event.valB
 				}
 			}
 		}
@@ -120,10 +123,19 @@ func (wnd *tWindow) graphicsThread() {
 }
 
 func (wnd *tWindow) onGfxUpdate() {
+	var err1, err2 C.longlong
+	var read *tGraphics
 	wnd.impl.Gfx.mutex.Lock()
 	wnd.impl.Gfx.updating = false
+	if wnd.impl.Gfx.bufferReady {
+		read = wnd.impl.Gfx.buffer
+		wnd.impl.Gfx.buffer = wnd.impl.Gfx.read
+		wnd.impl.Gfx.read = read
+		wnd.impl.Gfx.bufferReady = false
+	}
 	wnd.impl.Gfx.mutex.Unlock()
-	//C.g2d_gfx_draw()
+	w, h, i, r, g, b := read.w, read.h, read.i, read.r, read.g, read.b
+	C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &err1, &err2)
 	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
 }
 
@@ -326,7 +338,6 @@ func g2dWindowResize(id C.int) {
 	event := &tLogicEvent{typeId: wndResizeType, time: appTime.Millis()}
 	event.props.update(wnd.data)
 	wnd.eventsChan <- event
-	// wnd.gfx.eventsChan <- &tGraphicsEvent{typeId: wndResizeType, valA: event.props.ClientWidth, valB: event.props.ClientHeight}
 	if !processingRequests {
 		mutex.Unlock()
 	}

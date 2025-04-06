@@ -368,6 +368,7 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 							if (SetPixelFormat(wnd_data[0].wnd.dc, pixelFormat, &pfd)) {
 								wnd_data[0].wnd.rc = wglCreateContextAttribsARB(wnd_data[0].wnd.dc, 0, contextAttributes);
 								if (wnd_data[0].wnd.rc) {
+									memcpy(wnd_data[0].gfx.projection_mat, default_projection_mat, sizeof(default_projection_mat));
 									data[0] = (void*)wnd_data;
 								} else {
 									err1[0] = 18; err2[0] = (long long)GetLastError(); windows_count--;

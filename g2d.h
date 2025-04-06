@@ -10,7 +10,7 @@ extern "C" {
 #include <stdio.h>
 
 extern void g2d_free(void *data);
-extern void g2d_init(int *n1, int *n2, long long *err1, long long *err2, char **err_nfo);
+extern void g2d_init(int *n1, int *n2, int *n3, int *n4, long long *err1, long long *err2, char **err_nfo);
 extern void g2d_main_loop();
 extern void g2d_post_request(long long *err1, long long *err2);
 extern void g2d_post_quit(long long *err1, long long *err2);
@@ -31,7 +31,7 @@ extern void g2d_mouse_pos_set(void *data, int x, int y, long long *err1, long lo
 
 extern void g2d_gfx_make_current(void *data, long long *err1, long long *err2);
 extern void g2d_gfx_release(void *data, long long *err1, long long *err2);
-extern void g2d_gfx_draw(void *data, int w, int h, int r, int g, int b, int i, long long *err1, long long *err2);
+extern void g2d_gfx_draw(void *data, int w, int h, int i, float r, float g, float b, long long *err1, long long *err2);
 
 /*
 typedef unsigned long g2d_ul_t;
