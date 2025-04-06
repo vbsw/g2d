@@ -104,8 +104,9 @@ func (props *Properties) update(data unsafe.Pointer) {
 
 func (wnd *tWindow) graphicsThread() {
 	var err1, err2 C.longlong
+	var errInfo *C.char
 	runtime.LockOSThread()
-	C.g2d_gfx_make_current(wnd.data, &err1, &err2)
+	C.g2d_gfx_init(wnd.data, &err1, &err2, &errInfo)
 	if err1 == 0 {
 		for wnd.state != quitState {
 			event := <-wnd.impl.Gfx.eventsChan

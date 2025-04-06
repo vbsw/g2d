@@ -29,7 +29,7 @@ extern void g2d_window_move(void *data, long long *err1, long long *err2);
 extern void g2d_window_title_set(void *data, void *t, size_t ts, long long *err1, long long *err2);
 extern void g2d_mouse_pos_set(void *data, int x, int y, long long *err1, long long *err2);
 
-extern void g2d_gfx_make_current(void *data, long long *err1, long long *err2);
+extern void g2d_gfx_init(void *data, long long *err1, long long *err2, char **err_nfo);
 extern void g2d_gfx_release(void *data, long long *err1, long long *err2);
 extern void g2d_gfx_draw(void *data, int w, int h, int i, float r, float g, float b, long long *err1, long long *err2);
 

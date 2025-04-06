@@ -154,6 +154,20 @@ type Graphics struct {
 	updating      bool
 }
 
+type RectanglesLayer struct {
+	entities []*Rectangle
+	entityNextId []int
+	count int
+	Enabled bool
+}
+
+type Rectangle struct {
+	id int
+	X, Y, Width, Height float32
+	R, G, B, A float32
+	Enabled bool
+}
+
 type tWindow struct {
 	eventsChan      chan *tLogicEvent
 	abst            Window
@@ -166,6 +180,11 @@ type tWindow struct {
 type tGraphics struct {
 	w, h, i C.int
 	r, g, b C.float
+	layers []tLayer
+}
+
+type tLayer interface {
+	copyTo(tLayer)
 }
 
 type tLogicEvent struct {
@@ -261,6 +280,13 @@ func (stats *Stats) updateFPS() {
 	}
 }
 
+func (gfx *Graphics) NewRectanglesLayer() *RectanglesLayer {
+	layer := new(RectanglesLayer)
+	layer.Enabled = true
+	gfx.write.layers = append(gfx.write.layers, layer)
+	return layer
+}
+
 func (gfx *Graphics) update() {
 	var i int
 	gfx.mutex.Lock()
@@ -276,6 +302,52 @@ func (gfx *Graphics) update() {
 	gfx.write.copyTo(gfx.buffer, gfx.w, gfx.h, i, gfx.BgR, gfx.BgG, gfx.BgB)
 	gfx.bufferReady = true
 	gfx.mutex.Unlock()
+}
+
+func (layer *RectanglesLayer) NewEntity() *Rectangle {
+	var entity *Rectangle
+	if len(layer.entityNextId) == 0 {
+		entity = new(Rectangle)
+		entity.id = len(layer.entities)
+		layer.entities = append(layer.entities, entity)
+	} else {
+		idLast := len(layer.entityNextId) - 1
+		id := layer.entityNextId[idLast]
+		layer.entityNextId = layer.entityNextId[:idLast]
+		entity = layer.entities[id]
+	}
+	entity.Enabled = true
+	layer.count++
+	return entity
+}
+
+func (layer *RectanglesLayer) Release(r *Rectangle) *Rectangle {
+	r.Enabled = false
+	layer.entityNextId = append(layer.entityNextId, r.id)
+	layer.count--
+	return nil
+}
+
+func (layer *RectanglesLayer) copyTo(dest tLayer) {
+	destLayer := dest.(*RectanglesLayer)
+	destLayer.Enabled = layer.Enabled
+	if layer.Enabled {
+		destLayer.count = layer.count
+		destLen := len(destLayer.entities)
+		if cap(destLayer.entities) < len(layer.entities) {
+			entitiesNew := make([]*Rectangle, len(layer.entities), cap(layer.entities))
+			copy(entitiesNew, destLayer.entities)
+			destLayer.entities = entitiesNew
+		} else if destLen < len(layer.entities) {
+			destLayer.entities = destLayer.entities[:len(layer.entities)]
+		}
+		for i := destLen; i < len(layer.entities); i++ {
+			destLayer.entities[i] = new(Rectangle)
+		}
+		for i, entity := range layer.entities {
+			*destLayer.entities[i] = *entity
+		}
+	}
 }
 
 func newConfiguration() *Configuration {
@@ -373,6 +445,7 @@ func newWindow(abst Window) *tWindow {
 	wnd.impl = abst.impl()
 	wnd.state = configState
 	wnd.impl.id = wnd.id
+	wnd.impl.Gfx.VSync = VSyncAvailable
 	wnd.impl.Gfx.eventsChan = make(chan *tGraphicsEvent, 1000)
 	wnd.impl.Gfx.read = new(tGraphics)
 	wnd.impl.Gfx.buffer = new(tGraphics)
@@ -664,6 +737,12 @@ func (wnd *tWindow) onFocus(focus bool) {
 func (gfx *tGraphics) copyTo(dest *tGraphics, w, h, i int, r, g, b float32) {
 	dest.w, dest.h, dest.i = C.int(w), C.int(h), C.int(i)
 	dest.r, dest.g, dest.b = C.float(r), C.float(g), C.float(b)
+	for i, layer := range gfx.layers {
+		if len(dest.layers) == i {
+			dest.layers = append(dest.layers, new(RectanglesLayer))
+		}
+		layer.copyTo(dest.layers[i])
+	}
 }
 
 func (wnd *WindowImpl) OnConfig(config *Configuration) error {

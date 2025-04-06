@@ -159,6 +159,8 @@ typedef struct {
 	unsigned int key_repeated[255];
 	int cb_id;
 	struct { int r, g, b, w, h, i; float projection_mat[4*4]; } gfx;
+	struct { GLuint id, vao, vbo, ebo, max_size; GLint pos_att, col_att, proj_unif; float *buffer; } rects;
+
 /*
 	program_t prog;
 	rect_program_t rect_prog;
@@ -180,11 +182,27 @@ static DWORD thread_id    = 0;
 static BOOL stop          = FALSE;
 
 /*
-static struct {
-	int count;
-	BOOL force_destroy;
-} active_windows = {0, FALSE};
+#version 130
+in vec2 positionIn;
+in vec4 colorIn;
+out vec4 fragementColor;
+uniform mat4 projection = mat4(1.0);
+
+void main() {
+	gl_Position = projection * vec4(positionIn, 1.0, 1.0);
+	fragementColor = colorIn;
+}
+
+#version 130
+in vec4 fragementColor;
+out vec4 color;
+void main() {
+	color = fragementColor;
+}
 */
+static LPCSTR const vs_rect_str = "#version 130\nin vec2 positionIn; in vec4 colorIn; out vec4 fragementColor; uniform mat4 projection = mat4(1.0); void main() { gl_Position = projection * vec4(positionIn, 1.0, 1.0); fragementColor = colorIn; }";
+static LPCSTR const fs_rect_str = "#version 130\nin vec4 fragementColor; out vec4 color; void main() { color = fragementColor; }";
+
 
 void g2d_free(void *const data) {
 	free(data);
@@ -194,8 +212,8 @@ void g2d_free(void *const data) {
 #include "win32_keys.h"
 #include "win32_init.h"
 #include "win32_main_loop.h"
-#include "win32_window.h"
 #include "win32_graphics.h"
+#include "win32_window.h"
 
 void g2d_post_request(long long *const err1, long long *const err2) {
 	if (!PostThreadMessage(thread_id, WM_APP, g2d_REQUEST_EVENT, 0)) {
