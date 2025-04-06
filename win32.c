@@ -159,14 +159,10 @@ typedef struct {
 	unsigned int key_repeated[255];
 	int cb_id;
 	struct { int r, g, b, w, h, i; float projection_mat[4*4]; } gfx;
-	struct { GLuint id, vao, vbo, ebo, max_size; GLint pos_att, col_att, proj_unif; float *buffer; } rects;
-
-/*
-	program_t prog;
-	rect_program_t rect_prog;
-	image_program_t image_prog;
-*/
+	struct { GLuint id, vao, vbo, ebo, max_length; GLint pos_att, col_att, proj_unif; float *buffer; } rects;
 } window_data_t;
+
+typedef void (gfx_draw_t)(void *data, float *rects, int total, long long *err1);
 
 static const WPARAM g2d_REQUEST_EVENT  = (WPARAM)"g2dc";
 static const WPARAM g2d_QUIT_EVENT    = (WPARAM)"g2dq";

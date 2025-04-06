@@ -47,7 +47,7 @@ static void program_check(const GLuint prog_id, const GLenum status, const int e
 	}
 }
 
-static GLuint rect_prog_create(const GLuint vs_id, const GLuint fs_id, long long *const err1, char **const err_nfo) {
+static GLuint rects_create(const GLuint vs_id, const GLuint fs_id, long long *const err1, char **const err_nfo) {
 	if (err1[0] == 0) {
 		const GLuint id = glCreateProgram();
 		if (id) {
@@ -188,9 +188,9 @@ void g2d_gfx_init(void *const data, long long *const err1, long long *const err2
 		if (err1[0] == 0) {
 			const GLuint fs_id = shader_create(GL_FRAGMENT_SHADER, fs_rect_str, 1002, 1003, err1, err_nfo);
 			if (err1[0] == 0) {
-				const size_t size = 16000;
-				wnd_data[0].rects.max_size = (GLuint)size;
-				wnd_data[0].rects.id = rect_prog_create(vs_id, fs_id, err1, err_nfo);
+				const size_t length = 16000;
+				wnd_data[0].rects.max_length = (GLuint)length;
+				wnd_data[0].rects.id = rects_create(vs_id, fs_id, err1, err_nfo);
 				wnd_data[0].rects.pos_att = att_location(wnd_data[0].rects.id, "positionIn", 1010, err1);
 				wnd_data[0].rects.col_att = att_location(wnd_data[0].rects.id, "colorIn", 1011, err1);
 				wnd_data[0].rects.proj_unif = unf_location(wnd_data[0].rects.id, "projection", 1012, 1013, err1);
@@ -201,22 +201,22 @@ void g2d_gfx_init(void *const data, long long *const err1, long long *const err2
 					enable_attr(wnd_data[0].rects.pos_att, 1015, 1016, err1);
 					enable_attr(wnd_data[0].rects.col_att, 1017, 1018, err1);
 					bind_vbo(wnd_data[0].rects.vbo, 1019, 1020, err1);
-					buffer_data(GL_ARRAY_BUFFER, sizeof(float) * size * 4 * (2+4), NULL, GL_DYNAMIC_DRAW, 1021, 1022, 1023, 1024, err1);
+					buffer_data(GL_ARRAY_BUFFER, sizeof(float) * length * 4 * (2+4), NULL, GL_DYNAMIC_DRAW, 1021, 1022, 1023, 1024, err1);
 					vertex_att_pointer(wnd_data[0].rects.pos_att, 2, sizeof(float) * (2+4), (void*)(sizeof(float) * 0), 1025, 1026, 1027, err1);
 					vertex_att_pointer(wnd_data[0].rects.col_att, 4, sizeof(float) * (2+4), (void*)(sizeof(float) * 2), 1028, 1029, 1030, err1);
 					bind_ebo(wnd_data[0].rects.ebo, 1031, 1032, err1);
 					if (err1[0] == 0) {
-						unsigned int *indices = (unsigned int*)malloc(sizeof(unsigned int) * size * (2+4));
+						unsigned int *indices = (unsigned int*)malloc(sizeof(unsigned int) * length * (3+3));
 						if (indices) {
-							wnd_data[0].rects.buffer = (float*)malloc(sizeof(float) * size * 4 * (2+4));
+							wnd_data[0].rects.buffer = (float*)malloc(sizeof(float) * length * 4 * (2+4));
 							if (wnd_data[0].rects.buffer) {
 								size_t i;
-								for (i = 0; i < size; i++) {
+								for (i = 0; i < length; i++) {
 									const size_t offs = i * (3+3);
 									const size_t index = i * 4;
 									indices[offs] = index; indices[offs+1] = index+1; indices[offs+2] = index+2; indices[offs+3] = index+2; indices[offs+4] = index+1; indices[offs+5] = index+3;
 								}
-								buffer_data(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * size * (3+3), indices, GL_STATIC_DRAW, 1035, 1036, 1037, 1038, err1);
+								buffer_data(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * length * (3+3), indices, GL_STATIC_DRAW, 1035, 1036, 1037, 1038, err1);
 							} else {
 								err1[0] = 1034;
 							}
@@ -244,7 +244,9 @@ void g2d_gfx_release(void *const data, long long *const err1, long long *const e
 		err1[0] = 220, err2[0] = (long long)GetLastError();
 }
 
-void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const float r, const float g, const float b, long long *const err1, long long *const err2) {
+void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const float r, const float g, const float b,
+	float **const buffs, int *const bs, void **const procs, const int l, long long *const err1, long long *const err2) {
+	int k;
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (wnd_data[0].gfx.w != w || wnd_data[0].gfx.g != h) {
 		wnd_data[0].gfx.w = w; wnd_data[0].gfx.h = h;
@@ -261,6 +263,54 @@ void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const
 		wglSwapIntervalEXT(i);
 	}
 	glClear(GL_COLOR_BUFFER_BIT);
-	if (!SwapBuffers(wnd_data[0].wnd.dc))
-		err1[0] = 220, err2[0] = (long long)GetLastError();
+	for (k = 0; k < l && err1[0] == 0; k++) {
+		gfx_draw_t *const draw = (gfx_draw_t*) procs[k];
+		draw(data, buffs[k], bs[k], err1);
+	}
+	if (err1[0] == 0)
+		if (!SwapBuffers(wnd_data[0].wnd.dc))
+			err1[0] = 220, err2[0] = (long long)GetLastError();
+}
+
+void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int total, long long *const err1) {
+	int i, drawn;
+	window_data_t *const wnd_data = (window_data_t*)data;
+	const int length = (int)wnd_data[0].rects.max_length;
+	float *const buffer = wnd_data[0].rects.buffer;
+	//rects_enable(wnd_data[0].rects.id, wnd_data[0].rects.proj_unif, wnd_data[0].rects.vao, wnd_data[0].rects.vbo, wnd_data[0].projection_mat, err1);
+	for (i = 0, drawn = 0; err1[0] == 0 && drawn < total; drawn += length) {
+		int k;
+		const int limit = drawn + length > total ? total - drawn : length;
+		for (k = 0; k < limit; i++) {
+			const int offs = k * 4 * (2+4); const int index = i * 8;
+			const float x = rects[index], y = rects[index+1], w = rects[index+2], h = rects[index+3], r = rects[index+4], g = rects[index+5], b = rects[index+6], a = rects[index+7];
+			buffer[offs+0] = x;
+			buffer[offs+1] = y;
+			buffer[offs+2] = r;
+			buffer[offs+3] = g;
+			buffer[offs+4] = b;
+			buffer[offs+5] = a;
+			buffer[offs+6] = x + w;
+			buffer[offs+7] = y;
+			buffer[offs+8] = r;
+			buffer[offs+9] = g;
+			buffer[offs+10] = b;
+			buffer[offs+11] = a;
+			buffer[offs+12] = x;
+			buffer[offs+13] = y + h;
+			buffer[offs+14] = r;
+			buffer[offs+15] = g;
+			buffer[offs+16] = b;
+			buffer[offs+17] = a;
+			buffer[offs+18] = x + w;
+			buffer[offs+19] = y + h;
+			buffer[offs+20] = r;
+			buffer[offs+21] = g;
+			buffer[offs+22] = b;
+			buffer[offs+23] = a;
+			k++;
+		}
+		//buffer_sub_data(sizeof(float) * limit * 4 * (2+4), buffer, 1205, 1206, 1207, err1);
+		//draw_elements(limit * 6, 1208, 1209, 1210, err1);
+	}
 }

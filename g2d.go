@@ -155,17 +155,18 @@ type Graphics struct {
 }
 
 type RectanglesLayer struct {
-	entities []*Rectangle
+	entities     []*Rectangle
 	entityNextId []int
-	count int
-	Enabled bool
+	count        int
+	Enabled      bool
+	buffer       []C.float
 }
 
 type Rectangle struct {
-	id int
+	id                  int
 	X, Y, Width, Height float32
-	R, G, B, A float32
-	Enabled bool
+	R, G, B, A          float32
+	Enabled             bool
 }
 
 type tWindow struct {
@@ -180,11 +181,12 @@ type tWindow struct {
 type tGraphics struct {
 	w, h, i C.int
 	r, g, b C.float
-	layers []tLayer
+	layers  []tLayer
 }
 
 type tLayer interface {
 	copyTo(tLayer)
+	getProcessing([]tLayer) ([]tLayer, []C.float, int, unsafe.Pointer)
 }
 
 type tLogicEvent struct {
@@ -290,10 +292,6 @@ func (gfx *Graphics) NewRectanglesLayer() *RectanglesLayer {
 func (gfx *Graphics) update() {
 	var i int
 	gfx.mutex.Lock()
-	if !gfx.updating {
-		gfx.updating = true
-		gfx.eventsChan <- &tGraphicsEvent{typeId: updateType}
-	}
 	if gfx.VSync {
 		i = 1
 	} else if gfx.AVSync {
@@ -301,6 +299,10 @@ func (gfx *Graphics) update() {
 	}
 	gfx.write.copyTo(gfx.buffer, gfx.w, gfx.h, i, gfx.BgR, gfx.BgG, gfx.BgB)
 	gfx.bufferReady = true
+	if !gfx.updating {
+		gfx.updating = true
+		gfx.eventsChan <- &tGraphicsEvent{typeId: updateType}
+	}
 	gfx.mutex.Unlock()
 }
 
@@ -894,6 +896,19 @@ func unregisterWnd(id int) *tWindow {
 	wnds[id] = nil
 	wndNextId = append(wndNextId, id)
 	return wnd
+}
+
+func ensureCFloatLen(arr []C.float, length int) []C.float {
+	arrLen := len(arr)
+	if arrLen < length {
+		if cap(arr) < length {
+			arrNew := make([]C.float, length)
+			copy(arrNew, arr[:arrLen])
+			return arrNew
+		}
+		return arr[:length]
+	}
+	return arr
 }
 
 /*

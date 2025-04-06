@@ -126,6 +126,12 @@ func (wnd *tWindow) graphicsThread() {
 func (wnd *tWindow) onGfxUpdate() {
 	var err1, err2 C.longlong
 	var read *tGraphics
+	var buffer []C.float
+	var length int
+	var proc unsafe.Pointer
+	var buffers []*C.float
+	var lengths []C.int
+	var procs []unsafe.Pointer
 	wnd.impl.Gfx.mutex.Lock()
 	wnd.impl.Gfx.updating = false
 	if wnd.impl.Gfx.bufferReady {
@@ -135,8 +141,17 @@ func (wnd *tWindow) onGfxUpdate() {
 		wnd.impl.Gfx.bufferReady = false
 	}
 	wnd.impl.Gfx.mutex.Unlock()
+	layers := read.layers
+	for len(layers) > 0 {
+		layers, buffer, length, proc = layers[0].getProcessing(layers)
+		if len(buffer) > 0 {
+			buffers = append(buffers, &buffer[0])
+			lengths = append(lengths, C.int(length))
+			procs = append(procs, proc)
+		}
+	}
 	w, h, i, r, g, b := read.w, read.h, read.i, read.r, read.g, read.b
-	C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &err1, &err2)
+	C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &buffers[0], &lengths[0], &procs[0], C.int(len(buffers)), &err1, &err2)
 	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
 }
 
@@ -246,6 +261,35 @@ func (request *tConfigWindowRequest) process() {
 	wnd := newWindow(request.window)
 	go wnd.logicThread()
 	wnd.eventsChan <- &tLogicEvent{typeId: configType, time: appTime.Millis()}
+}
+
+func (layer *RectanglesLayer) getProcessing(layers []tLayer) ([]tLayer, []C.float, int, unsafe.Pointer) {
+	var count, index int
+	for len(layers) > 0 {
+		if curr, ok := layers[0].(*RectanglesLayer); ok {
+			if curr.Enabled && curr.count > 0 {
+				layer.buffer = ensureCFloatLen(layer.buffer, (count+curr.count)*(2+2+4))
+				for _, entity := range layer.entities {
+					if entity.Enabled {
+						layer.buffer[index+0] = C.float(entity.X)
+						layer.buffer[index+1] = C.float(entity.Y)
+						layer.buffer[index+2] = C.float(entity.Width)
+						layer.buffer[index+3] = C.float(entity.Height)
+						layer.buffer[index+4] = C.float(entity.R)
+						layer.buffer[index+5] = C.float(entity.G)
+						layer.buffer[index+6] = C.float(entity.B)
+						layer.buffer[index+7] = C.float(entity.A)
+						index += (2 + 2 + 4)
+						count++
+					}
+				}
+			}
+			layers = layers[1:]
+		} else {
+			break
+		}
+	}
+	return layers, layer.buffer, count, unsafe.Pointer(C.g2d_gfx_draw_rectangles)
 }
 
 func postRequest(request tRequest) {
