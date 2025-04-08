@@ -114,14 +114,16 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_SETFOCUS:
-					result = DefWindowProc(hWnd, WM_NCHITTEST, wParam, lParam);
-					if (result == HTCLIENT) {
-						wnd_data[0].state.focus = 1;
-						cursor_clip_update(wnd_data);
-					} else {
-						wnd_data[0].state.focus = 2;
+					if (wnd_data[0].state.shown) {
+						result = DefWindowProc(hWnd, WM_NCHITTEST, wParam, lParam);
+						if (result == HTCLIENT) {
+							wnd_data[0].state.focus = 1;
+							cursor_clip_update(wnd_data);
+						} else {
+							wnd_data[0].state.focus = 2;
+						}
+						g2dOnFocus(wnd_data[0].cb_id, 1);
 					}
-					g2dOnFocus(wnd_data[0].cb_id, 1);
 					result = DefWindowProc(hWnd, message, wParam, lParam);
 					break;
 				case WM_KILLFOCUS:

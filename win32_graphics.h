@@ -47,6 +47,16 @@ static void program_check(const GLuint prog_id, const GLenum status, const int e
 	}
 }
 
+static void prog_use(const GLuint id, const int err_a, const int err_b, long long *const err1) {
+	glUseProgram(id);
+	const GLenum err_enum = glGetError();
+	if (err_enum == GL_INVALID_VALUE) {
+		err1[0] = err_a;
+	} else if (err_enum == GL_INVALID_OPERATION) {
+		err1[0] = err_b;
+	}
+}
+
 static GLuint rects_create(const GLuint vs_id, const GLuint fs_id, long long *const err1, char **const err_nfo) {
 	if (err1[0] == 0) {
 		const GLuint id = glCreateProgram();
@@ -169,6 +179,29 @@ static void vertex_att_pointer(const GLuint index, const GLint size, const GLsiz
 	}
 }
 
+static void rects_enable(const GLuint prog_id, const GLint proj_unif, const GLuint vao, const GLuint vbo, const float *const projection_mat, long long *const err1) {
+	prog_use(prog_id, 1200, 1201, err1);
+	if (err1[0] == 0) {
+		bind_vao(vao, 1202, err1);
+		if (err1[0] == 0) {
+			glUniformMatrix4fv(proj_unif, 1, GL_FALSE, projection_mat);
+			bind_vbo(vbo, 1203, 1204, err1);
+		}
+	}
+}
+
+static void buffer_sub_data(const GLsizeiptr size, const void *const data, const int err_a, const int err_b, const int err_c, long long *const err1) {
+	glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
+	const GLenum err_enum = glGetError();
+	if (err_enum == GL_INVALID_ENUM) {
+		err1[0] = err_a;
+	} else if (err_enum == GL_INVALID_OPERATION) {
+		err1[0] = err_b;
+	} else if (err_enum == GL_INVALID_VALUE) {
+		err1[0] = err_c;
+	}
+}
+
 static void draw_elements(const GLsizei count, const int err_a, const int err_b, const int err_c, long long *const err1) {
 	glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, 0);
 	const GLenum err_enum = glGetError();
@@ -245,7 +278,7 @@ void g2d_gfx_release(void *const data, long long *const err1, long long *const e
 }
 
 void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const float r, const float g, const float b,
-	float **const buffs, int *const bs, void **const procs, const int l, long long *const err1, long long *const err2) {
+	float *const buffs, const int bs, void *const procs, const int l, long long *const err1, long long *const err2) {
 	int k;
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (wnd_data[0].gfx.w != w || wnd_data[0].gfx.g != h) {
@@ -263,10 +296,16 @@ void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const
 		wglSwapIntervalEXT(i);
 	}
 	glClear(GL_COLOR_BUFFER_BIT);
+	if (l > 0) {
+		gfx_draw_t *const draw = (gfx_draw_t*) procs;
+		draw(data, buffs, bs, err1);
+	}
+/*
 	for (k = 0; k < l && err1[0] == 0; k++) {
 		gfx_draw_t *const draw = (gfx_draw_t*) procs[k];
 		draw(data, buffs[k], bs[k], err1);
 	}
+*/
 	if (err1[0] == 0)
 		if (!SwapBuffers(wnd_data[0].wnd.dc))
 			err1[0] = 220, err2[0] = (long long)GetLastError();
@@ -277,7 +316,7 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 	window_data_t *const wnd_data = (window_data_t*)data;
 	const int length = (int)wnd_data[0].rects.max_length;
 	float *const buffer = wnd_data[0].rects.buffer;
-	//rects_enable(wnd_data[0].rects.id, wnd_data[0].rects.proj_unif, wnd_data[0].rects.vao, wnd_data[0].rects.vbo, wnd_data[0].projection_mat, err1);
+	rects_enable(wnd_data[0].rects.id, wnd_data[0].rects.proj_unif, wnd_data[0].rects.vao, wnd_data[0].rects.vbo, wnd_data[0].gfx.projection_mat, err1);
 	for (i = 0, drawn = 0; err1[0] == 0 && drawn < total; drawn += length) {
 		int k;
 		const int limit = drawn + length > total ? total - drawn : length;
@@ -310,7 +349,7 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 			buffer[offs+23] = a;
 			k++;
 		}
-		//buffer_sub_data(sizeof(float) * limit * 4 * (2+4), buffer, 1205, 1206, 1207, err1);
-		//draw_elements(limit * 6, 1208, 1209, 1210, err1);
+		buffer_sub_data(sizeof(float) * limit * 4 * (2+4), buffer, 1205, 1206, 1207, err1);
+		draw_elements(limit * 6, 1208, 1209, 1210, err1);
 	}
 }

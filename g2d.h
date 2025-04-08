@@ -31,7 +31,7 @@ extern void g2d_mouse_pos_set(void *data, int x, int y, long long *err1, long lo
 
 extern void g2d_gfx_init(void *data, long long *err1, long long *err2, char **err_nfo);
 extern void g2d_gfx_release(void *data, long long *err1, long long *err2);
-extern void g2d_gfx_draw(void *data, int w, int h, int i, float r, float g, float b, float **buffs, int *bs, void **procs, int l, long long *err1, long long *err2);
+extern void g2d_gfx_draw(void *data, int w, int h, int i, float r, float g, float b, float *buffs, int bs, void *procs, int l, long long *err1, long long *err2);
 extern void g2d_gfx_draw_rectangles(void *data, float *rects, int total, long long *err1);
 
 /*

@@ -120,6 +120,8 @@ func (wnd *tWindow) graphicsThread() {
 			}
 		}
 		C.g2d_gfx_release(wnd.data, &err1, &err2)
+	} else {
+		fmt.Println("error:", int(err1), int(err2))
 	}
 }
 
@@ -151,7 +153,13 @@ func (wnd *tWindow) onGfxUpdate() {
 		}
 	}
 	w, h, i, r, g, b := read.w, read.h, read.i, read.r, read.g, read.b
-	C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &buffers[0], &lengths[0], &procs[0], C.int(len(buffers)), &err1, &err2)
+	if len(buffers) > 0 {
+		// calling with &buffers[0] causes "pointer to unpinned Go pointer" error
+		// https://github.com/PowerDNS/lmdb-go/issues/28
+		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, buffers[0], lengths[0], procs[0], C.int(len(buffers)), &err1, &err2)
+	} else {
+		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, nil, 0, nil, C.int(len(buffers)), &err1, &err2)
+	}
 	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
 }
 
@@ -356,12 +364,12 @@ func g2dClose(id C.int) {
 
 //export g2dKeyDown
 func g2dKeyDown(id, code C.int, repeated C.uint) {
-	toEventsChan(id, &tLogicEvent{typeId: keyDownType, valA: int(code), repeated: uint(repeated)})
+	toEventsChan(id, &tLogicEvent{typeId: keyDownType, valA: int(code), repeated: uint(repeated), time: appTime.Millis()})
 }
 
 //export g2dKeyUp
 func g2dKeyUp(id, code C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: keyUpType, valA: int(code)})
+	toEventsChan(id, &tLogicEvent{typeId: keyUpType, valA: int(code), time: appTime.Millis()})
 }
 
 //export g2dMouseMove
@@ -390,17 +398,17 @@ func g2dWindowResize(id C.int) {
 
 //export g2dButtonDown
 func g2dButtonDown(id, code, doubleClick C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: buttonDownType, valA: int(code), repeated: uint(doubleClick)})
+	toEventsChan(id, &tLogicEvent{typeId: buttonDownType, valA: int(code), repeated: uint(doubleClick), time: appTime.Millis()})
 }
 
 //export g2dButtonUp
 func g2dButtonUp(id, code, doubleClick C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: buttonUpType, valA: int(code), repeated: uint(doubleClick)})
+	toEventsChan(id, &tLogicEvent{typeId: buttonUpType, valA: int(code), repeated: uint(doubleClick), time: appTime.Millis()})
 }
 
 //export g2dWheel
 func g2dWheel(id C.int, wheel C.float) {
-	toEventsChan(id, &tLogicEvent{typeId: wheelType, valB: float32(wheel)})
+	toEventsChan(id, &tLogicEvent{typeId: wheelType, valB: float32(wheel), time: appTime.Millis()})
 }
 
 //export g2dWindowMinimize
@@ -415,7 +423,7 @@ func g2dWindowRestore(id C.int) {
 
 //export g2dOnFocus
 func g2dOnFocus(id, focus C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: focusType, valA: int(focus)})
+	toEventsChan(id, &tLogicEvent{typeId: focusType, valA: int(focus), time: appTime.Millis()})
 }
 
 func toError(err1, err2 C.longlong, errInfo *C.char) error {

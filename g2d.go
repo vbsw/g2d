@@ -520,6 +520,7 @@ func (wnd *tWindow) onCreate() {
 	err := wnd.abst.OnCreate()
 	if err == nil {
 		go wnd.graphicsThread()
+		wnd.impl.Gfx.w, wnd.impl.Gfx.h = wnd.impl.Props.ClientWidth, wnd.impl.Props.ClientHeight
 		wnd.impl.Gfx.update()
 		postRequest(&tShowWindowRequest{wndId: wnd.id})
 	}
