@@ -5,7 +5,7 @@
  *        http://www.boost.org/LICENSE_1_0.txt)
  */
 
-static LPTSTR to_tstr(void *const go_cstr, const size_t length, long long *const err1, const long long err1_val) {
+static LPTSTR to_tstr(void *const go_cstr, const size_t length) {
 	LPTSTR const str_new = (LPTSTR)malloc(sizeof(TCHAR) * (length + 1));
 	if (str_new) {
 		if (length > 0)
@@ -15,8 +15,6 @@ static LPTSTR to_tstr(void *const go_cstr, const size_t length, long long *const
 			memcpy(str_new, go_cstr, length);
 			#endif
 		str_new[length] = 0;
-	} else {
-		err1[0] = err1_val;
 	}
 	return str_new;
 }
@@ -286,7 +284,7 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 	const int b, const int d, const int r, const int f, const int l, const int c, void *const t, const size_t ts, long long *const err1, long long *const err2) {
 	window_data_t *const wnd_data = (window_data_t*)malloc(sizeof(window_data_t));
 	if (wnd_data) {
-		LPCTSTR const title = to_tstr(t, ts, err1, G2D_ERR_0000002);
+		LPCTSTR const title = to_tstr(t, ts);
 		if (err1[0] == 0) {
 			ZeroMemory(wnd_data, sizeof(window_data_t));
 			wnd_data[0].cb_id = cb_id;
@@ -324,7 +322,7 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 				if (RegisterClassEx(&cls) != INVALID_ATOM) {
 					windows_count++;
 				} else {
-					err1[0] = 13; err2[0] = (long long)GetLastError(); free(wnd_data);
+					err1[0] = G2D_ERR_1001001; err2[0] = (long long)GetLastError(); free(wnd_data);
 				}
 			} else {
 				windows_count++;
@@ -373,32 +371,32 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 									memcpy(wnd_data[0].gfx.projection_mat, default_projection_mat, sizeof(default_projection_mat));
 									data[0] = (void*)wnd_data;
 								} else {
-									err1[0] = 18; err2[0] = (long long)GetLastError(); windows_count--;
+									err1[0] = G2D_ERR_1001006; err2[0] = (long long)GetLastError(); windows_count--;
 									ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.dc); DestroyWindow(wnd_data[0].wnd.hndl);
 									free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); }
 								}
 							} else {
-								err1[0] = 17; err2[0] = (long long)GetLastError(); windows_count--;
+								err1[0] = G2D_ERR_1001005; err2[0] = (long long)GetLastError(); windows_count--;
 								ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.dc); DestroyWindow(wnd_data[0].wnd.hndl);
 								free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); }
 							}
 						} else {
-							err1[0] = 16; err2[0] = (long long)GetLastError(); windows_count--;
+							err1[0] = G2D_ERR_1001004; err2[0] = (long long)GetLastError(); windows_count--;
 							ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.dc); DestroyWindow(wnd_data[0].wnd.hndl);
 							free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); }
 						}
 					} else {
-						err1[0] = 15; windows_count--; DestroyWindow(wnd_data[0].wnd.hndl);
+						err1[0] = G2D_ERR_1001003; windows_count--; DestroyWindow(wnd_data[0].wnd.hndl);
 						free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); }
 					}
 				} else {
-					err1[0] = 14; err2[0] = (long long)GetLastError(); windows_count--;
+					err1[0] = G2D_ERR_1001002; err2[0] = (long long)GetLastError(); windows_count--;
 					free(wnd_data); if (windows_count <= 0) { UnregisterClass(class_name, instance); }
 				}
 			}
 			free((void*)title);
 		} else {
-			err1[0] = 122;
+			err1[0] = G2D_ERR_0000002;
 		}
 	} else {
 		err1[0] = G2D_ERR_0000001;
@@ -414,6 +412,11 @@ void g2d_window_show(void *const data, long long *const err1, long long *const e
 		if (err1[0] == 0) {
 			cursor_clip_update(wnd_data);
 			wnd_data[0].state.shown = 1;
+		} else {
+			if (err1[0] == G2D_ERR_1001007) err1[0] = G2D_ERR_1001011;
+			if (err1[0] == G2D_ERR_1001008) err1[0] = G2D_ERR_1001012;
+			if (err1[0] == G2D_ERR_1001009) err1[0] = G2D_ERR_1001013;
+			if (err1[0] == G2D_ERR_1001010) err1[0] = G2D_ERR_1001014;
 		}
 	}
 }
@@ -422,16 +425,16 @@ void g2d_window_destroy(void *const data, long long *err1, long long *err2) {
 	if (data) {
 		window_data_t *const wnd_data = (window_data_t*)data;
 		if (!wglDeleteContext(wnd_data[0].wnd.rc) && err1[0] == 0) {
-			err1[0] = 20; err2[0] = (long long)GetLastError();
+			err1[0] = G2D_ERR_1001015; err2[0] = (long long)GetLastError();
 		}
 		ReleaseDC(wnd_data[0].wnd.hndl, wnd_data[0].wnd.dc);
 		if (!DestroyWindow(wnd_data[0].wnd.hndl) && err1[0] == 0) {
-			err1[0] = 21; err2[0] = (long long)GetLastError();
+			err1[0] = G2D_ERR_1001016; err2[0] = (long long)GetLastError();
 		}
 		windows_count--; free(wnd_data);
 		if (windows_count <= 0) { 
 			if (!UnregisterClass(class_name, instance) && err1[0] == 0) {
-				err1[0] = 22; err2[0] = (long long)GetLastError();
+				err1[0] = G2D_ERR_1001017; err2[0] = (long long)GetLastError();
 			}
 			PostQuitMessage(0);
 		}
@@ -501,10 +504,10 @@ void g2d_window_fullscreen_set(void *const data, long long *const err1, long lon
 				client_props_update(wnd_data);
 				cursor_clip_update(wnd_data);
 			} else {
-				err1[0] = 70; err2[0] = (long long)GetLastError();
+				err1[0] = G2D_ERR_1001008; err2[0] = (long long)GetLastError();
 			}
 		} else {
-			err1[0] = 70;
+			err1[0] = G2D_ERR_1001007;
 		}
 	} else {
 		wnd_data[0].client.x = wnd_data[0].client_bak.x;
@@ -518,10 +521,10 @@ void g2d_window_fullscreen_set(void *const data, long long *const err1, long lon
 			if (SetWindowPos(wnd_data[0].wnd.hndl, HWND_NOTOPMOST, wx, wy, ww, wh, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
 				cursor_clip_update(wnd_data);
 			} else {
-				err1[0] = 71; err2[0] = (long long)GetLastError();
+				err1[0] = G2D_ERR_1001010; err2[0] = (long long)GetLastError();
 			}
 		} else {
-			err1[0] = 71;
+			err1[0] = G2D_ERR_1001009;
 		}
 	}
 }
@@ -536,10 +539,10 @@ void g2d_window_pos_apply(void *const data, long long *const err1, long long *co
 			wnd_data[0].config.fullscreen = 0;
 			cursor_clip_update(wnd_data);
 		} else {
-			err1[0] = 71; err2[0] = (long long)GetLastError();
+			err1[0] = G2D_ERR_1001019; err2[0] = (long long)GetLastError();
 		}
 	} else {
-		err1[0] = 71;
+		err1[0] = G2D_ERR_1001018;
 	}
 }
 
@@ -547,18 +550,20 @@ void g2d_window_move(void *const data, long long *const err1, long long *const e
 	window_data_t *const wnd_data = (window_data_t*)data;
 	int wx, wy, ww, wh; window_metrics(wnd_data, &wx, &wy, &ww, &wh);
 	if (!MoveWindow(wnd_data[0].wnd.hndl, wx, wy, ww, wh, FALSE)) {
-		err1[0] = 71; err2[0] = (long long)GetLastError();
+		err1[0] = G2D_ERR_1001020; err2[0] = (long long)GetLastError();
 	}
 }
 
 void g2d_window_title_set(void *const data, void *const t, const size_t ts, long long *const err1, long long *const err2) {
 	window_data_t *const wnd_data = (window_data_t*)data;
-	LPCTSTR const title = to_tstr(t, ts, err1, G2D_ERR_0000003);
-	if (err1[0] == 0) {
+	LPCTSTR const title = to_tstr(t, ts);
+	if (title) {
 		if (!SetWindowText(wnd_data[0].wnd.hndl, title)) {
-			err1[0] = 68; err2[0] = (long long)GetLastError();
+			err1[0] = G2D_ERR_1001021; err2[0] = (long long)GetLastError();
 		}
 		free((void*)title);
+	} else {
+		err1[0] = G2D_ERR_0000003;
 	}
 }
 
@@ -567,6 +572,6 @@ void g2d_mouse_pos_set(void *const data, const int x, const int y, long long *co
 	POINT point = {0, 0};
 	ClientToScreen(wnd_data[0].wnd.hndl, &point);
 	if (!SetCursorPos(point.x + x, point.y + y)) {
-		err1[0] = 69; err2[0] = (long long)GetLastError();
+		err1[0] = G2D_ERR_1001022; err2[0] = (long long)GetLastError();
 	}
 }

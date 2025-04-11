@@ -22,21 +22,24 @@ import (
 )
 
 const (
-	functionFailedDummy = "g2d dummy window %s failed"
-	loadFunctionFailed  = "g2d load %s function failed"
+	functionFailedDummy    = "g2d dummy window %s failed"
+	loadFunctionFailed     = "g2d load %s function failed"
+	functionFailedWindow   = "g2d window %s failed"
+	functionFailedGraphics = "g2d graphics %s failed"
+	functionFailedG2D      = "g2d %s failed"
 )
 
 func Init() {
 	mutex.Lock()
 	if !initialized {
-		var n1, n2, n3, n4 C.int
+		var numbers [4]C.int
 		var err1, err2 C.longlong
 		var errInfo *C.char
-		C.g2d_init(&n1, &n2, &n3, &n4, &err1, &err2, &errInfo)
+		C.g2d_init(&numbers[0], &err1, &err2, &errInfo)
 		if err1 == 0 {
 			Err = nil
-			MaxTexSize, MaxTexUnits = int(n1), int(n2)
-			VSyncAvailable, AVSyncAvailable = (n3 != 0), (n4 != 0)
+			MaxTexSize, MaxTexUnits = int(numbers[0]), int(numbers[1])
+			VSyncAvailable, AVSyncAvailable = (numbers[2] != 0), (numbers[3] != 0)
 			initialized, initFailed, quitting = true, false, false
 		} else {
 			initFailed = true
@@ -509,6 +512,149 @@ func toError(err1, err2 C.longlong, errInfo *C.char) error {
 			case 1000102:
 				errStr = fmt.Sprintf(loadFunctionFailed, "OpenGL")
 			}
+		} else if err1 < 1002001 {
+			if err1 < 1001007 {
+				switch err1 {
+				case 1001001:
+					errStr = fmt.Sprintf(functionFailedWindow, "RegisterClassEx")
+				case 1001002:
+					errStr = fmt.Sprintf(functionFailedWindow, "CreateWindow")
+				case 1001003:
+					errStr = fmt.Sprintf(functionFailedWindow, "GetDC")
+				case 1001004:
+					errStr = fmt.Sprintf(functionFailedWindow, "wglChoosePixelFormatARB")
+				case 1001005:
+					errStr = fmt.Sprintf(functionFailedWindow, "SetPixelFormat")
+				case 1001006:
+					errStr = fmt.Sprintf(functionFailedWindow, "wglCreateContextAttribsARB")
+				}
+			} else if err1 < 1001015 {
+				errStr = fmt.Sprintf(functionFailedWindow, "set fullscreen")
+			} else if err1 < 1002001 {
+				switch err1 {
+				case 1001015:
+					errStr = fmt.Sprintf(functionFailedWindow, "wglDeleteContext")
+				case 1001016:
+					errStr = fmt.Sprintf(functionFailedWindow, "DestroyWindow")
+				case 1001017:
+					errStr = fmt.Sprintf(functionFailedWindow, "UnregisterClass")
+				case 1001018:
+					errStr = fmt.Sprintf(functionFailedWindow, "set position")
+				case 1001019:
+					errStr = fmt.Sprintf(functionFailedWindow, "set position")
+				case 1001020:
+					errStr = fmt.Sprintf(functionFailedWindow, "move")
+				case 1001021:
+					errStr = fmt.Sprintf(functionFailedWindow, "set title")
+				case 1001022:
+					errStr = fmt.Sprintf(functionFailedG2D, "set mouse position")
+				}
+			} else {
+				switch err1 {
+				case 1002001:
+					errStr = fmt.Sprintf(functionFailedGraphics, "wglMakeCurrent")
+				case 1002002:
+					errStr = fmt.Sprintf(functionFailedG2D, "create vertex shader")
+				case 1002003:
+					errStr = fmt.Sprintf(functionFailedG2D, "create vertex shader")
+				case 1002004:
+					errStr = fmt.Sprintf(functionFailedG2D, "create fragment shader")
+				case 1002005:
+					errStr = fmt.Sprintf(functionFailedG2D, "create fragment shader")
+				case 1002006:
+					errStr = fmt.Sprintf(functionFailedG2D, "attach vertex shader")
+				case 1002007:
+					errStr = fmt.Sprintf(functionFailedG2D, "attach vertex shader")
+				case 1002008:
+					errStr = fmt.Sprintf(functionFailedG2D, "attach fragment shader")
+				case 1002009:
+					errStr = fmt.Sprintf(functionFailedG2D, "attach fragment shader")
+				case 1002010:
+					errStr = fmt.Sprintf(functionFailedG2D, "link shader program")
+				case 1002011:
+					errStr = fmt.Sprintf(functionFailedG2D, "create shader program")
+				case 1002012:
+					errStr = fmt.Sprintf(functionFailedG2D, "use shader program")
+				case 1002013:
+					errStr = fmt.Sprintf(functionFailedG2D, "use shader program")
+				case 1002014:
+					errStr = fmt.Sprintf(functionFailedG2D, "bind vertex array")
+				case 1002015:
+					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+				case 1002016:
+					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+				case 1002017:
+					errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
+				case 1002018:
+					errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
+				case 1002019:
+					errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
+				case 1002020:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002021:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002022:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002023:
+					errStr = fmt.Sprintf(functionFailedG2D, "get attribute location")
+				case 1002024:
+					errStr = fmt.Sprintf(functionFailedG2D, "get attribute location")
+				case 1002025:
+					errStr = fmt.Sprintf(functionFailedG2D, "get uniform location")
+				case 1002026:
+					errStr = fmt.Sprintf(functionFailedG2D, "get uniform location")
+				case 1002027:
+					errStr = fmt.Sprintf(functionFailedG2D, "bind vertex array")
+				case 1002028:
+					errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
+				case 1002029:
+					errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
+				case 1002030:
+					errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
+				case 1002031:
+					errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
+				case 1002032:
+					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+				case 1002033:
+					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+				case 1002034:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002035:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002036:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002037:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002038:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002039:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002040:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002041:
+					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+				case 1002042:
+					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+				case 1002043:
+					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+				case 1002044:
+					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+				case 1002045:
+					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+				case 1002046:
+					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+				case 1002047:
+					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+				case 1002048:
+					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+				case 1002049:
+					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+				case 1002050:
+					errStr = fmt.Sprintf(functionFailedGraphics, "SwapBuffers")
+				case 1002051:
+					errStr = fmt.Sprintf(functionFailedGraphics, "wglMakeCurrent")
+				}
+			}
 		}
 		if len(errStr) == 0 {
 			errStr = "unknown"
@@ -542,392 +688,3 @@ func goDebug(a, b C.int, c, d C.longlong) {
 func goDebugMessage(code C.ulong, strC *C.char) {
 	fmt.Println("Msg:", C.GoString(strC), code)
 }
-
-/*
-func Init(stub interface{}) {
-	if !initialized {
-		errC := C.g2d_init()
-		timeStart = timepkg.Now()
-		initialized = bool(errC == nil)
-		Err = toError(errC)
-	}
-}
-
-func Show(window AbstractWindow) {
-	if initialized {
-		params := initWindow(window)
-		mgrId, data := createWindow(window, params)
-		if Err == nil {
-			cb.mgrs[mgrId] = newManager(data, window, params)
-			cb.mgrs[mgrId].onCreate(time())
-			if Err == nil {
-				Err = toError(C.g2d_window_show(data))
-			}
-			if Err != nil {
-				// calls cb.Unregister
-				cb.mgrs[mgrId].destroy()
-			}
-		}
-	} else {
-		panic(notInitialized)
-	}
-}
-
-func ProcessEvents() {
-	if initialized {
-		if Err == nil {
-			if !processing {
-				processing = true
-				pollEvents()
-				if Err != nil {
-					for i := 0; i < len(cb.mgrs) && cb.mgrs[i] != nil; i++ {
-						cb.mgrs[i].destroy()
-					}
-				}
-				processing = false
-			} else {
-				panic(alreadyProcessing)
-			}
-		}
-	} else {
-		panic(notInitialized)
-	}
-}
-
-func initWindow(window AbstractWindow) *Parameters {
-	if Err == nil {
-		params := newParameters()
-		window.baseStruct().init()
-		Err = window.Config(params)
-		return params
-	}
-	return nil
-}
-
-func createWindow(window AbstractWindow, params *Parameters) (int, unsafe.Pointer) {
-	var mgrId int
-	var data unsafe.Pointer
-	if Err == nil {
-		x := C.int(params.ClientX)
-		y := C.int(params.ClientY)
-		w := C.int(params.ClientWidth)
-		h := C.int(params.ClientHeight)
-		wn := C.int(params.ClientWidthMin)
-		hn := C.int(params.ClientHeightMin)
-		wx := C.int(params.ClientWidthMax)
-		hx := C.int(params.ClientHeightMax)
-		c := toCInt(params.Centered)
-		l := toCInt(params.MouseLocked)
-		b := toCInt(params.Borderless)
-		d := toCInt(params.Dragable)
-		r := toCInt(params.Resizable)
-		f := toCInt(params.Fullscreen)
-		t, errC := toTString(params.Title)
-		if errC == nil {
-			mgrId = cb.Register(nil)
-			errC = C.g2d_window_create(&data, C.int(mgrId), x, y, w, h, wn, hn, wx, hx, b, d, r, f, l, c, t)
-			C.g2d_string_free(t)
-			if errC != nil {
-				cb.Unregister(mgrId)
-			}
-		}
-		Err = toError(errC)
-	}
-	return mgrId, data
-}
-
-func toTString(str string) (unsafe.Pointer, unsafe.Pointer) {
-	var strT unsafe.Pointer
-	strC := unsafe.Pointer(C.CString(str))
-	errC := C.g2d_string_new(&strT, strC)
-	C.g2d_string_free(strC)
-	return strT, errC
-}
-
-// showToWindow is same as updateToWindow
-func (mgr *tManagerBase) showToWindow(nanos int64) error {
-	mgr.wndBase.Time.NanosEvent = nanos
-	err := mgr.wndAbst.Show()
-	mgr.wndBase.Time.NanosUpdate = nanos
-	if err == nil && mgr.autoUpdate {
-		errC := C.g2d_post_update(mgr.data)
-		err = toError(errC)
-	}
-	return err
-}
-
-func (mgr *tManagerBase) keyDownToWindow(code int, repeated uint, nanos int64) error {
-	mgr.wndBase.Time.NanosEvent = nanos
-	err := mgr.wndAbst.KeyDown(int(code), uint(repeated))
-	return err
-}
-
-func (mgr *tManagerBase) keyUpToWindow(code int, nanos int64) error {
-	mgr.wndBase.Time.NanosEvent = nanos
-	err := mgr.wndAbst.KeyUp(int(code))
-	return err
-}
-
-func (mgr *tManagerBase) updateToWindow(nanos int64) error {
-	mgr.wndBase.Time.NanosEvent = nanos
-	err := mgr.wndAbst.Update()
-	mgr.wndBase.Time.NanosUpdate = nanos
-	if err == nil && mgr.autoUpdate {
-		errC := C.g2d_post_update(mgr.data)
-		err = toError(errC)
-	}
-	return err
-}
-
-func (mgr *tManagerBase) closeToWindow(nanos int64) (bool, error) {
-	mgr.wndBase.Time.NanosEvent = nanos
-	confirmed, err := mgr.wndAbst.Close()
-	return confirmed, err
-}
-
-func (mgr *tManagerBase) destroyToWindow(nanos int64) {
-	mgr.wndBase.Time.NanosEvent = nanos
-	mgr.wndAbst.Destroy()
-}
-
-func (mgr *tManagerBase) destroy() {
-	var errC unsafe.Pointer
-	mgr.wndBase.destroying = true
-	errC = C.g2d_window_destroy(mgr.data, &errC)
-	setErr(toError(errC))
-}
-
-func (mgr *tManagerNoThreads) applyCmdUpdate() {
-	if Err == nil && !mgr.cmd.CloseUnc && !mgr.autoUpdate && mgr.wndBase.Cmd.Update {
-		errC := C.g2d_post_update(mgr.data)
-		setErr(toError(errC))
-	}
-}
-
-func (mgr *tManagerNoThreads) onCreate(nanos int64) {
-	props := mgr.newProps()
-	mgr.wndBase.resetPropsAndCmd(props)
-	err := mgr.createToWindow(nanos)
-	setErr(err)
-	// ignore commands, when window not shown
-	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
-}
-
-func (mgr *tManagerNoThreads) onShow(nanos int64) {
-	props := mgr.newProps()
-	mgr.wndBase.resetPropsAndCmd(props)
-	err := mgr.showToWindow(nanos)
-	setErr(err)
-	mgr.applyCmd(mgr.wndBase.Cmd)
-	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
-	mgr.applyCmdUpdate()
-}
-
-func (mgr *tManagerNoThreads) onKeyDown(code int, repeated uint, nanos int64) {
-	props := mgr.newProps()
-	mgr.wndBase.resetPropsAndCmd(props)
-	err := mgr.keyDownToWindow(code, repeated, nanos)
-	setErr(err)
-	mgr.applyCmd(mgr.wndBase.Cmd)
-	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
-	mgr.applyCmdUpdate()
-}
-
-func (mgr *tManagerNoThreads) onKeyUp(code int, nanos int64) {
-	props := mgr.newProps()
-	mgr.wndBase.resetPropsAndCmd(props)
-	err := mgr.keyUpToWindow(code, nanos)
-	setErr(err)
-	mgr.applyCmd(mgr.wndBase.Cmd)
-	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
-	mgr.applyCmdUpdate()
-}
-
-func (mgr *tManagerNoThreads) onUpdate(nanos int64) {
-	props := mgr.newProps()
-	mgr.wndBase.resetPropsAndCmd(props)
-	err := mgr.updateToWindow(nanos)
-	setErr(err)
-	mgr.applyCmd(mgr.wndBase.Cmd)
-	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
-	mgr.applyCmdUpdate()
-}
-
-func (mgr *tManagerNoThreads) onClose(nanos int64) {
-	props := mgr.newProps()
-	mgr.wndBase.resetPropsAndCmd(props)
-	confirmed, err := mgr.closeToWindow(nanos)
-	setErr(err)
-	if confirmed {
-		mgr.destroy()
-	} else {
-		mgr.applyCmd(mgr.wndBase.Cmd)
-		mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
-		mgr.applyCmdUpdate()
-	}
-}
-
-func (mgr *tManagerNoThreads) onDestroy(nanos int64) {
-	props := mgr.newProps()
-	mgr.wndBase.resetPropsAndCmd(props)
-	mgr.destroyToWindow(nanos)
-}
-
-func (mgr *tManagerNoThreads) onProps(nanos int64) {
-}
-
-func (mgr *tManagerNoThreads) onError(nanos int64) {
-}
-
-func (mgr *tManagerLogicThread) onKeyDown(code int, repeated uint, nanos int64) {
-	props := mgr.newProps()<
-	mgr.wndBase.resetPropsAndCmd(props)
-	err := mgr.keyDownToWindow(code, repeated, nanos)
-	setErr(err)
-	mgr.applyProps(mgr.wndBase.Props, mgr.wndBase.modified(props))
-}
-
-//export g2dUpdate
-func g2dUpdate(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onUpdate(time())
-}
-
-//export g2dClose
-func g2dClose(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onClose(time())
-}
-
-//export g2dDestroyBegin
-func g2dDestroyBegin(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onDestroy(time())
-}
-
-//export g2dDestroyEnd
-func g2dDestroyEnd(objIdC C.int) {
-	cb.Unregister(int(objIdC))
-}
-
-//export g2dProps
-func g2dProps(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onProps(time())
-}
-
-//export g2dError
-func g2dError(objIdC C.int) {
-	cb.mgrs[int(objIdC)].onError(time())
-}
-
-func setErr(err error) {
-	if err != nil && Err == nil {
-		Err = err
-		C.g2d_err_static_set(0)
-	}
-}
-
-// toError converts C struct to Go error.
-func toError(errC unsafe.Pointer) error {
-	if errC != nil {
-		var errStr string
-		var errNumC C.int
-		var errWin32 C.g2d_ul_t
-		var errStrC *C.char
-		C.g2d_error(errC, &errNumC, &errWin32, &errStrC)
-		switch errNumC {
-		case 1:
-			errStr = "memory allocation failed"
-		case 2:
-			errStr = "get module instance failed"
-		case 3:
-			errStr = "register dummy class failed"
-		case 4:
-			errStr = "create dummy window failed"
-		case 5:
-			errStr = "get dummy device context failed"
-		case 6:
-			errStr = "choose dummy pixel format failed"
-		case 7:
-			errStr = "set dummy pixel format failed"
-		case 8:
-			errStr = "create dummy render context failed"
-		case 9:
-			errStr = "make dummy context current failed"
-		case 10:
-			errStr = "release dummy context failed"
-		case 11:
-			errStr = "deleting dummy render context failed"
-		case 12:
-			errStr = "destroying dummy window failed"
-		case 13:
-			errStr = "unregister dummy class failed"
-		case 14:
-			errStr = "swap dummy buffer failed"
-		case 15:
-			errStr = "window functions not initialized"
-		case 50:
-			errStr = "register class failed"
-		case 51:
-			errStr = "create window failed"
-		case 52:
-			errStr = "get device context failed"
-		case 53:
-			errStr = "choose pixel format failed"
-		case 54:
-			errStr = "set pixel format failed"
-		case 55:
-			errStr = "create render context failed"
-		case 56:
-			errStr = "make context current failed"
-		case 57:
-			errStr = "release context failed"
-		case 58:
-			errStr = "deleting render context failed"
-		case 59:
-			errStr = "destroying window failed"
-		case 60:
-			errStr = "unregister class failed"
-		case 61:
-			errStr = "swap buffer failed"
-		case 62:
-			errStr = "set title failed"
-		case 63:
-			errStr = "wgl functions not initialized"
-		case 64:
-			errStr = notInitialized
-		case 65:
-			// on show
-			errStr = messageFailed
-		case 66:
-			errStr = messageFailed
-		case 67:
-			errStr = messageFailed
-		case 68:
-			errStr = "set title failed"
-		case 69:
-			errStr = "set cursor position failed"
-		case 70:
-			errStr = "set fullscreen failed"
-		case 71:
-			errStr = "set window position failed"
-		case 72:
-			errStr = "move window failed"
-		case 100:
-			C.g2d_error_free(errC)
-			return Err
-		default:
-			errStr = "unknown error"
-		}
-		errStr = errStr + " (" + strconv.FormatUint(uint64(errNumC), 10)
-		if errWin32 == 0 {
-			errStr = errStr + ")"
-		} else {
-			errStr = errStr + ", " + strconv.FormatUint(uint64(errWin32), 10) + ")"
-		}
-		if errStrC != nil {
-			errStr = errStr + "; " + C.GoString(errStrC)
-		}
-		C.g2d_error_free(errC)
-		return errors.New(errStr)
-	}
-	return nil
-}
-*/

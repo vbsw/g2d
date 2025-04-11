@@ -61,16 +61,16 @@ static GLuint rects_create(const GLuint vs_id, const GLuint fs_id, long long *co
 	if (err1[0] == 0) {
 		const GLuint id = glCreateProgram();
 		if (id) {
-			shader_attach(id, vs_id, 1005, 1006, err1);
+			shader_attach(id, vs_id, G2D_ERR_1002006, G2D_ERR_1002007, err1);
 			if (err1[0] == 0) {
-				shader_attach(id, fs_id, 1007, 1008, err1);
+				shader_attach(id, fs_id, G2D_ERR_1002008, G2D_ERR_1002009, err1);
 				if (err1[0] == 0) {
 					glLinkProgram(id);
-					program_check(id, GL_LINK_STATUS, 1009, err1, err_nfo);
+					program_check(id, GL_LINK_STATUS, G2D_ERR_1002010, err1, err_nfo);
 				}
 			}
 		} else {
-			err1[0] = 1004;
+			err1[0] = G2D_ERR_1002011;
 		}
 		return id;
 	}
@@ -180,12 +180,12 @@ static void vertex_att_pointer(const GLuint index, const GLint size, const GLsiz
 }
 
 static void rects_enable(const GLuint prog_id, const GLint proj_unif, const GLuint vao, const GLuint vbo, const float *const projection_mat, long long *const err1) {
-	prog_use(prog_id, 1200, 1201, err1);
+	prog_use(prog_id, G2D_ERR_1002012, G2D_ERR_1002013, err1);
 	if (err1[0] == 0) {
-		bind_vao(vao, 1202, err1);
+		bind_vao(vao, G2D_ERR_1002014, err1);
 		if (err1[0] == 0) {
 			glUniformMatrix4fv(proj_unif, 1, GL_FALSE, projection_mat);
-			bind_vbo(vbo, 1203, 1204, err1);
+			bind_vbo(vbo, G2D_ERR_1002015, G2D_ERR_1002016, err1);
 		}
 	}
 }
@@ -217,27 +217,27 @@ static void draw_elements(const GLsizei count, const int err_a, const int err_b,
 void g2d_gfx_init(void *const data, long long *const err1, long long *const err2, char **const err_nfo) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (wglMakeCurrent(wnd_data[0].wnd.dc, wnd_data[0].wnd.rc)) {
-		const GLuint vs_id = shader_create(GL_VERTEX_SHADER, vs_rect_str, 1000, 1001, err1, err_nfo);
+		const GLuint vs_id = shader_create(GL_VERTEX_SHADER, vs_rect_str, G2D_ERR_1002002, G2D_ERR_1002003, err1, err_nfo);
 		if (err1[0] == 0) {
-			const GLuint fs_id = shader_create(GL_FRAGMENT_SHADER, fs_rect_str, 1002, 1003, err1, err_nfo);
+			const GLuint fs_id = shader_create(GL_FRAGMENT_SHADER, fs_rect_str, G2D_ERR_1002004, G2D_ERR_1002005, err1, err_nfo);
 			if (err1[0] == 0) {
 				const size_t length = 16000;
 				wnd_data[0].rects.max_length = (GLuint)length;
 				wnd_data[0].rects.id = rects_create(vs_id, fs_id, err1, err_nfo);
-				wnd_data[0].rects.pos_att = att_location(wnd_data[0].rects.id, "positionIn", 1010, err1);
-				wnd_data[0].rects.col_att = att_location(wnd_data[0].rects.id, "colorIn", 1011, err1);
-				wnd_data[0].rects.proj_unif = unf_location(wnd_data[0].rects.id, "projection", 1012, 1013, err1);
+				wnd_data[0].rects.pos_att = att_location(wnd_data[0].rects.id, "positionIn", G2D_ERR_1002023, err1);
+				wnd_data[0].rects.col_att = att_location(wnd_data[0].rects.id, "colorIn", G2D_ERR_1002024, err1);
+				wnd_data[0].rects.proj_unif = unf_location(wnd_data[0].rects.id, "projection", G2D_ERR_1002025, G2D_ERR_1002026, err1);
 				if (err1[0] == 0) {
 					GLuint objs[3]; glGenVertexArrays(1, objs); glGenBuffers(2, &objs[1]);
 					wnd_data[0].rects.vao = objs[0]; wnd_data[0].rects.vbo = objs[1]; wnd_data[0].rects.ebo = objs[2];
-					bind_vao(wnd_data[0].rects.vao, 1014, err1);
-					enable_attr(wnd_data[0].rects.pos_att, 1015, 1016, err1);
-					enable_attr(wnd_data[0].rects.col_att, 1017, 1018, err1);
-					bind_vbo(wnd_data[0].rects.vbo, 1019, 1020, err1);
-					buffer_data(GL_ARRAY_BUFFER, sizeof(float) * length * 4 * (2+4), NULL, GL_DYNAMIC_DRAW, 1021, 1022, 1023, 1024, err1);
-					vertex_att_pointer(wnd_data[0].rects.pos_att, 2, sizeof(float) * (2+4), (void*)(sizeof(float) * 0), 1025, 1026, 1027, err1);
-					vertex_att_pointer(wnd_data[0].rects.col_att, 4, sizeof(float) * (2+4), (void*)(sizeof(float) * 2), 1028, 1029, 1030, err1);
-					bind_ebo(wnd_data[0].rects.ebo, 1031, 1032, err1);
+					bind_vao(wnd_data[0].rects.vao, G2D_ERR_1002027, err1);
+					enable_attr(wnd_data[0].rects.pos_att, G2D_ERR_1002028, G2D_ERR_1002029, err1);
+					enable_attr(wnd_data[0].rects.col_att, G2D_ERR_1002030, G2D_ERR_1002031, err1);
+					bind_vbo(wnd_data[0].rects.vbo, G2D_ERR_1002032, G2D_ERR_1002033, err1);
+					buffer_data(GL_ARRAY_BUFFER, sizeof(float) * length * 4 * (2+4), NULL, GL_DYNAMIC_DRAW, G2D_ERR_1002034, G2D_ERR_1002035, G2D_ERR_1002036, G2D_ERR_1002037, err1);
+					vertex_att_pointer(wnd_data[0].rects.pos_att, 2, sizeof(float) * (2+4), (void*)(sizeof(float) * 0), G2D_ERR_1002042, G2D_ERR_1002043, G2D_ERR_1002044, err1);
+					vertex_att_pointer(wnd_data[0].rects.col_att, 4, sizeof(float) * (2+4), (void*)(sizeof(float) * 2), G2D_ERR_1002045, G2D_ERR_1002046, G2D_ERR_1002047, err1);
+					bind_ebo(wnd_data[0].rects.ebo, G2D_ERR_1002048, G2D_ERR_1002049, err1);
 					if (err1[0] == 0) {
 						unsigned int *indices = (unsigned int*)malloc(sizeof(unsigned int) * length * (3+3));
 						if (indices) {
@@ -249,13 +249,13 @@ void g2d_gfx_init(void *const data, long long *const err1, long long *const err2
 									const size_t index = i * 4;
 									indices[offs] = index; indices[offs+1] = index+1; indices[offs+2] = index+2; indices[offs+3] = index+2; indices[offs+4] = index+1; indices[offs+5] = index+3;
 								}
-								buffer_data(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * length * (3+3), indices, GL_STATIC_DRAW, 1035, 1036, 1037, 1038, err1);
+								buffer_data(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * length * (3+3), indices, GL_STATIC_DRAW, G2D_ERR_1002038, G2D_ERR_1002039, G2D_ERR_1002040, G2D_ERR_1002041, err1);
 							} else {
-								err1[0] = 1034;
+								err1[0] = G2D_ERR_0000018;
 							}
 							free((void*)indices);
 						} else {
-							err1[0] = 1033;
+							err1[0] = G2D_ERR_0000017;
 						}
 					}
 				}
@@ -268,13 +268,13 @@ void g2d_gfx_init(void *const data, long long *const err1, long long *const err2
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		}
 	} else {
-		err1[0] = 220, err2[0] = (long long)GetLastError();
+		err1[0] = G2D_ERR_1002001, err2[0] = (long long)GetLastError();
 	}
 }
 
 void g2d_gfx_release(void *const data, long long *const err1, long long *const err2) {
 	if (!wglMakeCurrent(NULL, NULL))
-		err1[0] = 220, err2[0] = (long long)GetLastError();
+		err1[0] = G2D_ERR_1002051, err2[0] = (long long)GetLastError();
 }
 
 void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const float r, const float g, const float b,
@@ -302,7 +302,7 @@ void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const
 	}
 	if (err1[0] == 0)
 		if (!SwapBuffers(wnd_data[0].wnd.dc))
-			err1[0] = 220, err2[0] = (long long)GetLastError();
+			err1[0] = G2D_ERR_1002050, err2[0] = (long long)GetLastError();
 }
 
 void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int total, long long *const err1) {
@@ -343,7 +343,7 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 			buffer[offs+23] = a;
 			k++;
 		}
-		buffer_sub_data(sizeof(float) * limit * 4 * (2+4), buffer, 1205, 1206, 1207, err1);
-		draw_elements(limit * 6, 1208, 1209, 1210, err1);
+		buffer_sub_data(sizeof(float) * limit * 4 * (2+4), buffer, G2D_ERR_1002020, G2D_ERR_1002021, G2D_ERR_1002022, err1);
+		draw_elements(limit * 6, G2D_ERR_1002017, G2D_ERR_1002018, G2D_ERR_1002019, err1);
 	}
 }

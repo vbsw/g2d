@@ -9,7 +9,7 @@
 #define LOAD_WGL(t, n) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_err = GetLastError(); if (last_err == 0) n = (t) proc; else { err1[0] = G2D_ERR_1000101; err2[0] = (long long)last_err; err_nfo[0] = #n; }}
 #define LOAD_OGL(t, n) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_err = GetLastError(); if (last_err == 0) n = (t) proc; else { err1[0] = G2D_ERR_1000102; err2[0] = (long long)last_err; err_nfo[0] = #n; }}
 
-void g2d_init(int *const n1, int *const n2, int *const n3, int *const n4, long long *const err1, long long *const err2, char **const err_nfo) {
+void g2d_init(int *const numbers, long long *const err1, long long *const err2, char **const err_nfo) {
 	if (!initialized) {
 		/* module */
 		instance = GetModuleHandle(NULL);
@@ -45,25 +45,25 @@ void g2d_init(int *const n1, int *const n2, int *const n3, int *const n4, long l
 								HGLRC const dummy_rc = wglCreateContext(dummy_dc);
 								if (dummy_rc) {
 									if (wglMakeCurrent(dummy_dc, dummy_rc)) {
-										glGetIntegerv(GL_MAX_TEXTURE_SIZE, n1);
-										glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, n2);
+										glGetIntegerv(GL_MAX_TEXTURE_SIZE, &numbers[0]);
+										glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numbers[1]);
 										LOAD_WGL(PFNWGLCHOOSEPIXELFORMATARBPROC,    wglChoosePixelFormatARB)
 										LOAD_WGL(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB)
 										LOAD_WGL(PFNWGLGETEXTENSIONSSTRINGARBPROC,  wglGetExtensionsStringARB)
 										if (err1[0] == 0) {
 											int begin = 0, end = 0, i;
 											LPCSTR const extensions = (LPCSTR)wglGetExtensionsStringARB(dummy_dc);
-											while (extensions[end] && (!n3[0] || !n4[0])) {
+											while (extensions[end] && (!&numbers[2] || !&numbers[3])) {
 												for (end = begin; extensions[end] && extensions[end] != ' '; end++);
 												for (i = begin; i < end && extensions[i] == "WGL_EXT_swap_control"[i-begin]; i++);
 												if (i == end && "WGL_EXT_swap_control"[end-begin] == 0) {
 													LOAD_WGL(PFNWGLSWAPINTERVALEXTPROC,    wglSwapIntervalEXT)
 													LOAD_WGL(PFNWGLGETSWAPINTERVALEXTPROC, wglGetSwapIntervalEXT)
-													n3[0] = 1;
+													numbers[2] = 1;
 												}
 												for (i = begin; i < end && extensions[i] == "WGL_EXT_swap_control_tear"[i-begin]; i++);
 												if (i == end && "WGL_EXT_swap_control_tear"[end-begin] == 0) {
-													n4[0] = 1;
+													numbers[3] = 1;
 												}
 												begin = end + 1;
 											}
