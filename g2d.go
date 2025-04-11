@@ -29,29 +29,29 @@ const (
 )
 
 const (
-	configType = iota
-	createType
-	showType
-	wndMoveType
-	wndResizeType
-	keyDownType
-	keyUpType
-	msMoveType
-	buttonDownType
-	buttonUpType
-	wheelType
-	updateType
-	closeType
-	destroyType
-	leaveType
-	swapIntervType
-	imageType
-	textureType
-	minimizeType
-	restoreType
-	focusType
-	customType
-	refreshType
+	configType     = 0
+	createType     = 1
+	showType       = 2
+	wndMoveType    = 3
+	wndResizeType  = 4
+	keyDownType    = 5
+	keyUpType      = 6
+	msMoveType     = 7
+	buttonDownType = 8
+	buttonUpType   = 9
+	wheelType      = 10
+	updateType     = 11
+	closeType      = 12
+	destroyType    = 13
+	leaveType      = 14
+	swapIntervType = 15
+	imageType      = 16
+	textureType    = 17
+	minimizeType   = 18
+	restoreType    = 19
+	focusType      = 20
+	customType     = 21
+	refreshType    = 22
 )
 
 var (
@@ -88,7 +88,7 @@ type Window interface {
 	OnTextureLoaded(textureId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
-	OnDestroy() error
+	OnDestroy(error) error
 	OnMinimize() error
 	OnRestore() error
 	OnFocus(focus bool) error
@@ -145,6 +145,7 @@ type Graphics struct {
 	BgR, BgG, BgB float32
 	VSync, AVSync bool
 	eventsChan    chan *tGraphicsEvent
+	quittedChan   chan bool
 	mutex         sync.Mutex
 	w, h          int
 	read          *tGraphics
@@ -152,6 +153,7 @@ type Graphics struct {
 	write         *tGraphics
 	bufferReady   bool
 	updating      bool
+	running       bool
 }
 
 type RectanglesLayer struct {
@@ -171,17 +173,19 @@ type Rectangle struct {
 
 type tWindow struct {
 	eventsChan      chan *tLogicEvent
+	quittedChan     chan bool
 	abst            Window
 	impl            *WindowImpl
 	data            unsafe.Pointer
+	title           string
 	id, state, time int
 	update          bool
 }
 
 type tGraphics struct {
-	w, h, i C.int
-	r, g, b C.float
-	layers  []tLayer
+	w, h, si C.int
+	r, g, b  C.float
+	layers   []tLayer
 }
 
 type tLayer interface {
@@ -197,6 +201,7 @@ type tLogicEvent struct {
 	time     int
 	props    Properties
 	obj      interface{}
+	err      error
 }
 
 type tGraphicsEvent struct {
@@ -204,7 +209,6 @@ type tGraphicsEvent struct {
 	valA   int
 	valB   int
 	valC   interface{}
-	err    error
 }
 
 type tRequest interface {
@@ -248,6 +252,10 @@ type tSetPropertiesRequest struct {
 	wndId                             int
 }
 
+type tErrorRequest struct {
+	err error
+}
+
 type tAppTime struct {
 	start time.Time
 }
@@ -289,19 +297,29 @@ func (gfx *Graphics) NewRectanglesLayer() *RectanglesLayer {
 	return layer
 }
 
-func (gfx *Graphics) update() {
-	var i int
+func (gfx *Graphics) getReadBuffer() *tGraphics {
+	if gfx.bufferReady {
+		read := gfx.buffer
+		gfx.buffer = gfx.read
+		gfx.read = read
+		gfx.bufferReady = false
+	}
+	return gfx.read
+}
+
+func (gfx *Graphics) postRefresh() {
+	var swapInt int
 	gfx.mutex.Lock()
 	if gfx.VSync {
-		i = 1
+		swapInt = 1
 	} else if gfx.AVSync {
-		i = -1
+		swapInt = -1
 	}
-	gfx.write.copyTo(gfx.buffer, gfx.w, gfx.h, i, gfx.BgR, gfx.BgG, gfx.BgB)
+	gfx.write.copyTo(gfx.buffer, gfx.w, gfx.h, swapInt, gfx.BgR, gfx.BgG, gfx.BgB)
 	gfx.bufferReady = true
 	if !gfx.updating {
 		gfx.updating = true
-		gfx.eventsChan <- &tGraphicsEvent{typeId: updateType}
+		gfx.eventsChan <- &tGraphicsEvent{typeId: refreshType}
 	}
 	gfx.mutex.Unlock()
 }
@@ -415,12 +433,6 @@ func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int, C.int) {
 	return l, b, d, r, f
 }
 
-func (props *Properties) copyTo(dest *Properties) {
-	titleTmp := dest.Title
-	*dest = *props
-	dest.Title = titleTmp
-}
-
 func (props *Properties) compare(target *Properties) *tSetPropertiesRequest {
 	var req *tSetPropertiesRequest
 	if *props != *target {
@@ -443,12 +455,14 @@ func newWindow(abst Window) *tWindow {
 	wnd := new(tWindow)
 	wnd.id = registerWnd(wnd)
 	wnd.eventsChan = make(chan *tLogicEvent, 1000)
+	wnd.quittedChan = make(chan bool, 1)
 	wnd.abst = abst
-	wnd.impl = abst.impl()
 	wnd.state = configState
+	wnd.impl = abst.impl()
 	wnd.impl.id = wnd.id
 	wnd.impl.Gfx.VSync = VSyncAvailable
 	wnd.impl.Gfx.eventsChan = make(chan *tGraphicsEvent, 1000)
+	wnd.impl.Gfx.quittedChan = make(chan bool, 1)
 	wnd.impl.Gfx.read = new(tGraphics)
 	wnd.impl.Gfx.buffer = new(tGraphics)
 	wnd.impl.Gfx.write = new(tGraphics)
@@ -459,8 +473,8 @@ func (wnd *tWindow) logicThread() {
 	for wnd.state != quitState {
 		event := <-wnd.eventsChan
 		if event != nil {
-			if event.typeId != destroyType {
-				event.props.copyTo(&wnd.impl.Props)
+			if event.typeId != destroyType && event.typeId != leaveType {
+				wnd.impl.Props = event.props
 			}
 			wnd.impl.Stats.AppTime = event.time
 			switch event.typeId {
@@ -470,59 +484,74 @@ func (wnd *tWindow) logicThread() {
 				wnd.onCreate()
 			case showType:
 				wnd.onShow()
-			case wndMoveType:
-				wnd.onMove()
-			case wndResizeType:
-				wnd.onResize()
-			case keyDownType:
-				wnd.onKeyDown(event.valA, event.repeated)
-			case keyUpType:
-				wnd.onKeyUp(event.valA)
-			case msMoveType:
-				wnd.onMouseMove()
-			case buttonDownType:
-				wnd.onButtonDown(event.valA, event.repeated != 0)
-			case buttonUpType:
-				wnd.onButtonUp(event.valA, event.repeated != 0)
-			case wheelType:
-				wnd.onWheel(event.valB)
-			case updateType:
-				wnd.onUpdate()
-			case closeType:
-				wnd.onClose()
 			case destroyType:
-				wnd.onDestroy()
-			case minimizeType:
-				wnd.onMinimize()
-			case restoreType:
-				wnd.onRestore()
-			case focusType:
-				wnd.onFocus(event.valA != 0)
-			case customType:
-				wnd.onCustom(event.obj)
-			case refreshType:
-				wnd.impl.Stats.updateFPS()
+				wnd.onDestroy(event.err)
+			case leaveType:
+				wnd.state = quitState
+				wnd.impl.Gfx.quittedChan <- true
+			default:
+				if wnd.state == showingState {
+					switch event.typeId {
+					case wndMoveType:
+						wnd.onMove()
+					case wndResizeType:
+						wnd.onResize()
+					case keyDownType:
+						wnd.onKeyDown(event.valA, event.repeated)
+					case keyUpType:
+						wnd.onKeyUp(event.valA)
+					case msMoveType:
+						wnd.onMouseMove()
+					case buttonDownType:
+						wnd.onButtonDown(event.valA, event.repeated != 0)
+					case buttonUpType:
+						wnd.onButtonUp(event.valA, event.repeated != 0)
+					case wheelType:
+						wnd.onWheel(event.valB)
+					case updateType:
+						wnd.onUpdate()
+					case closeType:
+						wnd.onClose()
+					case minimizeType:
+						wnd.onMinimize()
+					case restoreType:
+						wnd.onRestore()
+					case focusType:
+						wnd.onFocus(event.valA != 0)
+					case customType:
+						wnd.onCustom(event.obj)
+					case refreshType:
+						wnd.impl.Stats.updateFPS()
+					}
+				}
 			}
 		}
 	}
+	<-wnd.impl.Gfx.quittedChan
+	wnd.quittedChan <- true
 }
 
 func (wnd *tWindow) onConfig() {
 	config := newConfiguration()
 	err := wnd.abst.OnConfig(config)
-	wnd.impl.Props.Title = config.Title
 	if err == nil {
 		postRequest(&tCreateWindowRequest{wndId: wnd.id, config: config})
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
 func (wnd *tWindow) onCreate() {
+	go wnd.graphicsThread()
 	err := wnd.abst.OnCreate()
 	if err == nil {
-		go wnd.graphicsThread()
 		wnd.impl.Gfx.w, wnd.impl.Gfx.h = wnd.impl.Props.ClientWidth, wnd.impl.Props.ClientHeight
-		wnd.impl.Gfx.update()
+		wnd.impl.Gfx.postRefresh()
 		postRequest(&tShowWindowRequest{wndId: wnd.id})
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -537,6 +566,9 @@ func (wnd *tWindow) onShow() {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -549,6 +581,9 @@ func (wnd *tWindow) onMove() {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -562,6 +597,9 @@ func (wnd *tWindow) onResize() {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -574,6 +612,9 @@ func (wnd *tWindow) onKeyDown(keyCode int, repeated uint) {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -586,6 +627,9 @@ func (wnd *tWindow) onKeyUp(keyCode int) {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -598,6 +642,9 @@ func (wnd *tWindow) onMouseMove() {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -610,6 +657,9 @@ func (wnd *tWindow) onButtonDown(buttonCode int, doubleClicked bool) {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -622,6 +672,9 @@ func (wnd *tWindow) onButtonUp(buttonCode int, doubleClicked bool) {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -634,6 +687,9 @@ func (wnd *tWindow) onWheel(rotation float32) {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -645,12 +701,15 @@ func (wnd *tWindow) onUpdate() {
 	props := wnd.impl.Props
 	err := wnd.abst.OnUpdate()
 	if err == nil {
-		wnd.impl.Gfx.update()
+		wnd.impl.Gfx.postRefresh()
 		setPropsReq := props.compare(&wnd.impl.Props)
 		if setPropsReq != nil {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -659,6 +718,7 @@ func (wnd *tWindow) onClose() {
 	quit, err := wnd.abst.OnClose()
 	if err == nil {
 		if quit {
+			wnd.state = closingState
 			postRequest(&tDestroyWindowRequest{wndId: wnd.id})
 		} else {
 			setPropsReq := props.compare(&wnd.impl.Props)
@@ -667,24 +727,19 @@ func (wnd *tWindow) onClose() {
 				postRequest(setPropsReq)
 			}
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
-func (wnd *tWindow) onDestroy() {
-	/*
-		if wnd.wgt.Gfx.running {
-			wnd.wgt.Gfx.msgs <- &tGMessage{typeId: quitType}
-			<- wnd.wgt.Gfx.quitted
-		}
-	*/
-	wnd.abst.OnDestroy()
-	/*
-		wnd.wgt.quitted <- true
-		wnd.state = quitState
-		if err != nil {
-			setErrorSynced(err)
-		}
-	*/
+func (wnd *tWindow) onDestroy(err error) {
+	wnd.state = quitState
+	wnd.impl.Gfx.eventsChan <- &tGraphicsEvent{typeId: leaveType}
+	err2 := wnd.abst.OnDestroy(err)
+	if err2 != nil && err2 != err {
+		postRequest(&tErrorRequest{err: err2})
+	}
 }
 
 func (wnd *tWindow) onCustom(obj interface{}) {
@@ -696,6 +751,9 @@ func (wnd *tWindow) onCustom(obj interface{}) {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -708,6 +766,9 @@ func (wnd *tWindow) onMinimize() {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
@@ -720,27 +781,32 @@ func (wnd *tWindow) onRestore() {
 			setPropsReq.wndId = wnd.id
 			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
 func (wnd *tWindow) onFocus(focus bool) {
-	if wnd.state > configState {
-		props := wnd.impl.Props
-		err := wnd.abst.OnFocus(focus)
-		if err == nil {
-			setPropsReq := props.compare(&wnd.impl.Props)
-			if setPropsReq != nil {
-				setPropsReq.wndId = wnd.id
-				postRequest(setPropsReq)
-			}
+	props := wnd.impl.Props
+	err := wnd.abst.OnFocus(focus)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
 		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
 	}
 }
 
-func (gfx *tGraphics) copyTo(dest *tGraphics, w, h, i int, r, g, b float32) {
-	dest.w, dest.h, dest.i = C.int(w), C.int(h), C.int(i)
+func (gfx *tGraphics) copyTo(dest *tGraphics, w, h, si int, r, g, b float32) {
+	dest.w, dest.h, dest.si = C.int(w), C.int(h), C.int(si)
 	dest.r, dest.g, dest.b = C.float(r), C.float(g), C.float(b)
 	for i, layer := range gfx.layers {
+		// not enough layers in dest
 		if len(dest.layers) == i {
 			dest.layers = append(dest.layers, new(RectanglesLayer))
 		}
@@ -814,8 +880,8 @@ func (wnd *WindowImpl) OnClose() (bool, error) {
 	return true, nil
 }
 
-func (wnd *WindowImpl) OnDestroy() error {
-	return nil
+func (wnd *WindowImpl) OnDestroy(err error) error {
+	return err
 }
 
 func (wnd *WindowImpl) OnMinimize() error {
@@ -840,7 +906,7 @@ func (wnd *WindowImpl) Update() {
 	if !wndWrapper.update {
 		wndWrapper.update = true
 		event := &tLogicEvent{typeId: updateType, time: appTime.Millis()}
-		event.props.update(wndWrapper.data)
+		event.props.update(wndWrapper.data, wndWrapper.title)
 		wndWrapper.eventsChan <- event
 	}
 	mutex.Unlock()

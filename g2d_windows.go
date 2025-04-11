@@ -9,6 +9,8 @@ package g2d
 
 // #cgo CFLAGS: -DG2D_WIN32 -DUNICODE
 // #cgo LDFLAGS: -luser32 -lgdi32 -lOpenGL32
+// #cgo noescape g2d_gfx_draw
+// #cgo nocallback g2d_gfx_draw
 // #include "g2d.h"
 import "C"
 import (
@@ -82,7 +84,7 @@ func MainLoop(mainWindow Window) {
 	}
 }
 
-func (props *Properties) update(data unsafe.Pointer) {
+func (props *Properties) update(data unsafe.Pointer, title string) {
 	var mx, my, x, y, w, h, wn, hn, wx, hx, b, d, r, f, l C.int
 	C.g2d_window_props(data, &mx, &my, &x, &y, &w, &h, &wn, &hn, &wx, &hx, &b, &d, &r, &f, &l)
 	props.MouseX = int(mx)
@@ -100,6 +102,7 @@ func (props *Properties) update(data unsafe.Pointer) {
 	props.Resizable = bool(r != 0)
 	props.Fullscreen = bool(f != 0)
 	props.MouseLocked = bool(l != 0)
+	props.Title = title
 }
 
 func (wnd *tWindow) graphicsThread() {
@@ -108,43 +111,40 @@ func (wnd *tWindow) graphicsThread() {
 	runtime.LockOSThread()
 	C.g2d_gfx_init(wnd.data, &err1, &err2, &errInfo)
 	if err1 == 0 {
-		for wnd.state != quitState {
+		wnd.impl.Gfx.running = true
+		for wnd.impl.Gfx.running {
 			event := <-wnd.impl.Gfx.eventsChan
 			if event != nil {
 				switch event.typeId {
-				case updateType:
-					wnd.onGfxUpdate()
+				case refreshType:
+					wnd.onRefresh()
 				case wndResizeType:
 					wnd.impl.Gfx.w, wnd.impl.Gfx.h = event.valA, event.valB
+				case leaveType:
+					wnd.impl.Gfx.running = false
 				}
 			}
 		}
 		C.g2d_gfx_release(wnd.data, &err1, &err2)
+		if err1 != 0 {
+			postRequest(&tErrorRequest{err: toError(err1, err2, nil)})
+		}
 	} else {
-		fmt.Println("error:", int(err1), int(err2))
+		postRequest(&tErrorRequest{err: toError(err1, err2, nil)})
 	}
+	wnd.impl.Gfx.quittedChan <- true
 }
 
-func (wnd *tWindow) onGfxUpdate() {
-	var err1, err2 C.longlong
-	var read *tGraphics
-	var buffer []C.float
-	var length int
-	var proc unsafe.Pointer
+func (gfx *tGraphics) getBatchProcessing() ([]*C.float, []C.int, []unsafe.Pointer) {
 	var buffers []*C.float
 	var lengths []C.int
 	var procs []unsafe.Pointer
-	wnd.impl.Gfx.mutex.Lock()
-	wnd.impl.Gfx.updating = false
-	if wnd.impl.Gfx.bufferReady {
-		read = wnd.impl.Gfx.buffer
-		wnd.impl.Gfx.buffer = wnd.impl.Gfx.read
-		wnd.impl.Gfx.read = read
-		wnd.impl.Gfx.bufferReady = false
-	}
-	wnd.impl.Gfx.mutex.Unlock()
-	layers := read.layers
+	layers := gfx.layers
+	// multiple layers may be "batched" together, until no layer left
 	for len(layers) > 0 {
+		var buffer []C.float
+		var length int
+		var proc unsafe.Pointer
 		layers, buffer, length, proc = layers[0].getProcessing(layers)
 		if len(buffer) > 0 {
 			buffers = append(buffers, &buffer[0])
@@ -152,13 +152,29 @@ func (wnd *tWindow) onGfxUpdate() {
 			procs = append(procs, proc)
 		}
 	}
-	w, h, i, r, g, b := read.w, read.h, read.i, read.r, read.g, read.b
+	return buffers, lengths, procs
+}
+
+func (wnd *tWindow) onRefresh() {
+	var err1, err2 C.longlong
+	wnd.impl.Gfx.mutex.Lock()
+	wnd.impl.Gfx.updating = false
+	read := wnd.impl.Gfx.getReadBuffer()
+	wnd.impl.Gfx.mutex.Unlock()
+	buffers, lengths, procs := read.getBatchProcessing()
+	w, h, i, r, g, b := read.w, read.h, read.si, read.r, read.g, read.b
 	if len(buffers) > 0 {
-		// calling with &buffers[0] causes "pointer to unpinned Go pointer" error
+		// calling with &buffers[0] may cause "pointer to unpinned Go pointer" error
 		// https://github.com/PowerDNS/lmdb-go/issues/28
-		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, buffers[0], lengths[0], procs[0], C.int(len(buffers)), &err1, &err2)
+		var pinner runtime.Pinner
+		for _, buf := range buffers {
+			pinner.Pin(buf)
+		}
+		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &buffers[0], &lengths[0], &procs[0], C.int(len(buffers)), &err1, &err2)
+		pinner.Unpin()
 	} else {
-		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, nil, 0, nil, C.int(len(buffers)), &err1, &err2)
+		// just draw background
+		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, nil, nil, nil, 0, &err1, &err2)
 	}
 	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
 }
@@ -185,8 +201,9 @@ func (request *tCreateWindowRequest) process() {
 	if err1 == 0 {
 		wnd := wnds[request.wndId]
 		wnd.data = data
+		wnd.title = request.config.Title
 		event := &tLogicEvent{typeId: createType, time: appTime.Millis()}
-		event.props.update(data)
+		event.props.update(data, wnd.title)
 		wnd.eventsChan <- event
 	} else {
 		Err = toError(err1, err2, nil)
@@ -199,7 +216,7 @@ func (request *tShowWindowRequest) process() {
 	C.g2d_window_show(wnd.data, &err1, &err2)
 	if err1 == 0 {
 		event := &tLogicEvent{typeId: showType, time: appTime.Millis()}
-		event.props.update(wnd.data)
+		event.props.update(wnd.data, wnd.title)
 		wnd.eventsChan <- event
 	} else {
 		Err = toError(err1, err2, nil)
@@ -209,24 +226,27 @@ func (request *tShowWindowRequest) process() {
 func (request *tCloseWindowRequest) process() {
 	wnd := wnds[request.wndId]
 	event := &tLogicEvent{typeId: closeType, time: appTime.Millis()}
-	event.props.update(wnd.data)
+	event.props.update(wnd.data, wnd.title)
 	wnd.eventsChan <- event
 }
 
 func (request *tDestroyWindowRequest) process() {
 	var err1, err2 C.longlong
 	wnd := wnds[request.wndId]
+	wnd.eventsChan <- &tLogicEvent{typeId: destroyType, time: appTime.Millis()}
+	<-wnd.quittedChan
 	C.g2d_window_destroy(wnd.data, &err1, &err2)
-	if err1 == 0 {
-	} else {
-		Err = toError(err1, err2, nil)
+	wnd.data = nil
+	unregisterWnd(wnd.id).impl = nil
+	if err1 != 0 {
+		(&tErrorRequest{err: toError(err1, err2, nil)}).process()
 	}
 }
 
 func (request *tCustomRequest) process() {
 	wnd := wnds[request.wndId]
 	event := &tLogicEvent{typeId: customType, obj: request.obj}
-	event.props.update(wnd.data)
+	event.props.update(wnd.data, wnd.title)
 	wnd.eventsChan <- event
 }
 
@@ -258,6 +278,7 @@ func (request *tSetPropertiesRequest) process() {
 			bytes := *(*[]byte)(unsafe.Pointer(&(request.props.Title)))
 			t, ts = unsafe.Pointer(&bytes[0]), C.size_t(len(request.props.Title))
 		}
+		wnd.title = request.props.Title
 		C.g2d_window_title_set(wnd.data, t, ts, &err1, &err2)
 	}
 	if request.modMouse {
@@ -269,6 +290,21 @@ func (request *tConfigWindowRequest) process() {
 	wnd := newWindow(request.window)
 	go wnd.logicThread()
 	wnd.eventsChan <- &tLogicEvent{typeId: configType, time: appTime.Millis()}
+}
+
+func (request *tErrorRequest) process() {
+	if Err == nil {
+		Err = request.err
+	}
+	if running {
+		var err1, err2 C.longlong
+		C.g2d_post_quit(&err1, &err2)
+		if err1 != 0 {
+			if Err == nil {
+				Err = toError(err1, err2, nil)
+			}
+		}
+	}
 }
 
 func (layer *RectanglesLayer) getProcessing(layers []tLayer) ([]tLayer, []C.float, int, unsafe.Pointer) {
@@ -305,35 +341,40 @@ func postRequest(request tRequest) {
 	mutex.Lock()
 	requests = append(requests, request)
 	C.g2d_post_request(&err1, &err2)
+	if err1 != 0 {
+		(&tErrorRequest{err: toError(err1, err2, nil)}).process()
+	}
 	mutex.Unlock()
 }
 
 func cleanUp() {
-	/*
-		for _, abst := range abstCbs {
-			if abst != nil {
-				var err1, err2 C.longlong
-				wnd := abst.impl()
-				wnd.msgs <- (&tLogicMessage{typeId: quitType, nanos: time.Nanos()})
-				<-wnd.quitted
-				unregister(wnd.cbId)
-				C.g2d_window_destroy(wnd.dataC, &err1, &err2)
+	for _, wnd := range wnds {
+		if wnd != nil {
+			var err1, err2 C.longlong
+			if wnd.data != nil {
+				wnd.eventsChan <- &tLogicEvent{typeId: destroyType, err: Err, time: appTime.Millis()}
+				<-wnd.quittedChan
+				C.g2d_window_destroy(wnd.data, &err1, &err2)
+				wnd.data = nil
 				if err1 != 0 {
-					setError(toError(int64(err1), 0, int64(wnd.cbId), "", nil))
+					(&tErrorRequest{err: toError(err1, err2, nil)}).process()
 				}
+			} else {
+				wnd.eventsChan <- &tLogicEvent{typeId: leaveType, time: appTime.Millis()}
+				<-wnd.quittedChan
 			}
+			unregisterWnd(wnd.id).impl = nil
 		}
-		toMainLoop.quitMessageThread()
-	*/
+	}
 	C.g2d_clean_up()
 }
 
-func toEventsChan(id C.int, event *tLogicEvent) {
+func postLogicEvent(id C.int, event *tLogicEvent) {
 	if !processingRequests {
 		mutex.Lock()
 	}
 	wnd := wnds[id]
-	event.props.update(wnd.data)
+	event.props.update(wnd.data, wnd.title)
 	wnd.eventsChan <- event
 	if !processingRequests {
 		mutex.Unlock()
@@ -350,7 +391,9 @@ func g2dProcessRequest() {
 	mutex.Lock()
 	processingRequests = true
 	for _, request := range requests {
-		request.process()
+		if Err == nil {
+			request.process()
+		}
 	}
 	requests = requests[:0]
 	processingRequests = false
@@ -359,27 +402,27 @@ func g2dProcessRequest() {
 
 //export g2dClose
 func g2dClose(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: closeType, time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: closeType, time: appTime.Millis()})
 }
 
 //export g2dKeyDown
 func g2dKeyDown(id, code C.int, repeated C.uint) {
-	toEventsChan(id, &tLogicEvent{typeId: keyDownType, valA: int(code), repeated: uint(repeated), time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: keyDownType, valA: int(code), repeated: uint(repeated), time: appTime.Millis()})
 }
 
 //export g2dKeyUp
 func g2dKeyUp(id, code C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: keyUpType, valA: int(code), time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: keyUpType, valA: int(code), time: appTime.Millis()})
 }
 
 //export g2dMouseMove
 func g2dMouseMove(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: msMoveType, time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: msMoveType, time: appTime.Millis()})
 }
 
 //export g2dWindowMove
 func g2dWindowMove(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: wndMoveType, time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: wndMoveType, time: appTime.Millis()})
 }
 
 //export g2dWindowResize
@@ -389,7 +432,7 @@ func g2dWindowResize(id C.int) {
 	}
 	wnd := wnds[id]
 	event := &tLogicEvent{typeId: wndResizeType, time: appTime.Millis()}
-	event.props.update(wnd.data)
+	event.props.update(wnd.data, wnd.title)
 	wnd.eventsChan <- event
 	if !processingRequests {
 		mutex.Unlock()
@@ -398,32 +441,32 @@ func g2dWindowResize(id C.int) {
 
 //export g2dButtonDown
 func g2dButtonDown(id, code, doubleClick C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: buttonDownType, valA: int(code), repeated: uint(doubleClick), time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: buttonDownType, valA: int(code), repeated: uint(doubleClick), time: appTime.Millis()})
 }
 
 //export g2dButtonUp
 func g2dButtonUp(id, code, doubleClick C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: buttonUpType, valA: int(code), repeated: uint(doubleClick), time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: buttonUpType, valA: int(code), repeated: uint(doubleClick), time: appTime.Millis()})
 }
 
 //export g2dWheel
 func g2dWheel(id C.int, wheel C.float) {
-	toEventsChan(id, &tLogicEvent{typeId: wheelType, valB: float32(wheel), time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: wheelType, valB: float32(wheel), time: appTime.Millis()})
 }
 
 //export g2dWindowMinimize
 func g2dWindowMinimize(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: minimizeType, time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: minimizeType, time: appTime.Millis()})
 }
 
 //export g2dWindowRestore
 func g2dWindowRestore(id C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: restoreType, time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: restoreType, time: appTime.Millis()})
 }
 
 //export g2dOnFocus
 func g2dOnFocus(id, focus C.int) {
-	toEventsChan(id, &tLogicEvent{typeId: focusType, valA: int(focus), time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: focusType, valA: int(focus), time: appTime.Millis()})
 }
 
 func toError(err1, err2 C.longlong, errInfo *C.char) error {

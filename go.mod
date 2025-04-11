@@ -1,3 +1,3 @@
 module github.com/vbsw/g2d
 
-go 1.13
+go 1.21

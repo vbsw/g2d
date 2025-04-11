@@ -278,7 +278,7 @@ void g2d_gfx_release(void *const data, long long *const err1, long long *const e
 }
 
 void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const float r, const float g, const float b,
-	float *const buffs, const int bs, void *const procs, const int l, long long *const err1, long long *const err2) {
+	float **const buffs, const int *const bs, void **const procs, const int l, long long *const err1, long long *const err2) {
 	int k;
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (wnd_data[0].gfx.w != w || wnd_data[0].gfx.g != h) {
@@ -296,16 +296,10 @@ void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const
 		wglSwapIntervalEXT(i);
 	}
 	glClear(GL_COLOR_BUFFER_BIT);
-	if (l > 0) {
-		gfx_draw_t *const draw = (gfx_draw_t*) procs;
-		draw(data, buffs, bs, err1);
-	}
-/*
 	for (k = 0; k < l && err1[0] == 0; k++) {
 		gfx_draw_t *const draw = (gfx_draw_t*) procs[k];
 		draw(data, buffs[k], bs[k], err1);
 	}
-*/
 	if (err1[0] == 0)
 		if (!SwapBuffers(wnd_data[0].wnd.dc))
 			err1[0] = 220, err2[0] = (long long)GetLastError();
