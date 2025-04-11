@@ -29,6 +29,7 @@ const (
 	functionFailedG2D      = "g2d %s failed"
 )
 
+// Init initialized the g2d framework.
 func Init() {
 	mutex.Lock()
 	if !initialized {
@@ -52,6 +53,7 @@ func Init() {
 	}
 }
 
+// MainLoop processes events and will initialize and show mainWindow.
 func MainLoop(mainWindow Window) {
 	if mainWindow != nil {
 		mutex.Lock()

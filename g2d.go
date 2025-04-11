@@ -72,6 +72,7 @@ var (
 	appTime                 tAppTime
 )
 
+// Window is callback for window handling.
 type Window interface {
 	OnConfig(config *Configuration) error
 	OnCreate() error
@@ -100,7 +101,7 @@ type Window interface {
 	impl() *WindowImpl
 }
 
-// WindowImpl is the implementation of Window.
+// WindowImpl is the obligatory struct to embed, when using interface Window.
 type WindowImpl struct {
 	Props Properties
 	Stats Stats
@@ -108,7 +109,7 @@ type WindowImpl struct {
 	id    int
 }
 
-// Configuration for the starting window.
+// Configuration is the initial setting of window.
 type Configuration struct {
 	ClientX, ClientY                  int
 	ClientWidth, ClientHeight         int
@@ -119,7 +120,7 @@ type Configuration struct {
 	Title                             string
 }
 
-// Properties of the current window.
+// Properties are the current window properties.
 type Properties struct {
 	MouseX, MouseY                    int
 	ClientX, ClientY                  int
@@ -131,7 +132,7 @@ type Properties struct {
 	Title                             string
 }
 
-// Stats holds time in milliseconds.
+// Stats has useful data. Time is in milliseconds.
 type Stats struct {
 	AppTime, DeltaTime int
 	lastUpdate         int
@@ -140,7 +141,7 @@ type Stats struct {
 	fps, lastFPSTime   int
 }
 
-// Graphics functions to draw in window.
+// Graphics draws graphics.
 type Graphics struct {
 	BgR, BgG, BgB float32
 	VSync, AVSync bool
@@ -156,6 +157,7 @@ type Graphics struct {
 	running       bool
 }
 
+// RectanglesLayer is a layer holding rectangles.
 type RectanglesLayer struct {
 	entities     []*Rectangle
 	entityNextId []int
@@ -164,6 +166,7 @@ type RectanglesLayer struct {
 	buffer       []C.float
 }
 
+// Rectangle is an entity from a RectanglesLayer.
 type Rectangle struct {
 	id                  int
 	X, Y, Width, Height float32
@@ -389,6 +392,7 @@ func (stats *Stats) updateFPS() {
 	}
 }
 
+// NewRectanglesLayer returns a new layer of rectangles.
 func (gfx *Graphics) NewRectanglesLayer() *RectanglesLayer {
 	layer := new(RectanglesLayer)
 	layer.Enabled = true
@@ -423,6 +427,7 @@ func (gfx *Graphics) postRefresh() {
 	gfx.mutex.Unlock()
 }
 
+// NewEntity returns a new instance of Rectangle.
 func (layer *RectanglesLayer) NewEntity() *Rectangle {
 	var entity *Rectangle
 	if len(layer.entityNextId) == 0 {
@@ -440,6 +445,7 @@ func (layer *RectanglesLayer) NewEntity() *Rectangle {
 	return entity
 }
 
+// Release releases the entity. This entity may be reused when calling NewEntity.
 func (layer *RectanglesLayer) Release(r *Rectangle) *Rectangle {
 	r.Enabled = false
 	layer.entityNextId = append(layer.entityNextId, r.id)
@@ -814,27 +820,39 @@ func (gfx *tGraphics) copyTo(dest *tGraphics, w, h, si int, r, g, b float32) {
 	}
 }
 
+// OnConfig is called before creating the window. Configuration
+// is used to create a window.
 func (wnd *WindowImpl) OnConfig(config *Configuration) error {
 	return nil
 }
 
+// OnCreate is called after window has been created. This event
+// could be used to allocate ressources and set graphics.
 func (wnd *WindowImpl) OnCreate() error {
 	return nil
 }
 
+// OnShow is called after window has been set visible. This event
+// culd be used to start animations.
 func (wnd *WindowImpl) OnShow() error {
 	return nil
 }
 
+// OnResize is called when Window is resized. New properties are
+// in wnd.Props.
 func (wnd *WindowImpl) OnResize() error {
 	wnd.Update()
 	return nil
 }
 
+// OnMove is called when Window is moved. New properties are
+// in wnd.Props.
 func (wnd *WindowImpl) OnMove() error {
 	return nil
 }
 
+// OnKeyDown is called when a key has been pressed. If key stayes pressed, parameter
+// repeated is != 0.
 func (wnd *WindowImpl) OnKeyDown(keyCode int, repeated uint) error {
 	if repeated == 0 {
 		if keyCode == 41 { // ESC
@@ -844,62 +862,80 @@ func (wnd *WindowImpl) OnKeyDown(keyCode int, repeated uint) error {
 	return nil
 }
 
+// OnKeyUp is called when a key has been released.
 func (wnd *WindowImpl) OnKeyUp(keyCode int) error {
 	return nil
 }
 
+// OnMouseMove is called when mouse is moved. New properties are
+// in wnd.Props.
 func (wnd *WindowImpl) OnMouseMove() error {
 	return nil
 }
 
+// OnButtonDown is called when mouse button has been pressed.
 func (wnd *WindowImpl) OnButtonDown(buttonCode int, doubleClicked bool) error {
 	return nil
 }
 
+// OnButtonUp is called when mouse button has been released.
 func (wnd *WindowImpl) OnButtonUp(buttonCode int, doubleClicked bool) error {
 	return nil
 }
 
+// OnWheel is called when mouse wheel has been moved.
 func (wnd *WindowImpl) OnWheel(rotation float32) error {
 	return nil
 }
 
+// OnCustom is called after calling Custom().
 func (wnd *WindowImpl) OnCustom(obj interface{}) error {
 	return nil
 }
 
+// OnTextureLoaded is not implemented.
 func (wnd *WindowImpl) OnTextureLoaded(textureId int) error {
 	return nil
 }
 
+// OnCustom is called after calling Update(). After OnUpdate graphis
+// is redrawn.
 func (wnd *WindowImpl) OnUpdate() error {
 	return nil
 }
 
+// OnClose is called after close button of window has been pressed. If
+// function returns true, window will be destroyed.
 func (wnd *WindowImpl) OnClose() (bool, error) {
 	return true, nil
 }
 
+// OnDestroy is called before window gets destroyed.
 func (wnd *WindowImpl) OnDestroy(err error) error {
 	return err
 }
 
+// OnMinimize is called after window has been minimized.
 func (wnd *WindowImpl) OnMinimize() error {
 	return nil
 }
 
+// OnRestore is called after window has returned from minimized state.
 func (wnd *WindowImpl) OnRestore() error {
 	return nil
 }
 
+// OnFocus is called when window gets or loses focus.
 func (wnd *WindowImpl) OnFocus(focus bool) error {
 	return nil
 }
 
+// Close triggers OnClose event.
 func (wnd *WindowImpl) Close() {
 	postRequest(&tCloseWindowRequest{wndId: wnd.id})
 }
 
+// Update triggers OnUpdate event.
 func (wnd *WindowImpl) Update() {
 	mutex.Lock()
 	wndWrapper := wnds[wnd.id]
@@ -912,14 +948,17 @@ func (wnd *WindowImpl) Update() {
 	mutex.Unlock()
 }
 
+// Quit destroys window unconditionally.
 func (wnd *WindowImpl) Quit() {
 	postRequest(&tDestroyWindowRequest{wndId: wnd.id})
 }
 
+// Custom triggers OnCustom event.
 func (wnd *WindowImpl) Custom(obj interface{}) {
 	postRequest(&tCustomRequest{wndId: wnd.id, obj: obj})
 }
 
+// Show creates a new window.
 func (wnd *WindowImpl) Show(window Window) {
 	postRequest(&tConfigWindowRequest{window: window})
 }
