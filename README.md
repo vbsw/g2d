@@ -29,7 +29,7 @@ g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 
 	func Main() {
 		g2d.Init()
-		g2d.MainLoop(new(g2d.Window))
+		g2d.MainLoop(new(g2d.WindowImpl))
 		if g2d.Err != nil {
 			fmt.Println(g2d.Err.Error())
 		}
