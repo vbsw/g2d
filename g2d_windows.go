@@ -108,6 +108,35 @@ func (props *Properties) update(data unsafe.Pointer, title string) {
 	props.Title = title
 }
 
+func (layer *RectanglesLayer) getProcessing(layers []tLayer) ([]tLayer, []C.float, int, unsafe.Pointer) {
+	var count, index int
+	for len(layers) > 0 {
+		if curr, ok := layers[0].(*RectanglesLayer); ok {
+			if curr.Enabled && curr.count > 0 {
+				layer.buffer = ensureCFloatLen(layer.buffer, (count+curr.count)*(2+2+4))
+				for _, entity := range layer.entities {
+					if entity.Enabled {
+						layer.buffer[index+0] = C.float(entity.X)
+						layer.buffer[index+1] = C.float(entity.Y)
+						layer.buffer[index+2] = C.float(entity.Width)
+						layer.buffer[index+3] = C.float(entity.Height)
+						layer.buffer[index+4] = C.float(entity.R)
+						layer.buffer[index+5] = C.float(entity.G)
+						layer.buffer[index+6] = C.float(entity.B)
+						layer.buffer[index+7] = C.float(entity.A)
+						index += (2 + 2 + 4)
+						count++
+					}
+				}
+			}
+			layers = layers[1:]
+		} else {
+			break
+		}
+	}
+	return layers, layer.buffer, count, unsafe.Pointer(C.g2d_gfx_draw_rectangles)
+}
+
 func (wnd *tWindow) graphicsThread() {
 	var err1, err2 C.longlong
 	var errInfo *C.char
@@ -120,7 +149,7 @@ func (wnd *tWindow) graphicsThread() {
 			if event != nil {
 				switch event.typeId {
 				case refreshType:
-					wnd.onRefresh()
+					wnd.onGfxRefresh()
 				case wndResizeType:
 					wnd.impl.Gfx.w, wnd.impl.Gfx.h = event.valA, event.valB
 				case leaveType:
@@ -136,6 +165,30 @@ func (wnd *tWindow) graphicsThread() {
 		postRequest(&tErrorRequest{err: toError(err1, err2, nil)})
 	}
 	wnd.impl.Gfx.quittedChan <- true
+}
+
+func (wnd *tWindow) onGfxRefresh() {
+	var err1, err2 C.longlong
+	wnd.impl.Gfx.mutex.Lock()
+	wnd.impl.Gfx.updating = false
+	read := wnd.impl.Gfx.getReadBuffer()
+	wnd.impl.Gfx.mutex.Unlock()
+	buffers, lengths, procs := read.getBatchProcessing()
+	w, h, i, r, g, b := read.w, read.h, read.si, read.r, read.g, read.b
+	if len(buffers) > 0 {
+		// calling with &buffers[0] may cause "pointer to unpinned Go pointer" error
+		// https://github.com/PowerDNS/lmdb-go/issues/28
+		var pinner runtime.Pinner
+		for _, buf := range buffers {
+			pinner.Pin(buf)
+		}
+		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &buffers[0], &lengths[0], &procs[0], C.int(len(buffers)), &err1, &err2)
+		pinner.Unpin()
+	} else {
+		// just draw background
+		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, nil, nil, nil, 0, &err1, &err2)
+	}
+	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
 }
 
 func (gfx *tGraphics) getBatchProcessing() ([]*C.float, []C.int, []unsafe.Pointer) {
@@ -158,28 +211,10 @@ func (gfx *tGraphics) getBatchProcessing() ([]*C.float, []C.int, []unsafe.Pointe
 	return buffers, lengths, procs
 }
 
-func (wnd *tWindow) onRefresh() {
-	var err1, err2 C.longlong
-	wnd.impl.Gfx.mutex.Lock()
-	wnd.impl.Gfx.updating = false
-	read := wnd.impl.Gfx.getReadBuffer()
-	wnd.impl.Gfx.mutex.Unlock()
-	buffers, lengths, procs := read.getBatchProcessing()
-	w, h, i, r, g, b := read.w, read.h, read.si, read.r, read.g, read.b
-	if len(buffers) > 0 {
-		// calling with &buffers[0] may cause "pointer to unpinned Go pointer" error
-		// https://github.com/PowerDNS/lmdb-go/issues/28
-		var pinner runtime.Pinner
-		for _, buf := range buffers {
-			pinner.Pin(buf)
-		}
-		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &buffers[0], &lengths[0], &procs[0], C.int(len(buffers)), &err1, &err2)
-		pinner.Unpin()
-	} else {
-		// just draw background
-		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, nil, nil, nil, 0, &err1, &err2)
-	}
-	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
+func (request *tConfigWindowRequest) process() {
+	wnd := newWindow(request.window)
+	go wnd.logicThread()
+	wnd.eventsChan <- &tLogicEvent{typeId: configType, time: appTime.Millis()}
 }
 
 func (request *tCreateWindowRequest) process() {
@@ -289,12 +324,6 @@ func (request *tSetPropertiesRequest) process() {
 	}
 }
 
-func (request *tConfigWindowRequest) process() {
-	wnd := newWindow(request.window)
-	go wnd.logicThread()
-	wnd.eventsChan <- &tLogicEvent{typeId: configType, time: appTime.Millis()}
-}
-
 func (request *tErrorRequest) process() {
 	if Err == nil {
 		Err = request.err
@@ -308,35 +337,6 @@ func (request *tErrorRequest) process() {
 			}
 		}
 	}
-}
-
-func (layer *RectanglesLayer) getProcessing(layers []tLayer) ([]tLayer, []C.float, int, unsafe.Pointer) {
-	var count, index int
-	for len(layers) > 0 {
-		if curr, ok := layers[0].(*RectanglesLayer); ok {
-			if curr.Enabled && curr.count > 0 {
-				layer.buffer = ensureCFloatLen(layer.buffer, (count+curr.count)*(2+2+4))
-				for _, entity := range layer.entities {
-					if entity.Enabled {
-						layer.buffer[index+0] = C.float(entity.X)
-						layer.buffer[index+1] = C.float(entity.Y)
-						layer.buffer[index+2] = C.float(entity.Width)
-						layer.buffer[index+3] = C.float(entity.Height)
-						layer.buffer[index+4] = C.float(entity.R)
-						layer.buffer[index+5] = C.float(entity.G)
-						layer.buffer[index+6] = C.float(entity.B)
-						layer.buffer[index+7] = C.float(entity.A)
-						index += (2 + 2 + 4)
-						count++
-					}
-				}
-			}
-			layers = layers[1:]
-		} else {
-			break
-		}
-	}
-	return layers, layer.buffer, count, unsafe.Pointer(C.g2d_gfx_draw_rectangles)
 }
 
 func postRequest(request tRequest) {

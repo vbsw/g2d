@@ -260,6 +260,105 @@ type tAppTime struct {
 	start time.Time
 }
 
+func newWindow(abst Window) *tWindow {
+	wnd := new(tWindow)
+	wnd.id = registerWnd(wnd)
+	wnd.eventsChan = make(chan *tLogicEvent, 1000)
+	wnd.quittedChan = make(chan bool, 1)
+	wnd.abst = abst
+	wnd.state = configState
+	wnd.impl = abst.impl()
+	wnd.impl.id = wnd.id
+	wnd.impl.Gfx.VSync = VSyncAvailable
+	wnd.impl.Gfx.eventsChan = make(chan *tGraphicsEvent, 1000)
+	wnd.impl.Gfx.quittedChan = make(chan bool, 1)
+	wnd.impl.Gfx.read = new(tGraphics)
+	wnd.impl.Gfx.buffer = new(tGraphics)
+	wnd.impl.Gfx.write = new(tGraphics)
+	return wnd
+}
+
+func newConfiguration() *Configuration {
+	config := new(Configuration)
+	config.ClientX = 50
+	config.ClientY = 50
+	config.ClientWidth = 640
+	config.ClientHeight = 480
+	config.ClientWidthMin = 0
+	config.ClientHeightMin = 0
+	config.ClientWidthMax = 99999
+	config.ClientHeightMax = 99999
+	config.MouseLocked = false
+	config.Borderless = false
+	config.Dragable = false
+	config.Resizable = true
+	config.Fullscreen = false
+	config.Centered = true
+	config.Title = "g2d - 0.1.0"
+	return config
+}
+
+func (config *Configuration) boolsToCInt() (C.int, C.int, C.int, C.int, C.int, C.int) {
+	var c, l, b, d, r, f C.int
+	if config.Centered {
+		c = 1
+	}
+	if config.MouseLocked {
+		l = 1
+	}
+	if config.Borderless {
+		b = 1
+	}
+	if config.Dragable {
+		d = 1
+	}
+	if config.Resizable {
+		r = 1
+	}
+	if config.Fullscreen {
+		f = 1
+	}
+	return c, l, b, d, r, f
+}
+
+func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int, C.int) {
+	var l, b, d, r, f C.int
+	if props.MouseLocked {
+		l = 1
+	}
+	if props.Borderless {
+		b = 1
+	}
+	if props.Dragable {
+		d = 1
+	}
+	if props.Resizable {
+		r = 1
+	}
+	if props.Fullscreen {
+		f = 1
+	}
+	return l, b, d, r, f
+}
+
+func (props *Properties) compare(target *Properties) *tSetPropertiesRequest {
+	var req *tSetPropertiesRequest
+	if *props != *target {
+		req = new(tSetPropertiesRequest)
+		req.props = *target
+		req.modPosSize = bool(props.ClientX != target.ClientX || props.ClientY != target.ClientY)
+		req.modPosSize = bool(req.modPosSize || props.ClientWidth != target.ClientWidth || props.ClientHeight != target.ClientHeight)
+		req.modStyle = bool(props.ClientWidthMin != target.ClientWidthMin || props.ClientHeightMin != target.ClientHeightMin)
+		req.modStyle = bool(req.modStyle || props.ClientWidthMax != target.ClientWidthMax || props.ClientHeightMax != target.ClientHeightMax)
+		req.modStyle = bool(req.modStyle || props.MouseLocked != target.MouseLocked || props.Borderless != target.Borderless)
+		req.modStyle = bool(req.modStyle || props.Dragable != target.Dragable || props.Resizable != target.Resizable)
+		req.modFullscreen = bool(props.Fullscreen != target.Fullscreen)
+		req.modMouse = bool(props.MouseX != target.MouseX || props.MouseY != target.MouseY)
+		req.modTitle = bool(props.Title != target.Title)
+	}
+	return req
+}
+
 func (stats *Stats) updateUPS() {
 	diff := stats.AppTime - stats.lastUPSTime
 	if diff < 1000 {
@@ -368,105 +467,6 @@ func (layer *RectanglesLayer) copyTo(dest tLayer) {
 			*destLayer.entities[i] = *entity
 		}
 	}
-}
-
-func newConfiguration() *Configuration {
-	config := new(Configuration)
-	config.ClientX = 50
-	config.ClientY = 50
-	config.ClientWidth = 640
-	config.ClientHeight = 480
-	config.ClientWidthMin = 0
-	config.ClientHeightMin = 0
-	config.ClientWidthMax = 99999
-	config.ClientHeightMax = 99999
-	config.MouseLocked = false
-	config.Borderless = false
-	config.Dragable = false
-	config.Resizable = true
-	config.Fullscreen = false
-	config.Centered = true
-	config.Title = "g2d - 0.1.0"
-	return config
-}
-
-func (config *Configuration) boolsToCInt() (C.int, C.int, C.int, C.int, C.int, C.int) {
-	var c, l, b, d, r, f C.int
-	if config.Centered {
-		c = 1
-	}
-	if config.MouseLocked {
-		l = 1
-	}
-	if config.Borderless {
-		b = 1
-	}
-	if config.Dragable {
-		d = 1
-	}
-	if config.Resizable {
-		r = 1
-	}
-	if config.Fullscreen {
-		f = 1
-	}
-	return c, l, b, d, r, f
-}
-
-func (props *Properties) boolsToCInt() (C.int, C.int, C.int, C.int, C.int) {
-	var l, b, d, r, f C.int
-	if props.MouseLocked {
-		l = 1
-	}
-	if props.Borderless {
-		b = 1
-	}
-	if props.Dragable {
-		d = 1
-	}
-	if props.Resizable {
-		r = 1
-	}
-	if props.Fullscreen {
-		f = 1
-	}
-	return l, b, d, r, f
-}
-
-func (props *Properties) compare(target *Properties) *tSetPropertiesRequest {
-	var req *tSetPropertiesRequest
-	if *props != *target {
-		req = new(tSetPropertiesRequest)
-		req.props = *target
-		req.modPosSize = bool(props.ClientX != target.ClientX || props.ClientY != target.ClientY)
-		req.modPosSize = bool(req.modPosSize || props.ClientWidth != target.ClientWidth || props.ClientHeight != target.ClientHeight)
-		req.modStyle = bool(props.ClientWidthMin != target.ClientWidthMin || props.ClientHeightMin != target.ClientHeightMin)
-		req.modStyle = bool(req.modStyle || props.ClientWidthMax != target.ClientWidthMax || props.ClientHeightMax != target.ClientHeightMax)
-		req.modStyle = bool(req.modStyle || props.MouseLocked != target.MouseLocked || props.Borderless != target.Borderless)
-		req.modStyle = bool(req.modStyle || props.Dragable != target.Dragable || props.Resizable != target.Resizable)
-		req.modFullscreen = bool(props.Fullscreen != target.Fullscreen)
-		req.modMouse = bool(props.MouseX != target.MouseX || props.MouseY != target.MouseY)
-		req.modTitle = bool(props.Title != target.Title)
-	}
-	return req
-}
-
-func newWindow(abst Window) *tWindow {
-	wnd := new(tWindow)
-	wnd.id = registerWnd(wnd)
-	wnd.eventsChan = make(chan *tLogicEvent, 1000)
-	wnd.quittedChan = make(chan bool, 1)
-	wnd.abst = abst
-	wnd.state = configState
-	wnd.impl = abst.impl()
-	wnd.impl.id = wnd.id
-	wnd.impl.Gfx.VSync = VSyncAvailable
-	wnd.impl.Gfx.eventsChan = make(chan *tGraphicsEvent, 1000)
-	wnd.impl.Gfx.quittedChan = make(chan bool, 1)
-	wnd.impl.Gfx.read = new(tGraphics)
-	wnd.impl.Gfx.buffer = new(tGraphics)
-	wnd.impl.Gfx.write = new(tGraphics)
-	return wnd
 }
 
 func (wnd *tWindow) logicThread() {
