@@ -164,7 +164,7 @@ typedef struct {
 
 typedef void (gfx_draw_t)(void *data, float *rects, int total, long long *err1);
 
-static const WPARAM g2d_REQUEST_EVENT  = (WPARAM)"g2dc";
+static const WPARAM g2d_REQUEST_EVENT = (WPARAM)"g2dc";
 static const WPARAM g2d_QUIT_EVENT    = (WPARAM)"g2dq";
 static LPCTSTR const class_name       = TEXT("g2d");
 static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");

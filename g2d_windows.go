@@ -22,11 +22,11 @@ import (
 )
 
 const (
-	functionFailedDummy    = "g2d dummy window %s failed"
-	loadFunctionFailed     = "g2d load %s function failed"
-	functionFailedWindow   = "g2d window %s failed"
-	functionFailedGraphics = "g2d graphics %s failed"
-	functionFailedG2D      = "g2d %s failed"
+	functionFailedDummy    = "dummy window %s failed"
+	loadFunctionFailed     = "load %s function failed"
+	functionFailedWindow   = "window %s failed"
+	functionFailedGraphics = "graphics %s failed"
+	functionFailedG2D      = "%s failed"
 )
 
 // Init initialized the g2d framework.
@@ -149,13 +149,27 @@ func (wnd *tWindow) graphicsThread() {
 		for wnd.impl.Gfx.running {
 			event := <-wnd.impl.Gfx.eventsChan
 			if event != nil {
-				switch event.typeId {
-				case refreshType:
-					wnd.onGfxRefresh()
-				case wndResizeType:
-					wnd.impl.Gfx.w, wnd.impl.Gfx.h = event.valA, event.valB
-				case leaveType:
-					wnd.impl.Gfx.running = false
+				if event.err == nil {
+					switch event.typeId {
+					case refreshType:
+						wnd.onGfxRefresh()
+					case wndResizeType:
+						wnd.impl.Gfx.w, wnd.impl.Gfx.h = event.valA, event.valB
+					case leaveType:
+						wnd.impl.Gfx.running = false
+					case imageType:
+						var texId C.int
+						C.g2d_gfx_gen_tex(wnd.data, unsafe.Pointer(&event.valD[0]), C.int(event.valA), C.int(event.valB), &texId, &err1)
+						if err1 == 0 {
+							internalId := len(wnd.impl.Gfx.texturesIds)
+							wnd.impl.Gfx.texturesIds = append(wnd.impl.Gfx.texturesIds, C.int(texId))
+							wnd.eventsChan <- &tLogicEvent{typeId: textureType, valA: event.valC, valB: internalId, time: appTime.Millis()}
+						} else {
+							postRequest(&tErrorRequest{err: toError(err1, 0, nil)})
+						}
+					}
+				} else {
+					postRequest(&tErrorRequest{err: event.err})
 				}
 			}
 		}
@@ -164,7 +178,7 @@ func (wnd *tWindow) graphicsThread() {
 			postRequest(&tErrorRequest{err: toError(err1, err2, nil)})
 		}
 	} else {
-		postRequest(&tErrorRequest{err: toError(err1, err2, nil)})
+		postRequest(&tErrorRequest{err: toError(err1, err2, errInfo)})
 	}
 	wnd.impl.Gfx.quittedChan <- true
 }
@@ -456,7 +470,7 @@ func g2dButtonUp(id, code, doubleClick C.int) {
 
 //export g2dWheel
 func g2dWheel(id C.int, wheel C.float) {
-	postLogicEvent(id, &tLogicEvent{typeId: wheelType, valB: float32(wheel), time: appTime.Millis()})
+	postLogicEvent(id, &tLogicEvent{typeId: wheelType, valC: float32(wheel), time: appTime.Millis()})
 }
 
 //export g2dWindowMinimize
@@ -532,7 +546,7 @@ func toError(err1, err2 C.longlong, errInfo *C.char) error {
 				}
 			} else if err1 < 1001015 {
 				errStr = fmt.Sprintf(functionFailedWindow, "set fullscreen")
-			} else if err1 < 1002001 {
+			} else {
 				switch err1 {
 				case 1001015:
 					errStr = fmt.Sprintf(functionFailedWindow, "wglDeleteContext")
@@ -551,111 +565,123 @@ func toError(err1, err2 C.longlong, errInfo *C.char) error {
 				case 1001022:
 					errStr = fmt.Sprintf(functionFailedG2D, "set mouse position")
 				}
-			} else {
-				switch err1 {
-				case 1002001:
-					errStr = fmt.Sprintf(functionFailedGraphics, "wglMakeCurrent")
-				case 1002002:
-					errStr = fmt.Sprintf(functionFailedG2D, "create vertex shader")
-				case 1002003:
-					errStr = fmt.Sprintf(functionFailedG2D, "create vertex shader")
-				case 1002004:
-					errStr = fmt.Sprintf(functionFailedG2D, "create fragment shader")
-				case 1002005:
-					errStr = fmt.Sprintf(functionFailedG2D, "create fragment shader")
-				case 1002006:
-					errStr = fmt.Sprintf(functionFailedG2D, "attach vertex shader")
-				case 1002007:
-					errStr = fmt.Sprintf(functionFailedG2D, "attach vertex shader")
-				case 1002008:
-					errStr = fmt.Sprintf(functionFailedG2D, "attach fragment shader")
-				case 1002009:
-					errStr = fmt.Sprintf(functionFailedG2D, "attach fragment shader")
-				case 1002010:
-					errStr = fmt.Sprintf(functionFailedG2D, "link shader program")
-				case 1002011:
-					errStr = fmt.Sprintf(functionFailedG2D, "create shader program")
-				case 1002012:
-					errStr = fmt.Sprintf(functionFailedG2D, "use shader program")
-				case 1002013:
-					errStr = fmt.Sprintf(functionFailedG2D, "use shader program")
-				case 1002014:
-					errStr = fmt.Sprintf(functionFailedG2D, "bind vertex array")
-				case 1002015:
-					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
-				case 1002016:
-					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
-				case 1002017:
-					errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
-				case 1002018:
-					errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
-				case 1002019:
-					errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
-				case 1002020:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002021:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002022:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002023:
-					errStr = fmt.Sprintf(functionFailedG2D, "get attribute location")
-				case 1002024:
-					errStr = fmt.Sprintf(functionFailedG2D, "get attribute location")
-				case 1002025:
-					errStr = fmt.Sprintf(functionFailedG2D, "get uniform location")
-				case 1002026:
-					errStr = fmt.Sprintf(functionFailedG2D, "get uniform location")
-				case 1002027:
-					errStr = fmt.Sprintf(functionFailedG2D, "bind vertex array")
-				case 1002028:
-					errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
-				case 1002029:
-					errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
-				case 1002030:
-					errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
-				case 1002031:
-					errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
-				case 1002032:
-					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
-				case 1002033:
-					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
-				case 1002034:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002035:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002036:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002037:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002038:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002039:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002040:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002041:
-					errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
-				case 1002042:
-					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
-				case 1002043:
-					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
-				case 1002044:
-					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
-				case 1002045:
-					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
-				case 1002046:
-					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
-				case 1002047:
-					errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
-				case 1002048:
-					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
-				case 1002049:
-					errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
-				case 1002050:
-					errStr = fmt.Sprintf(functionFailedGraphics, "SwapBuffers")
-				case 1002051:
-					errStr = fmt.Sprintf(functionFailedGraphics, "wglMakeCurrent")
-				}
+			}
+		} else {
+			switch err1 {
+			case 1002001:
+				errStr = fmt.Sprintf(functionFailedGraphics, "wglMakeCurrent")
+			case 1002002:
+				errStr = fmt.Sprintf(functionFailedG2D, "create vertex shader")
+			case 1002003:
+				errStr = fmt.Sprintf(functionFailedG2D, "create vertex shader")
+			case 1002004:
+				errStr = fmt.Sprintf(functionFailedG2D, "create fragment shader")
+			case 1002005:
+				errStr = fmt.Sprintf(functionFailedG2D, "create fragment shader")
+			case 1002006:
+				errStr = fmt.Sprintf(functionFailedG2D, "attach vertex shader")
+			case 1002007:
+				errStr = fmt.Sprintf(functionFailedG2D, "attach vertex shader")
+			case 1002008:
+				errStr = fmt.Sprintf(functionFailedG2D, "attach fragment shader")
+			case 1002009:
+				errStr = fmt.Sprintf(functionFailedG2D, "attach fragment shader")
+			case 1002010:
+				errStr = fmt.Sprintf(functionFailedG2D, "link shader program")
+			case 1002011:
+				errStr = fmt.Sprintf(functionFailedG2D, "create shader program")
+			case 1002012:
+				errStr = fmt.Sprintf(functionFailedG2D, "use shader program")
+			case 1002013:
+				errStr = fmt.Sprintf(functionFailedG2D, "use shader program")
+			case 1002014:
+				errStr = fmt.Sprintf(functionFailedG2D, "bind vertex array")
+			case 1002015:
+				errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+			case 1002016:
+				errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+			case 1002017:
+				errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
+			case 1002018:
+				errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
+			case 1002019:
+				errStr = fmt.Sprintf(functionFailedG2D, "draw rectangles")
+			case 1002020:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002021:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002022:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002023:
+				errStr = fmt.Sprintf(functionFailedG2D, "get attribute location")
+			case 1002024:
+				errStr = fmt.Sprintf(functionFailedG2D, "get attribute location")
+			case 1002025:
+				errStr = fmt.Sprintf(functionFailedG2D, "get uniform location")
+			case 1002026:
+				errStr = fmt.Sprintf(functionFailedG2D, "get uniform location")
+			case 1002027:
+				errStr = fmt.Sprintf(functionFailedG2D, "bind vertex array")
+			case 1002028:
+				errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
+			case 1002029:
+				errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
+			case 1002030:
+				errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
+			case 1002031:
+				errStr = fmt.Sprintf(functionFailedG2D, "enable attribute")
+			case 1002032:
+				errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+			case 1002033:
+				errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+			case 1002034:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002035:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002036:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002037:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002038:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002039:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002040:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002041:
+				errStr = fmt.Sprintf(functionFailedG2D, "set buffer data")
+			case 1002042:
+				errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+			case 1002043:
+				errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+			case 1002044:
+				errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+			case 1002045:
+				errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+			case 1002046:
+				errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+			case 1002047:
+				errStr = fmt.Sprintf(functionFailedG2D, "set vertex data")
+			case 1002048:
+				errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+			case 1002049:
+				errStr = fmt.Sprintf(functionFailedG2D, "bind buffer")
+			case 1002050:
+				errStr = fmt.Sprintf(functionFailedGraphics, "SwapBuffers")
+			case 1002051:
+				errStr = fmt.Sprintf(functionFailedGraphics, "wglMakeCurrent")
+			case 1002052:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
+			case 1002053:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
+			case 1002054:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
+			case 1002055:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
+			case 1002056:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
+			case 1002057:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
 			}
 		}
 		if len(errStr) == 0 {
@@ -675,6 +701,9 @@ func toError(err1, err2 C.longlong, errInfo *C.char) error {
 		}
 		if len(info) > 0 {
 			errStr = errStr + "; " + info
+		}
+		for len(errStr) > 0 && (errStr[len(errStr)-1] == '\n' || errStr[len(errStr)-1] == '\r') {
+			errStr = errStr[:len(errStr)-1]
 		}
 		err = errors.New(errStr)
 	}

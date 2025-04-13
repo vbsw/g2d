@@ -214,6 +214,18 @@ static void draw_elements(const GLsizei count, const int err_a, const int err_b,
 	}
 }
 
+static void bind_texture(const GLuint texture, const int err_a, const int err_b, const int err_c, long long *const err1) {
+	glBindTexture(GL_TEXTURE_2D, texture);
+	const GLenum err_enum = glGetError();
+	if (err_enum == GL_INVALID_ENUM) {
+		err1[0] = err_a;
+	} else if (err_enum == GL_INVALID_VALUE) {
+		err1[0] = err_b;
+	} else if (err_enum == GL_INVALID_OPERATION) {
+		err1[0] = err_c;
+	}
+}
+
 void g2d_gfx_init(void *const data, long long *const err1, long long *const err2, char **const err_nfo) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (wglMakeCurrent(wnd_data[0].wnd.dc, wnd_data[0].wnd.rc)) {
@@ -345,5 +357,27 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 		}
 		buffer_sub_data(sizeof(float) * limit * 4 * (2+4), buffer, G2D_ERR_1002020, G2D_ERR_1002021, G2D_ERR_1002022, err1);
 		draw_elements(limit * 6, G2D_ERR_1002017, G2D_ERR_1002018, G2D_ERR_1002019, err1);
+	}
+}
+
+void g2d_gfx_gen_tex(void *const data, const void *const tex, const int w, const int h, int *const tex_id, long long *const err1) {
+	GLuint texture; glGenTextures(1, &texture);
+	bind_texture(texture, G2D_ERR_1002052, G2D_ERR_1002053, G2D_ERR_1002054, err1);
+	if (err1[0] == 0) {
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex);
+		const GLenum err_enum = glGetError();
+		if (err_enum == GL_NO_ERROR) {
+			tex_id[0] = (int)texture;
+		} else if (err_enum == GL_INVALID_ENUM) {
+			err1[0] = G2D_ERR_1002055;
+		} else if (err_enum == GL_INVALID_VALUE) {
+			err1[0] = G2D_ERR_1002056;
+		} else if (err_enum == GL_INVALID_OPERATION) {
+			err1[0] = G2D_ERR_1002057;
+		}
 	}
 }

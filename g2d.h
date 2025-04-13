@@ -33,6 +33,7 @@ extern void g2d_gfx_init(void *data, long long *err1, long long *err2, char **er
 extern void g2d_gfx_release(void *data, long long *err1, long long *err2);
 extern void g2d_gfx_draw(void *data, int w, int h, int i, float r, float g, float b, float **buffs, const int *bs, void **procs, int l, long long *err1, long long *err2);
 extern void g2d_gfx_draw_rectangles(void *data, float *rects, int total, long long *err1);
+extern void g2d_gfx_gen_tex(void *data, const void *tex, int w, int h, int *tex_id, long long *err1);
 
 #elif defined(G2D_LINUX)
 #endif

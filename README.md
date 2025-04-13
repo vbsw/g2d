@@ -5,6 +5,8 @@
 ## About
 g2d is a framework to create 2D graphic applications. It is published on <https://github.com/vbsw/g2d> and <https://gitlab.com/vbsw/g2d>.
 
+Demo is available here <https://github.com/vbsw/g2d-demo>.
+
 ## Copyright
 Copyright 2023, 2025, Vitali Baumtrok (vbsw@mailbox.org).
 

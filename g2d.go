@@ -10,6 +10,14 @@ package g2d
 
 import "C"
 import (
+	"errors"
+	"fmt"
+	"image"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
@@ -86,7 +94,7 @@ type Window interface {
 	OnButtonUp(buttonCode int, doubleClicked bool) error
 	OnWheel(rotation float32) error
 	OnCustom(obj interface{}) error
-	OnTextureLoaded(textureId int) error
+	OnTextureLoaded(id, internalId int) error
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy(error) error
@@ -155,6 +163,7 @@ type Graphics struct {
 	bufferReady   bool
 	updating      bool
 	running       bool
+	texturesIds   []C.int
 }
 
 // RectanglesLayer is a layer holding rectangles.
@@ -172,6 +181,11 @@ type Rectangle struct {
 	X, Y, Width, Height float32
 	R, G, B, A          float32
 	Enabled             bool
+}
+
+// Texture provides the texture as a byte array.
+type Texture interface {
+	RGBABytes() ([]byte, int, int, error)
 }
 
 type tWindow struct {
@@ -199,7 +213,8 @@ type tLayer interface {
 type tLogicEvent struct {
 	typeId   int
 	valA     int
-	valB     float32
+	valB     int
+	valC     float32
 	repeated uint
 	time     int
 	props    Properties
@@ -211,7 +226,9 @@ type tGraphicsEvent struct {
 	typeId int
 	valA   int
 	valB   int
-	valC   interface{}
+	valC   int
+	valD   []byte
+	err    error
 }
 
 type tRequest interface {
@@ -261,6 +278,56 @@ type tErrorRequest struct {
 
 type tAppTime struct {
 	start time.Time
+}
+
+// ImageFromFile reads image from file.
+// (This is just for reference.)
+func ImageFromFile(path string) (image.Image, error) {
+	var img image.Image
+	file, err := os.Open(path)
+	if err == nil {
+		defer file.Close()
+		ext := filepath.Ext(path)
+		if ext == ".jpg" || ext == ".jpeg" {
+			img, err = jpeg.Decode(file)
+		} else if ext == ".png" || ext == ".apng" {
+			img, err = png.Decode(file)
+		} else if ext == ".gif" {
+			img, err = gif.Decode(file)
+		} else {
+			img, _, err = image.Decode(file)
+		}
+	}
+	return img, err
+}
+
+// BytesFromImage returns bytes from image.
+// (This is just for reference.)
+func BytesFromImage(img image.Image) []byte {
+	var bytes []byte
+	switch imgStruct := img.(type) {
+	case *image.RGBA:
+		bytes = imgStruct.Pix
+	case *image.RGBA64:
+		bytes = imgStruct.Pix
+	case *image.Alpha:
+		bytes = imgStruct.Pix
+	case *image.Alpha16:
+		bytes = imgStruct.Pix
+	case *image.CMYK:
+		bytes = imgStruct.Pix
+	case *image.Gray:
+		bytes = imgStruct.Pix
+	case *image.Gray16:
+		bytes = imgStruct.Pix
+	case *image.NRGBA:
+		bytes = imgStruct.Pix
+	case *image.NRGBA64:
+		bytes = imgStruct.Pix
+	case *image.Paletted:
+		bytes = imgStruct.Pix
+	}
+	return bytes
 }
 
 func newWindow(abst Window) *tWindow {
@@ -373,7 +440,7 @@ func (stats *Stats) updateUPS() {
 	} else {
 		stats.UPS = 0
 		stats.ups = 1
-		stats.lastUPSTime += diff % 1000 * 1000
+		stats.lastUPSTime += diff - diff%1000
 	}
 }
 
@@ -388,7 +455,7 @@ func (stats *Stats) updateFPS() {
 	} else {
 		stats.FPS = 0
 		stats.fps = 1
-		stats.lastFPSTime += diff % 1000 * 1000
+		stats.lastFPSTime += diff - diff%1000
 	}
 }
 
@@ -398,6 +465,22 @@ func (gfx *Graphics) NewRectanglesLayer() *RectanglesLayer {
 	layer.Enabled = true
 	gfx.write.layers = append(gfx.write.layers, layer)
 	return layer
+}
+
+// LoadTexture loads a texture into video memory. The call is asynchronous.
+// After the texture is loaded OnTextureLoaded is triggered.
+func (gfx *Graphics) LoadTexture(id int, texture Texture) {
+	go func() {
+		bytes, w, h, err := texture.RGBABytes()
+		if err == nil {
+			if len(bytes) == 0 {
+				err = errors.New(fmt.Sprintf("loaded texture (%i) is empty", id))
+			} else if w <= 0 || h <= 0 {
+				err = errors.New(fmt.Sprintf("loaded texture (%i) has invalid dimensions (%i, %i)", id, w, h))
+			}
+		}
+		gfx.eventsChan <- &tGraphicsEvent{typeId: imageType, valA: w, valB: h, valC: id, valD: bytes, err: err}
+	}()
 }
 
 func (gfx *Graphics) getReadBuffer() *tGraphics {
@@ -493,6 +576,7 @@ func (wnd *tWindow) logicThread() {
 			case destroyType:
 				wnd.onDestroy(event.err)
 			case leaveType:
+				// error occurred while onConfig, when graphics thread has not been started
 				wnd.state = quitState
 				wnd.impl.Gfx.quittedChan <- true
 			default:
@@ -513,11 +597,13 @@ func (wnd *tWindow) logicThread() {
 					case buttonUpType:
 						wnd.onButtonUp(event.valA, event.repeated != 0)
 					case wheelType:
-						wnd.onWheel(event.valB)
+						wnd.onWheel(event.valC)
 					case updateType:
 						wnd.onUpdate()
 					case closeType:
 						wnd.onClose()
+					case textureType:
+						wnd.onTextureLoaded(event.valA, event.valB)
 					case minimizeType:
 						wnd.onMinimize()
 					case restoreType:
@@ -763,6 +849,21 @@ func (wnd *tWindow) onCustom(obj interface{}) {
 	}
 }
 
+func (wnd *tWindow) onTextureLoaded(id, internalId int) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnTextureLoaded(id, internalId)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
+	}
+}
+
 func (wnd *tWindow) onMinimize() {
 	props := wnd.impl.Props
 	err := wnd.abst.OnMinimize()
@@ -893,8 +994,8 @@ func (wnd *WindowImpl) OnCustom(obj interface{}) error {
 	return nil
 }
 
-// OnTextureLoaded is not implemented.
-func (wnd *WindowImpl) OnTextureLoaded(textureId int) error {
+// OnTextureLoaded is called after texture has been loaded to video memory.
+func (wnd *WindowImpl) OnTextureLoaded(id, internalId int) error {
 	return nil
 }
 
