@@ -10,7 +10,6 @@ package g2d
 // #cgo CFLAGS: -DG2D_WIN32 -DUNICODE
 // #cgo LDFLAGS: -luser32 -lgdi32 -lOpenGL32
 // #cgo noescape g2d_gfx_draw
-// #cgo nocallback g2d_gfx_draw
 // #include "g2d.h"
 import "C"
 import (
@@ -110,12 +109,20 @@ func (props *Properties) update(data unsafe.Pointer, title string) {
 	props.Title = title
 }
 
-func (layer *RectanglesLayer) getProcessing(layers []tLayer) ([]tLayer, []C.float, int, unsafe.Pointer) {
+func (layer *RectanglesLayer) getProcessing(layers []tLayer, texMap, texDims []int) ([]tLayer, []C.float, int, unsafe.Pointer) {
 	var count, index int
 	for len(layers) > 0 {
 		if curr, ok := layers[0].(*RectanglesLayer); ok {
 			if curr.Enabled && curr.count > 0 {
-				layer.buffer = ensureCFloatLen(layer.buffer, (count+curr.count)*(2+2+4))
+				layer.buffer = ensureCFloatLen(layer.buffer, 48+(count+curr.count)*13)
+				// ids of textures (16)
+				for index = 0; index < 16; index++ {
+					layer.buffer[index] = C.float(texMap[index])
+				}
+				// dimensions of textures (32=2*16)
+				for index = 16; index < 48; index++ {
+					layer.buffer[index] = C.float(texDims[index-16])
+				}
 				for _, entity := range layer.entities {
 					if entity.Enabled {
 						layer.buffer[index+0] = C.float(entity.X)
@@ -126,7 +133,16 @@ func (layer *RectanglesLayer) getProcessing(layers []tLayer) ([]tLayer, []C.floa
 						layer.buffer[index+5] = C.float(entity.G)
 						layer.buffer[index+6] = C.float(entity.B)
 						layer.buffer[index+7] = C.float(entity.A)
-						index += (2 + 2 + 4)
+						if entity.TexId >= 0 && entity.TexId < 15 {
+							layer.buffer[index+8] = C.float(entity.TexId)
+						} else {
+							layer.buffer[index+8] = -1.0
+						}
+						layer.buffer[index+9] = C.float(entity.TexX)
+						layer.buffer[index+10] = C.float(entity.TexY)
+						layer.buffer[index+11] = C.float(entity.TexWidth)
+						layer.buffer[index+12] = C.float(entity.TexHeight)
+						index += 13
 						count++
 					}
 				}
@@ -158,12 +174,14 @@ func (wnd *tWindow) graphicsThread() {
 					case leaveType:
 						wnd.impl.Gfx.running = false
 					case imageType:
-						var texId C.int
-						C.g2d_gfx_gen_tex(wnd.data, unsafe.Pointer(&event.valD[0]), C.int(event.valA), C.int(event.valB), &texId, &err1)
+						texUnit := event.valC.(Texture).Id()
+						C.g2d_gfx_gen_tex(wnd.data, unsafe.Pointer(&event.valD[0]), C.int(event.valA), C.int(event.valB), C.int(texUnit), &err1)
 						if err1 == 0 {
-							internalId := len(wnd.impl.Gfx.texturesIds)
-							wnd.impl.Gfx.texturesIds = append(wnd.impl.Gfx.texturesIds, C.int(texId))
-							wnd.eventsChan <- &tLogicEvent{typeId: textureType, valA: event.valC, valB: internalId, time: appTime.Millis()}
+							dimIndex := texUnit*2
+							wnd.impl.Gfx.texMap[texUnit] = texUnit
+							wnd.impl.Gfx.texDims[dimIndex+0] = event.valA
+							wnd.impl.Gfx.texDims[dimIndex+1] = event.valB
+							wnd.eventsChan <- &tLogicEvent{typeId: textureType, obj: event.valC, time: appTime.Millis()}
 						} else {
 							postRequest(&tErrorRequest{err: toError(err1, 0, nil)})
 						}
@@ -189,7 +207,7 @@ func (wnd *tWindow) onGfxRefresh() {
 	wnd.impl.Gfx.updating = false
 	read := wnd.impl.Gfx.getReadBuffer()
 	wnd.impl.Gfx.mutex.Unlock()
-	buffers, lengths, procs := read.getBatchProcessing()
+	buffers, lengths, procs := read.getBatchProcessing(wnd.impl.Gfx.texMap, wnd.impl.Gfx.texDims)
 	w, h, i, r, g, b := read.w, read.h, read.si, read.r, read.g, read.b
 	if len(buffers) > 0 {
 		// calling with &buffers[0] may cause "pointer to unpinned Go pointer" error
@@ -207,7 +225,7 @@ func (wnd *tWindow) onGfxRefresh() {
 	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
 }
 
-func (gfx *tGraphics) getBatchProcessing() ([]*C.float, []C.int, []unsafe.Pointer) {
+func (gfx *tGraphics) getBatchProcessing(texMap, texDims []int) ([]*C.float, []C.int, []unsafe.Pointer) {
 	var buffers []*C.float
 	var lengths []C.int
 	var procs []unsafe.Pointer
@@ -217,8 +235,8 @@ func (gfx *tGraphics) getBatchProcessing() ([]*C.float, []C.int, []unsafe.Pointe
 		var buffer []C.float
 		var length int
 		var proc unsafe.Pointer
-		layers, buffer, length, proc = layers[0].getProcessing(layers)
-		if len(buffer) > 0 {
+		layers, buffer, length, proc = layers[0].getProcessing(layers, texMap, texDims)
+		if length > 0 {
 			buffers = append(buffers, &buffer[0])
 			lengths = append(lengths, C.int(length))
 			procs = append(procs, proc)

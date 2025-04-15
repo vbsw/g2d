@@ -6,27 +6,27 @@
  */
 
 static GLuint shader_create(const GLenum shader_type, LPCSTR shader, const int err_a, const int err_b, long long *const err1, char **const err_nfo) {
-	const GLuint id = glCreateShader(shader_type);
-	if (id) {
-		GLint compiled; glShaderSource(id, 1, &shader, NULL); glCompileShader(id);
-		glGetShaderiv(id, GL_COMPILE_STATUS, &compiled);
+	const GLuint prog_ref = glCreateShader(shader_type);
+	if (prog_ref) {
+		GLint compiled; glShaderSource(prog_ref, 1, &shader, NULL); glCompileShader(prog_ref);
+		glGetShaderiv(prog_ref, GL_COMPILE_STATUS, &compiled);
 		if (compiled == GL_FALSE) {
-			GLsizei err_len; err1[0] = err_b; glGetShaderiv(id, GL_INFO_LOG_LENGTH, &err_len);
+			GLsizei err_len; err1[0] = err_b; glGetShaderiv(prog_ref, GL_INFO_LOG_LENGTH, &err_len);
 			if (err_len > 0) {
 				err_nfo[0] = (char*)malloc(err_len);
 				if (err_nfo[0])
-					glGetShaderInfoLog(id, err_len, &err_len, (GLchar*)err_nfo[0]);
+					glGetShaderInfoLog(prog_ref, err_len, &err_len, (GLchar*)err_nfo[0]);
 			}
-			glDeleteShader(id);
+			glDeleteShader(prog_ref);
 		}
 	} else {
 		err1[0] = err_a;
 	}
-	return id;
+	return prog_ref;
 }
 
-static void shader_attach(const GLuint prog_id, const GLuint shader_id, const int err_a, const int err_b, long long *const err1) {
-	glAttachShader(prog_id, shader_id);
+static void shader_attach(const GLuint prog_ref, const GLuint shader_ref, const int err_a, const int err_b, long long *const err1) {
+	glAttachShader(prog_ref, shader_ref);
 	const GLenum err_enum = glGetError();
 	if (err_enum == GL_INVALID_VALUE) {
 		err1[0] = err_a;
@@ -35,14 +35,14 @@ static void shader_attach(const GLuint prog_id, const GLuint shader_id, const in
 	}
 }
 
-static void program_check(const GLuint prog_id, const GLenum status, const int err, long long *const err1, char **const err_nfo) {
-	GLint success; glGetProgramiv(prog_id, status, &success);
+static void program_check(const GLuint prog_ref, const GLenum status, const int err, long long *const err1, char **const err_nfo) {
+	GLint success; glGetProgramiv(prog_ref, status, &success);
 	if (success == GL_FALSE) {
-		GLsizei err_len; glGetProgramiv(prog_id, GL_INFO_LOG_LENGTH, &err_len); err1[0] = err;
+		GLsizei err_len; glGetProgramiv(prog_ref, GL_INFO_LOG_LENGTH, &err_len); err1[0] = err;
 		if (err_len > 0) {
 			err_nfo[0] = (char*)malloc(err_len);
 			if (err_nfo[0])
-				glGetProgramInfoLog(prog_id, err_len, &err_len, err_nfo[0]);
+				glGetProgramInfoLog(prog_ref, err_len, &err_len, err_nfo[0]);
 		}
 	}
 }
@@ -57,13 +57,13 @@ static void prog_use(const GLuint id, const int err_a, const int err_b, long lon
 	}
 }
 
-static GLuint rects_create(const GLuint vs_id, const GLuint fs_id, long long *const err1, char **const err_nfo) {
+static GLuint rects_create(const GLuint vs_ref, const GLuint fs_ref, long long *const err1, char **const err_nfo) {
 	if (err1[0] == 0) {
 		const GLuint id = glCreateProgram();
 		if (id) {
-			shader_attach(id, vs_id, G2D_ERR_1002006, G2D_ERR_1002007, err1);
+			shader_attach(id, vs_ref, G2D_ERR_1002006, G2D_ERR_1002007, err1);
 			if (err1[0] == 0) {
-				shader_attach(id, fs_id, G2D_ERR_1002008, G2D_ERR_1002009, err1);
+				shader_attach(id, fs_ref, G2D_ERR_1002008, G2D_ERR_1002009, err1);
 				if (err1[0] == 0) {
 					glLinkProgram(id);
 					program_check(id, GL_LINK_STATUS, G2D_ERR_1002010, err1, err_nfo);
@@ -99,9 +99,9 @@ static void bind_vbo(const GLuint vbo, const int err_a, const int err_b, long lo
 	}
 }
 
-static void bind_ebo(const GLuint ebo, const int err_a, const int err_b, long long *const err1) {
+static void bind_ebo(const GLuint ebo_ref, const int err_a, const int err_b, long long *const err1) {
 	if (err1[0] == 0) {
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_ref);
 		const GLenum err_enum = glGetError();
 		if (err_enum == GL_INVALID_ENUM) {
 			err1[0] = err_a;
@@ -123,28 +123,28 @@ static void enable_attr(const GLint attr, const int err_a, const int err_b, long
 	}
 }
 
-static GLint att_location(const GLuint prog_id, LPCSTR const name, const int err, long long *const err1) {
+static GLint att_location(const GLuint prog_ref, LPCSTR const name, const int err, long long *const err1) {
 	if (err1[0] == 0) {
-		const GLint att_id = glGetAttribLocation(prog_id, name);
+		const GLint att_lc = glGetAttribLocation(prog_ref, name);
 		const GLenum err_enum = glGetError();
 		if (err_enum == GL_INVALID_OPERATION) {
 			err1[0] = err;
 		}
-		return att_id;
+		return att_lc;
 	}
 	return -1;
 }
 
-static GLint unf_location(const GLuint prog_id, LPCSTR const name, const int err_a, const int err_b, long long *const err1) {
+static GLint unif_location(const GLuint prog_ref, LPCSTR const name, const int err_a, const int err_b, long long *const err1) {
 	if (err1[0] == 0) {
-		const GLint att_id = glGetUniformLocation(prog_id, name);
+		const GLint unif_lc = glGetUniformLocation(prog_ref, name);
 		const GLenum err_enum = glGetError();
 		if (err_enum == GL_INVALID_OPERATION) {
 			err1[0] = err_a;
 		} else if (err_enum == GL_INVALID_VALUE) {
 			err1[0] = err_b;
 		}
-		return att_id;
+		return unif_lc;
 	}
 	return -1;
 }
@@ -179,13 +179,14 @@ static void vertex_att_pointer(const GLuint index, const GLint size, const GLsiz
 	}
 }
 
-static void rects_enable(const GLuint prog_id, const GLint proj_unif, const GLuint vao, const GLuint vbo, const float *const projection_mat, long long *const err1) {
-	prog_use(prog_id, G2D_ERR_1002012, G2D_ERR_1002013, err1);
+static void rects_enable(const GLuint prog_ref, const GLint unif_lc, const GLuint vao_ref, const GLuint vbo_ref, const GLfloat *const unif_data, long long *const err1) {
+	prog_use(prog_ref, G2D_ERR_1002012, G2D_ERR_1002013, err1);
 	if (err1[0] == 0) {
-		bind_vao(vao, G2D_ERR_1002014, err1);
+		bind_vao(vao_ref, G2D_ERR_1002014, err1);
 		if (err1[0] == 0) {
-			glUniformMatrix4fv(proj_unif, 1, GL_FALSE, projection_mat);
-			bind_vbo(vbo, G2D_ERR_1002015, G2D_ERR_1002016, err1);
+			glUniform1fv(unif_lc, 16*3, unif_data);
+			//glUniformMatrix4fv(unif_lc, 1, GL_FALSE, unif_data);
+			bind_vbo(vbo_ref, G2D_ERR_1002015, G2D_ERR_1002016, err1);
 		}
 	}
 }
@@ -226,6 +227,27 @@ static void bind_texture(const GLuint texture, const int err_a, const int err_b,
 	}
 }
 
+void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int w, const int h, const int tex_unit, long long *const err1) {
+	GLuint texture; glGenTextures(1, &texture);
+	glActiveTexture((GLenum)(GL_TEXTURE0+tex_unit));
+	bind_texture(texture, G2D_ERR_1002052, G2D_ERR_1002053, G2D_ERR_1002054, err1);
+	if (err1[0] == 0) {
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex_data);
+		const GLenum err_enum = glGetError();
+		if (err_enum == GL_INVALID_ENUM) {
+			err1[0] = G2D_ERR_1002055;
+		} else if (err_enum == GL_INVALID_VALUE) {
+			err1[0] = G2D_ERR_1002056;
+		} else if (err_enum == GL_INVALID_OPERATION) {
+			err1[0] = G2D_ERR_1002057;
+		}
+	}
+}
+
 void g2d_gfx_init(void *const data, long long *const err1, long long *const err2, char **const err_nfo) {
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (wglMakeCurrent(wnd_data[0].wnd.dc, wnd_data[0].wnd.rc)) {
@@ -234,34 +256,56 @@ void g2d_gfx_init(void *const data, long long *const err1, long long *const err2
 			const GLuint fs_id = shader_create(GL_FRAGMENT_SHADER, fs_rect_str, G2D_ERR_1002004, G2D_ERR_1002005, err1, err_nfo);
 			if (err1[0] == 0) {
 				const size_t length = 16000;
-				wnd_data[0].rects.max_length = (GLuint)length;
-				wnd_data[0].rects.id = rects_create(vs_id, fs_id, err1, err_nfo);
-				wnd_data[0].rects.pos_att = att_location(wnd_data[0].rects.id, "positionIn", G2D_ERR_1002023, err1);
-				wnd_data[0].rects.col_att = att_location(wnd_data[0].rects.id, "colorIn", G2D_ERR_1002024, err1);
-				wnd_data[0].rects.proj_unif = unf_location(wnd_data[0].rects.id, "projection", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.buf_max_len = (GLuint)length;
+				wnd_data[0].rects.prog_ref = rects_create(vs_id, fs_id, err1, err_nfo);
+				wnd_data[0].rects.att_lc[0] = att_location(wnd_data[0].rects.prog_ref, "in0", G2D_ERR_1002023, err1);
+				wnd_data[0].rects.att_lc[1] = att_location(wnd_data[0].rects.prog_ref, "in1", G2D_ERR_1002023, err1);
+				wnd_data[0].rects.att_lc[2] = att_location(wnd_data[0].rects.prog_ref, "in2", G2D_ERR_1002023, err1);
+				wnd_data[0].rects.att_lc[3] = att_location(wnd_data[0].rects.prog_ref, "in3", G2D_ERR_1002023, err1);
+				wnd_data[0].rects.unif_lc[0] = unif_location(wnd_data[0].rects.prog_ref, "tex00", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[1] = unif_location(wnd_data[0].rects.prog_ref, "tex01", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[2] = unif_location(wnd_data[0].rects.prog_ref, "tex02", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[3] = unif_location(wnd_data[0].rects.prog_ref, "tex03", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[4] = unif_location(wnd_data[0].rects.prog_ref, "tex04", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[5] = unif_location(wnd_data[0].rects.prog_ref, "tex05", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[6] = unif_location(wnd_data[0].rects.prog_ref, "tex06", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[7] = unif_location(wnd_data[0].rects.prog_ref, "tex07", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[8] = unif_location(wnd_data[0].rects.prog_ref, "tex08", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[9] = unif_location(wnd_data[0].rects.prog_ref, "tex09", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[10] = unif_location(wnd_data[0].rects.prog_ref, "tex10", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[11] = unif_location(wnd_data[0].rects.prog_ref, "tex11", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[12] = unif_location(wnd_data[0].rects.prog_ref, "tex12", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[13] = unif_location(wnd_data[0].rects.prog_ref, "tex13", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[14] = unif_location(wnd_data[0].rects.prog_ref, "tex14", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[15] = unif_location(wnd_data[0].rects.prog_ref, "tex15", G2D_ERR_1002025, G2D_ERR_1002026, err1);
+				wnd_data[0].rects.unif_lc[16] = unif_location(wnd_data[0].rects.prog_ref, "unif", G2D_ERR_1002025, G2D_ERR_1002026, err1);
 				if (err1[0] == 0) {
 					GLuint objs[3]; glGenVertexArrays(1, objs); glGenBuffers(2, &objs[1]);
-					wnd_data[0].rects.vao = objs[0]; wnd_data[0].rects.vbo = objs[1]; wnd_data[0].rects.ebo = objs[2];
-					bind_vao(wnd_data[0].rects.vao, G2D_ERR_1002027, err1);
-					enable_attr(wnd_data[0].rects.pos_att, G2D_ERR_1002028, G2D_ERR_1002029, err1);
-					enable_attr(wnd_data[0].rects.col_att, G2D_ERR_1002030, G2D_ERR_1002031, err1);
-					bind_vbo(wnd_data[0].rects.vbo, G2D_ERR_1002032, G2D_ERR_1002033, err1);
-					buffer_data(GL_ARRAY_BUFFER, sizeof(float) * length * 4 * (2+4), NULL, GL_DYNAMIC_DRAW, G2D_ERR_1002034, G2D_ERR_1002035, G2D_ERR_1002036, G2D_ERR_1002037, err1);
-					vertex_att_pointer(wnd_data[0].rects.pos_att, 2, sizeof(float) * (2+4), (void*)(sizeof(float) * 0), G2D_ERR_1002042, G2D_ERR_1002043, G2D_ERR_1002044, err1);
-					vertex_att_pointer(wnd_data[0].rects.col_att, 4, sizeof(float) * (2+4), (void*)(sizeof(float) * 2), G2D_ERR_1002045, G2D_ERR_1002046, G2D_ERR_1002047, err1);
-					bind_ebo(wnd_data[0].rects.ebo, G2D_ERR_1002048, G2D_ERR_1002049, err1);
+					wnd_data[0].rects.vao_ref = objs[0]; wnd_data[0].rects.vbo_ref = objs[1]; wnd_data[0].rects.ebo_ref = objs[2];
+					bind_vao(wnd_data[0].rects.vao_ref, G2D_ERR_1002027, err1);
+					enable_attr(wnd_data[0].rects.att_lc[0], G2D_ERR_1002028, G2D_ERR_1002029, err1);
+					enable_attr(wnd_data[0].rects.att_lc[1], G2D_ERR_1002030, G2D_ERR_1002031, err1);
+					enable_attr(wnd_data[0].rects.att_lc[2], G2D_ERR_1002032, G2D_ERR_1002033, err1);
+					enable_attr(wnd_data[0].rects.att_lc[3], G2D_ERR_1002034, G2D_ERR_1002035, err1);
+					bind_vbo(wnd_data[0].rects.vbo_ref, G2D_ERR_1002032, G2D_ERR_1002033, err1);
+					buffer_data(GL_ARRAY_BUFFER, sizeof(GLfloat) * length * 4 * 16, NULL, GL_DYNAMIC_DRAW, G2D_ERR_1002034, G2D_ERR_1002035, G2D_ERR_1002036, G2D_ERR_1002037, err1);
+					vertex_att_pointer(wnd_data[0].rects.att_lc[0], 4, sizeof(GLfloat) * 16, (void*)(sizeof(GLfloat) * 0), G2D_ERR_1002042, G2D_ERR_1002043, G2D_ERR_1002044, err1);
+					vertex_att_pointer(wnd_data[0].rects.att_lc[1], 4, sizeof(GLfloat) * 16, (void*)(sizeof(GLfloat) * 4), G2D_ERR_1002042, G2D_ERR_1002043, G2D_ERR_1002044, err1);
+					vertex_att_pointer(wnd_data[0].rects.att_lc[2], 4, sizeof(GLfloat) * 16, (void*)(sizeof(GLfloat) * 8), G2D_ERR_1002042, G2D_ERR_1002043, G2D_ERR_1002044, err1);
+					vertex_att_pointer(wnd_data[0].rects.att_lc[3], 4, sizeof(GLfloat) * 16, (void*)(sizeof(GLfloat) * 12), G2D_ERR_1002042, G2D_ERR_1002043, G2D_ERR_1002044, err1);
+					bind_ebo(wnd_data[0].rects.ebo_ref, G2D_ERR_1002048, G2D_ERR_1002049, err1);
 					if (err1[0] == 0) {
-						unsigned int *indices = (unsigned int*)malloc(sizeof(unsigned int) * length * (3+3));
+						GLuint *indices = (GLuint*)malloc(sizeof(GLuint) * length * (3+3));
 						if (indices) {
-							wnd_data[0].rects.buffer = (float*)malloc(sizeof(float) * length * 4 * (2+4));
+							wnd_data[0].rects.buffer = (GLfloat*)malloc(sizeof(GLfloat) * length * 4 * 16);
 							if (wnd_data[0].rects.buffer) {
 								size_t i;
 								for (i = 0; i < length; i++) {
 									const size_t offs = i * (3+3);
-									const size_t index = i * 4;
+									const GLuint index = (GLuint) i * 4;
 									indices[offs] = index; indices[offs+1] = index+1; indices[offs+2] = index+2; indices[offs+3] = index+2; indices[offs+4] = index+1; indices[offs+5] = index+3;
 								}
-								buffer_data(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * length * (3+3), indices, GL_STATIC_DRAW, G2D_ERR_1002038, G2D_ERR_1002039, G2D_ERR_1002040, G2D_ERR_1002041, err1);
+								buffer_data(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * length * (3+3), indices, GL_STATIC_DRAW, G2D_ERR_1002038, G2D_ERR_1002039, G2D_ERR_1002040, G2D_ERR_1002041, err1);
 							} else {
 								err1[0] = G2D_ERR_0000018;
 							}
@@ -295,8 +339,8 @@ void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const
 	window_data_t *const wnd_data = (window_data_t*)data;
 	if (wnd_data[0].gfx.w != w || wnd_data[0].gfx.g != h) {
 		wnd_data[0].gfx.w = w; wnd_data[0].gfx.h = h;
-		wnd_data[0].gfx.projection_mat[0] = 2.0f / (float)w;
-		wnd_data[0].gfx.projection_mat[5] = -2.0f / (float)h;
+		wnd_data[0].gfx.unif_data[0] = 2.0f / (GLfloat)w;
+		wnd_data[0].gfx.unif_data[5] = -2.0f / (GLfloat)h;
 		glViewport((WORD)0, (WORD)0, (WORD)w, (WORD)h);
 	}
 	if (wnd_data[0].gfx.r != r || wnd_data[0].gfx.g != g || wnd_data[0].gfx.b != b) {
@@ -318,66 +362,69 @@ void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const
 }
 
 void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int total, long long *const err1) {
-	int i, drawn;
+	int rects_i, drawn;
 	window_data_t *const wnd_data = (window_data_t*)data;
-	const int length = (int)wnd_data[0].rects.max_length;
-	float *const buffer = wnd_data[0].rects.buffer;
-	rects_enable(wnd_data[0].rects.id, wnd_data[0].rects.proj_unif, wnd_data[0].rects.vao, wnd_data[0].rects.vbo, wnd_data[0].gfx.projection_mat, err1);
-	for (i = 0, drawn = 0; err1[0] == 0 && drawn < total; drawn += length) {
-		int k;
+	const int length = (int)wnd_data[0].rects.buf_max_len;
+	GLfloat *const buffer = wnd_data[0].rects.buffer;
+	/* dimensions of textures (32=2*16) */
+	for (rects_i = 16; rects_i < 48; rects_i++) {
+		wnd_data[0].gfx.unif_data[rects_i] = rects[rects_i];
+	}
+	rects_enable(wnd_data[0].rects.prog_ref, wnd_data[0].rects.unif_lc[16], wnd_data[0].rects.vao_ref, wnd_data[0].rects.vbo_ref, wnd_data[0].gfx.unif_data, err1);
+	/* set samplers (16) */
+	for (rects_i = 0; rects_i < 16; rects_i++) {
+		const int tex_unit = (int)rects[rects_i];
+		if (tex_unit >= 0)
+			glUniform1i((GLint)wnd_data[0].rects.unif_lc[rects_i], (GLenum)tex_unit);
+	}
+	for (rects_i = 0, drawn = 0; err1[0] == 0 && drawn < total; drawn += length) {
+		int buf_i;
 		const int limit = drawn + length > total ? total - drawn : length;
-		for (k = 0; k < limit; i++) {
-			const int offs = k * 4 * (2+4); const int index = i * 8;
-			const float x = rects[index], y = rects[index+1], w = rects[index+2], h = rects[index+3], r = rects[index+4], g = rects[index+5], b = rects[index+6], a = rects[index+7];
+		for (buf_i = 0; buf_i < limit; rects_i++, buf_i++) {
+			const int index = 48 + rects_i * 13; const int offs = buf_i * 4 * 16;
+			const GLfloat x = rects[index], y = rects[index+1], w = rects[index+2], h = rects[index+3], r = rects[index+4], g = rects[index+5], b = rects[index+6], a = rects[index+7];
+			const GLfloat tex_idx = rects[index+8], tex_x = rects[index+9], tex_y = rects[index+10], tex_w = rects[index+11], tex_h = rects[index+12];
 			buffer[offs+0] = x;
 			buffer[offs+1] = y;
-			buffer[offs+2] = r;
-			buffer[offs+3] = g;
-			buffer[offs+4] = b;
-			buffer[offs+5] = a;
-			buffer[offs+6] = x + w;
-			buffer[offs+7] = y;
-			buffer[offs+8] = r;
-			buffer[offs+9] = g;
-			buffer[offs+10] = b;
-			buffer[offs+11] = a;
-			buffer[offs+12] = x;
-			buffer[offs+13] = y + h;
-			buffer[offs+14] = r;
-			buffer[offs+15] = g;
-			buffer[offs+16] = b;
-			buffer[offs+17] = a;
-			buffer[offs+18] = x + w;
-			buffer[offs+19] = y + h;
+			buffer[offs+4] = r;
+			buffer[offs+5] = g;
+			buffer[offs+6] = b;
+			buffer[offs+7] = a;
+			buffer[offs+8] = tex_idx;
+			buffer[offs+12] = tex_x;
+			buffer[offs+13] = tex_y;
+
+			buffer[offs+16] = x + w;
+			buffer[offs+17] = y;
 			buffer[offs+20] = r;
 			buffer[offs+21] = g;
 			buffer[offs+22] = b;
 			buffer[offs+23] = a;
-			k++;
-		}
-		buffer_sub_data(sizeof(float) * limit * 4 * (2+4), buffer, G2D_ERR_1002020, G2D_ERR_1002021, G2D_ERR_1002022, err1);
-		draw_elements(limit * 6, G2D_ERR_1002017, G2D_ERR_1002018, G2D_ERR_1002019, err1);
-	}
-}
+			buffer[offs+24] = tex_idx;
+			buffer[offs+28] = tex_x + tex_w;
+			buffer[offs+29] = tex_y;
 
-void g2d_gfx_gen_tex(void *const data, const void *const tex, const int w, const int h, int *const tex_id, long long *const err1) {
-	GLuint texture; glGenTextures(1, &texture);
-	bind_texture(texture, G2D_ERR_1002052, G2D_ERR_1002053, G2D_ERR_1002054, err1);
-	if (err1[0] == 0) {
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex);
-		const GLenum err_enum = glGetError();
-		if (err_enum == GL_NO_ERROR) {
-			tex_id[0] = (int)texture;
-		} else if (err_enum == GL_INVALID_ENUM) {
-			err1[0] = G2D_ERR_1002055;
-		} else if (err_enum == GL_INVALID_VALUE) {
-			err1[0] = G2D_ERR_1002056;
-		} else if (err_enum == GL_INVALID_OPERATION) {
-			err1[0] = G2D_ERR_1002057;
+			buffer[offs+32] = x;
+			buffer[offs+33] = y + h;
+			buffer[offs+36] = r;
+			buffer[offs+37] = g;
+			buffer[offs+38] = b;
+			buffer[offs+39] = a;
+			buffer[offs+40] = tex_idx;
+			buffer[offs+44] = tex_x;
+			buffer[offs+45] = tex_y + tex_h;
+
+			buffer[offs+48] = x + w;
+			buffer[offs+49] = y + h;
+			buffer[offs+52] = r;
+			buffer[offs+53] = g;
+			buffer[offs+54] = b;
+			buffer[offs+55] = a;
+			buffer[offs+56] = tex_idx;
+			buffer[offs+60] = tex_x + tex_w;
+			buffer[offs+61] = tex_y + tex_h;
 		}
+		buffer_sub_data(sizeof(GLfloat) * limit * 4 * 16, buffer, G2D_ERR_1002020, G2D_ERR_1002021, G2D_ERR_1002022, err1);
+		draw_elements(limit * 6, G2D_ERR_1002017, G2D_ERR_1002018, G2D_ERR_1002019, err1);
 	}
 }

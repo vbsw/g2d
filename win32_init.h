@@ -53,14 +53,17 @@ void g2d_init(int *const numbers, long long *const err1, long long *const err2, 
 										if (err1[0] == 0) {
 											int begin = 0, end = 0, i;
 											LPCSTR const extensions = (LPCSTR)wglGetExtensionsStringARB(dummy_dc);
-											while (extensions[end] && (!&numbers[2] || !&numbers[3])) {
+											while (extensions[end] && (!numbers[2] || !numbers[3])) {
+												/* find end of word */
 												for (end = begin; extensions[end] && extensions[end] != ' '; end++);
+												/* find WGL_EXT_swap_control */
 												for (i = begin; i < end && extensions[i] == "WGL_EXT_swap_control"[i-begin]; i++);
 												if (i == end && "WGL_EXT_swap_control"[end-begin] == 0) {
 													LOAD_WGL(PFNWGLSWAPINTERVALEXTPROC,    wglSwapIntervalEXT)
 													LOAD_WGL(PFNWGLGETSWAPINTERVALEXTPROC, wglGetSwapIntervalEXT)
 													numbers[2] = 1;
 												}
+												/* find WGL_EXT_swap_control_tear */
 												for (i = begin; i < end && extensions[i] == "WGL_EXT_swap_control_tear"[i-begin]; i++);
 												if (i == end && "WGL_EXT_swap_control_tear"[end-begin] == 0) {
 													numbers[3] = 1;
@@ -97,6 +100,7 @@ void g2d_init(int *const numbers, long long *const err1, long long *const err2, 
 										LOAD_OGL(PFNGLGETUNIFORMLOCATIONPROC,       glGetUniformLocation)
 										LOAD_OGL(PFNGLUNIFORMMATRIX3FVPROC,         glUniformMatrix3fv)
 										LOAD_OGL(PFNGLUNIFORM1FVPROC,               glUniform1fv)
+										LOAD_OGL(PFNGLUNIFORM1IPROC,                glUniform1i)
 										LOAD_OGL(PFNGLUNIFORMMATRIX4FVPROC,         glUniformMatrix4fv)
 										LOAD_OGL(PFNGLUNIFORMMATRIX2X3FVPROC,       glUniformMatrix2x3fv)
 										LOAD_OGL(PFNGLGENERATEMIPMAPPROC,           glGenerateMipmap)

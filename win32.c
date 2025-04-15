@@ -103,6 +103,7 @@ typedef void (APIENTRY *PFNGLDELETEPROGRAMPROC) (GLuint program);
 typedef void (APIENTRY *PFNGLDELETESHADERPROC) (GLuint shader);
 typedef GLint(APIENTRY *PFNGLGETUNIFORMLOCATIONPROC) (GLuint program, const GLchar *name);
 typedef void (APIENTRY *PFNGLUNIFORM1FVPROC) (GLint location, GLsizei count, const GLfloat *value);
+typedef void (APIENTRY *PFNGLUNIFORM1IPROC) (GLint location, GLint v0);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX4FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
@@ -143,6 +144,7 @@ static PFNGLDELETEPROGRAMPROC            glDeleteProgram            = NULL;
 static PFNGLDELETESHADERPROC             glDeleteShader             = NULL;
 static PFNGLGETUNIFORMLOCATIONPROC       glGetUniformLocation       = NULL;
 static PFNGLUNIFORM1FVPROC               glUniform1fv               = NULL;
+static PFNGLUNIFORM1IPROC                glUniform1i                = NULL;
 static PFNGLUNIFORMMATRIX4FVPROC         glUniformMatrix4fv         = NULL;
 static PFNGLUNIFORMMATRIX3FVPROC         glUniformMatrix3fv         = NULL;
 static PFNGLUNIFORMMATRIX2X3FVPROC       glUniformMatrix2x3fv       = NULL;
@@ -158,8 +160,8 @@ typedef struct {
 	struct { int dragging, minimized, maximized, resizing, focus, shown; } state;
 	unsigned int key_repeated[255];
 	int cb_id;
-	struct { int r, g, b, w, h, i; float projection_mat[4*4]; } gfx;
-	struct { GLuint id, vao, vbo, ebo, max_length; GLint pos_att, col_att, proj_unif; float *buffer; } rects;
+	struct { int r, g, b, w, h, i; GLfloat unif_data[16*3]; } gfx;
+	struct { GLuint prog_ref, vao_ref, vbo_ref, ebo_ref, buf_max_len; GLint att_lc[4], unif_lc[17]; GLfloat *buffer; } rects;
 } window_data_t;
 
 typedef void (gfx_draw_t)(void *data, float *rects, int total, long long *err1);
@@ -169,7 +171,7 @@ static const WPARAM g2d_QUIT_EVENT    = (WPARAM)"g2dq";
 static LPCTSTR const class_name       = TEXT("g2d");
 static LPCTSTR const class_name_dummy = TEXT("g2d_dummy");
 
-static const float default_projection_mat[4*4] = { 2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, -1.0f, 1.0f, 0.0f, 1.0f };
+static const GLfloat default_projection_mat[16] = { 2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f / 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, -1.0f, 1.0f, 0.0f, 1.0f };
 
 static HINSTANCE instance = NULL;
 static BOOL initialized   = FALSE;
@@ -177,27 +179,61 @@ static int windows_count  = 0;
 static DWORD thread_id    = 0;
 static BOOL stop          = FALSE;
 
-/*
-#version 130
-in vec2 positionIn;
-in vec4 colorIn;
-out vec4 fragementColor;
-uniform mat4 projection = mat4(1.0);
 
-void main() {
-	gl_Position = projection * vec4(positionIn, 1.0, 1.0);
-	fragementColor = colorIn;
-}
-
-#version 130
-in vec4 fragementColor;
-out vec4 color;
-void main() {
-	color = fragementColor;
-}
-*/
-static LPCSTR const vs_rect_str = "#version 130\nin vec2 positionIn; in vec4 colorIn; out vec4 fragementColor; uniform mat4 projection = mat4(1.0); void main() { gl_Position = projection * vec4(positionIn, 1.0, 1.0); fragementColor = colorIn; }";
-static LPCSTR const fs_rect_str = "#version 130\nin vec4 fragementColor; out vec4 color; void main() { color = fragementColor; }";
+static LPCSTR const vs_rect_str = "#version 130\n\
+in vec4 in0; \
+in vec4 in1; \
+in vec4 in2; \
+in vec4 in3; \
+out vec4 fragementColor; \
+out vec3 texCoord; \
+uniform float[48] unif; \
+void main() { \
+  int texIdx = int(in2[0]); \
+  gl_Position = mat4(unif[0], unif[1], unif[2], unif[3], unif[4], unif[5], unif[6], unif[7], unif[8], unif[9], unif[10], unif[11], unif[12], unif[13], unif[14], unif[15]) * vec4(in0[0], in0[1], 1.0, 1.0); \
+  fragementColor = in1; \
+  if (texIdx >= 0) { \
+    int offset = 16 + texIdx*2; \
+    float texWidth = unif[offset + 0]; \
+    float texHeight = unif[offset + 1]; \
+    texCoord = vec3(in2[0], in3[0]/texWidth, in3[1]/texHeight); \
+  } else { \
+    texCoord = vec3(-1.0, 0.0, 0.0); \
+  } \
+}";
+static LPCSTR const fs_rect_str = "#version 130\n\
+in vec4 fragementColor; \
+in vec3 texCoord; \
+out vec4 color; \
+uniform sampler2D tex00; uniform sampler2D tex01; uniform sampler2D tex02; uniform sampler2D tex03; \
+uniform sampler2D tex04; uniform sampler2D tex05; uniform sampler2D tex06; uniform sampler2D tex07; \
+uniform sampler2D tex08; uniform sampler2D tex09; uniform sampler2D tex10; uniform sampler2D tex11; \
+uniform sampler2D tex12; uniform sampler2D tex13; uniform sampler2D tex14; uniform sampler2D tex15; \
+void main() { \
+  int texIdx = int(texCoord[0]); \
+  if (texIdx >= 0) { \
+    switch (texIdx) { \
+      case 0: color = texture(tex00, vec2(texCoord[1], texCoord[2])); break; \
+      case 1: color = texture(tex01, vec2(texCoord[1], texCoord[2])); break; \
+      case 2: color = texture(tex02, vec2(texCoord[1], texCoord[2])); break; \
+      case 3: color = texture(tex03, vec2(texCoord[1], texCoord[2])); break; \
+      case 4: color = texture(tex04, vec2(texCoord[1], texCoord[2])); break; \
+      case 5: color = texture(tex05, vec2(texCoord[1], texCoord[2])); break; \
+      case 6: color = texture(tex06, vec2(texCoord[1], texCoord[2])); break; \
+      case 7: color = texture(tex07, vec2(texCoord[1], texCoord[2])); break; \
+      case 8: color = texture(tex08, vec2(texCoord[1], texCoord[2])); break; \
+      case 9: color = texture(tex09, vec2(texCoord[1], texCoord[2])); break; \
+      case 10: color = texture(tex10, vec2(texCoord[1], texCoord[2])); break; \
+      case 11: color = texture(tex11, vec2(texCoord[1], texCoord[2])); break; \
+      case 12: color = texture(tex12, vec2(texCoord[1], texCoord[2])); break; \
+      case 13: color = texture(tex13, vec2(texCoord[1], texCoord[2])); break; \
+      case 14: color = texture(tex14, vec2(texCoord[1], texCoord[2])); break; \
+      case 15: color = texture(tex15, vec2(texCoord[1], texCoord[2])); break; \
+    } \
+  } else { \
+    color = fragementColor; \
+  } \
+}";
 
 
 void g2d_free(void *const data) {

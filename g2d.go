@@ -94,7 +94,7 @@ type Window interface {
 	OnButtonUp(buttonCode int, doubleClicked bool) error
 	OnWheel(rotation float32) error
 	OnCustom(obj interface{}) error
-	OnTextureLoaded(id, internalId int) error
+	OnTextureLoaded(texture Texture) error
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy(error) error
@@ -163,7 +163,9 @@ type Graphics struct {
 	bufferReady   bool
 	updating      bool
 	running       bool
-	texturesIds   []C.int
+	txIds         []C.int
+	txWs, txHs    []int
+	texMap, texDims []int
 }
 
 // RectanglesLayer is a layer holding rectangles.
@@ -180,11 +182,14 @@ type Rectangle struct {
 	id                  int
 	X, Y, Width, Height float32
 	R, G, B, A          float32
+	TexId, TexX, TexY   int
+	TexWidth, TexHeight int
 	Enabled             bool
 }
 
 // Texture provides the texture as a byte array.
 type Texture interface {
+	Id() int
 	RGBABytes() ([]byte, int, int, error)
 }
 
@@ -207,7 +212,7 @@ type tGraphics struct {
 
 type tLayer interface {
 	copyTo(tLayer)
-	getProcessing([]tLayer) ([]tLayer, []C.float, int, unsafe.Pointer)
+	getProcessing([]tLayer, []int, []int) ([]tLayer, []C.float, int, unsafe.Pointer)
 }
 
 type tLogicEvent struct {
@@ -226,7 +231,7 @@ type tGraphicsEvent struct {
 	typeId int
 	valA   int
 	valB   int
-	valC   int
+	valC   interface{}
 	valD   []byte
 	err    error
 }
@@ -280,8 +285,7 @@ type tAppTime struct {
 	start time.Time
 }
 
-// ImageFromFile reads image from file.
-// (This is just for reference.)
+// ImageFromFile reads image from file. (This is for test purposes.)
 func ImageFromFile(path string) (image.Image, error) {
 	var img image.Image
 	file, err := os.Open(path)
@@ -301,8 +305,7 @@ func ImageFromFile(path string) (image.Image, error) {
 	return img, err
 }
 
-// BytesFromImage returns bytes from image.
-// (This is just for reference.)
+// BytesFromImage returns bytes from image. (This is for test purposes.)
 func BytesFromImage(img image.Image) []byte {
 	var bytes []byte
 	switch imgStruct := img.(type) {
@@ -345,6 +348,11 @@ func newWindow(abst Window) *tWindow {
 	wnd.impl.Gfx.read = new(tGraphics)
 	wnd.impl.Gfx.buffer = new(tGraphics)
 	wnd.impl.Gfx.write = new(tGraphics)
+	wnd.impl.Gfx.texMap = make([]int, 16)
+	wnd.impl.Gfx.texDims = make([]int, 32)
+	for i := range wnd.impl.Gfx.texMap {
+		wnd.impl.Gfx.texMap[i] = -1
+	}
 	return wnd
 }
 
@@ -469,17 +477,19 @@ func (gfx *Graphics) NewRectanglesLayer() *RectanglesLayer {
 
 // LoadTexture loads a texture into video memory. The call is asynchronous.
 // After the texture is loaded OnTextureLoaded is triggered.
-func (gfx *Graphics) LoadTexture(id int, texture Texture) {
+func (gfx *Graphics) LoadTexture(texture Texture) {
 	go func() {
 		bytes, w, h, err := texture.RGBABytes()
 		if err == nil {
-			if len(bytes) == 0 {
-				err = errors.New(fmt.Sprintf("loaded texture (%i) is empty", id))
+			if texture.Id() < 0 || texture.Id() > 15 {
+				err = errors.New(fmt.Sprintf("loaded texture id (%i) is not in range [0,15]", texture.Id()))
+			} else if len(bytes) == 0 {
+				err = errors.New(fmt.Sprintf("loaded texture (%i) is empty", texture.Id()))
 			} else if w <= 0 || h <= 0 {
-				err = errors.New(fmt.Sprintf("loaded texture (%i) has invalid dimensions (%i, %i)", id, w, h))
+				err = errors.New(fmt.Sprintf("loaded texture (%i) has invalid dimensions (%i, %i)", texture.Id(), w, h))
 			}
 		}
-		gfx.eventsChan <- &tGraphicsEvent{typeId: imageType, valA: w, valB: h, valC: id, valD: bytes, err: err}
+		gfx.eventsChan <- &tGraphicsEvent{typeId: imageType, valA: w, valB: h, valC: texture, valD: bytes, err: err}
 	}()
 }
 
@@ -524,6 +534,7 @@ func (layer *RectanglesLayer) NewEntity() *Rectangle {
 		entity = layer.entities[id]
 	}
 	entity.Enabled = true
+	entity.TexId = -1
 	layer.count++
 	return entity
 }
@@ -603,7 +614,7 @@ func (wnd *tWindow) logicThread() {
 					case closeType:
 						wnd.onClose()
 					case textureType:
-						wnd.onTextureLoaded(event.valA, event.valB)
+						wnd.onTextureLoaded(event.obj.(Texture))
 					case minimizeType:
 						wnd.onMinimize()
 					case restoreType:
@@ -849,9 +860,9 @@ func (wnd *tWindow) onCustom(obj interface{}) {
 	}
 }
 
-func (wnd *tWindow) onTextureLoaded(id, internalId int) {
+func (wnd *tWindow) onTextureLoaded(texture Texture) {
 	props := wnd.impl.Props
-	err := wnd.abst.OnTextureLoaded(id, internalId)
+	err := wnd.abst.OnTextureLoaded(texture)
 	if err == nil {
 		setPropsReq := props.compare(&wnd.impl.Props)
 		if setPropsReq != nil {
@@ -913,7 +924,6 @@ func (gfx *tGraphics) copyTo(dest *tGraphics, w, h, si int, r, g, b float32) {
 	dest.w, dest.h, dest.si = C.int(w), C.int(h), C.int(si)
 	dest.r, dest.g, dest.b = C.float(r), C.float(g), C.float(b)
 	for i, layer := range gfx.layers {
-		// not enough layers in dest
 		if len(dest.layers) == i {
 			dest.layers = append(dest.layers, new(RectanglesLayer))
 		}
@@ -995,7 +1005,7 @@ func (wnd *WindowImpl) OnCustom(obj interface{}) error {
 }
 
 // OnTextureLoaded is called after texture has been loaded to video memory.
-func (wnd *WindowImpl) OnTextureLoaded(id, internalId int) error {
+func (wnd *WindowImpl) OnTextureLoaded(texture Texture) error {
 	return nil
 }
 
