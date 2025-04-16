@@ -234,8 +234,12 @@ void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int w, 
 	if (err1[0] == 0) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex_data);
 		const GLenum err_enum = glGetError();
 		if (err_enum == GL_INVALID_ENUM) {
@@ -366,7 +370,7 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 	window_data_t *const wnd_data = (window_data_t*)data;
 	const int length = (int)wnd_data[0].rects.buf_max_len;
 	GLfloat *const buffer = wnd_data[0].rects.buffer;
-	/* dimensions of textures (32=2*16) */
+	/* set dimensions (32=2*16) */
 	for (rects_i = 16; rects_i < 48; rects_i++) {
 		wnd_data[0].gfx.unif_data[rects_i] = rects[rects_i];
 	}
@@ -374,8 +378,11 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 	/* set samplers (16) */
 	for (rects_i = 0; rects_i < 16; rects_i++) {
 		const int tex_unit = (int)rects[rects_i];
-		if (tex_unit >= 0)
+		if (tex_unit >= 0) {
 			glUniform1i((GLint)wnd_data[0].rects.unif_lc[rects_i], (GLenum)tex_unit);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		}
 	}
 	for (rects_i = 0, drawn = 0; err1[0] == 0 && drawn < total; drawn += length) {
 		int buf_i;
@@ -383,14 +390,14 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 		for (buf_i = 0; buf_i < limit; rects_i++, buf_i++) {
 			const int index = 48 + rects_i * 13; const int offs = buf_i * 4 * 16;
 			const GLfloat x = rects[index], y = rects[index+1], w = rects[index+2], h = rects[index+3], r = rects[index+4], g = rects[index+5], b = rects[index+6], a = rects[index+7];
-			const GLfloat tex_idx = rects[index+8], tex_x = rects[index+9], tex_y = rects[index+10], tex_w = rects[index+11], tex_h = rects[index+12];
+			const GLfloat sample = rects[index+8], tex_x = rects[index+9], tex_y = rects[index+10], tex_w = rects[index+11], tex_h = rects[index+12];
 			buffer[offs+0] = x;
 			buffer[offs+1] = y;
 			buffer[offs+4] = r;
 			buffer[offs+5] = g;
 			buffer[offs+6] = b;
 			buffer[offs+7] = a;
-			buffer[offs+8] = tex_idx;
+			buffer[offs+8] = sample;
 			buffer[offs+12] = tex_x;
 			buffer[offs+13] = tex_y;
 
@@ -400,7 +407,7 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 			buffer[offs+21] = g;
 			buffer[offs+22] = b;
 			buffer[offs+23] = a;
-			buffer[offs+24] = tex_idx;
+			buffer[offs+24] = sample;
 			buffer[offs+28] = tex_x + tex_w;
 			buffer[offs+29] = tex_y;
 
@@ -410,7 +417,7 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 			buffer[offs+37] = g;
 			buffer[offs+38] = b;
 			buffer[offs+39] = a;
-			buffer[offs+40] = tex_idx;
+			buffer[offs+40] = sample;
 			buffer[offs+44] = tex_x;
 			buffer[offs+45] = tex_y + tex_h;
 
@@ -420,7 +427,7 @@ void g2d_gfx_draw_rectangles(void *const data, float *const rects, const int tot
 			buffer[offs+53] = g;
 			buffer[offs+54] = b;
 			buffer[offs+55] = a;
-			buffer[offs+56] = tex_idx;
+			buffer[offs+56] = sample;
 			buffer[offs+60] = tex_x + tex_w;
 			buffer[offs+61] = tex_y + tex_h;
 		}

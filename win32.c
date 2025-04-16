@@ -62,6 +62,7 @@
 #define GL_LINK_STATUS                    0x8B82
 #define GL_VALIDATE_STATUS                0x8B83
 #define GL_CLAMP_TO_BORDER                0x812D
+#define GL_CLAMP_TO_EDGE                  0x812F
 #define GL_MAX_TEXTURE_IMAGE_UNITS        0x8872
 
 /* from wglext.h */
