@@ -47,13 +47,14 @@ void g2d_init(int *const numbers, long long *const err1, long long *const err2, 
 									if (wglMakeCurrent(dummy_dc, dummy_rc)) {
 										glGetIntegerv(GL_MAX_TEXTURE_SIZE, &numbers[0]);
 										glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numbers[1]);
+										glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &numbers[2]);
 										LOAD_WGL(PFNWGLCHOOSEPIXELFORMATARBPROC,    wglChoosePixelFormatARB)
 										LOAD_WGL(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB)
 										LOAD_WGL(PFNWGLGETEXTENSIONSSTRINGARBPROC,  wglGetExtensionsStringARB)
 										if (err1[0] == 0) {
 											int begin = 0, end = 0, i;
 											LPCSTR const extensions = (LPCSTR)wglGetExtensionsStringARB(dummy_dc);
-											while (extensions[end] && (!numbers[2] || !numbers[3])) {
+											while (extensions[end] && (!numbers[3] || !numbers[4])) {
 												/* find end of word */
 												for (end = begin; extensions[end] && extensions[end] != ' '; end++);
 												/* find WGL_EXT_swap_control */
@@ -61,12 +62,12 @@ void g2d_init(int *const numbers, long long *const err1, long long *const err2, 
 												if (i == end && "WGL_EXT_swap_control"[end-begin] == 0) {
 													LOAD_WGL(PFNWGLSWAPINTERVALEXTPROC,    wglSwapIntervalEXT)
 													LOAD_WGL(PFNWGLGETSWAPINTERVALEXTPROC, wglGetSwapIntervalEXT)
-													numbers[2] = 1;
+													numbers[3] = 1;
 												}
 												/* find WGL_EXT_swap_control_tear */
 												for (i = begin; i < end && extensions[i] == "WGL_EXT_swap_control_tear"[i-begin]; i++);
 												if (i == end && "WGL_EXT_swap_control_tear"[end-begin] == 0) {
-													numbers[3] = 1;
+													numbers[4] = 1;
 												}
 												begin = end + 1;
 											}

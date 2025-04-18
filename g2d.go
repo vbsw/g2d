@@ -53,8 +53,8 @@ const (
 	destroyType    = 13
 	leaveType      = 14
 	swapIntervType = 15
-	imageType      = 16
-	textureType    = 17
+	textureType    = 16
+	texBufType     = 17
 	minimizeType   = 18
 	restoreType    = 19
 	focusType      = 20
@@ -64,6 +64,7 @@ const (
 
 var (
 	MaxTexSize, MaxTexUnits int
+	MaxTextures             int
 	VSyncAvailable          bool
 	AVSyncAvailable         bool
 	Err                     error
@@ -95,6 +96,7 @@ type Window interface {
 	OnWheel(rotation float32) error
 	OnCustom(obj interface{}) error
 	OnTextureLoaded(texture Texture) error
+	OnFramebufferCreated(buffer Framebuffer) error
 	OnUpdate() error
 	OnClose() (bool, error)
 	OnDestroy(error) error
@@ -162,6 +164,7 @@ type Graphics struct {
 	bufferReady   bool
 	updating      bool
 	running       bool
+	glTexIds      []int
 	texDims       []int
 	Layers        []Layer
 }
@@ -186,10 +189,16 @@ type Rectangle struct {
 	Enabled              bool
 }
 
-// Texture provides a texture. Id must be in range of [0, 79].
+// Texture provides a texture.
 type Texture interface {
 	Id() int
-	RGBABytes() ([]byte, int, int, error)
+	RGBABytes() ([]byte, error)
+	Dimensions() (int, int)
+	IsMipMap() bool
+}
+
+// Framebuffer provides a buffer to draw to.
+type Framebuffer interface {
 }
 
 type tWindow struct {
@@ -348,7 +357,11 @@ func newWindow(abst Window) *tWindow {
 	wnd.impl.Gfx.quittedChan = make(chan bool, 1)
 	wnd.impl.Gfx.read = new(tGfxBuffer)
 	wnd.impl.Gfx.buffer = new(tGfxBuffer)
-	wnd.impl.Gfx.texDims = make([]int, 80*2, 80*2)
+	wnd.impl.Gfx.glTexIds = make([]int, MaxTextures, MaxTextures)
+	wnd.impl.Gfx.texDims = make([]int, MaxTextures*2, MaxTextures*2)
+	for i := range wnd.impl.Gfx.glTexIds {
+		wnd.impl.Gfx.glTexIds[i] = -1
+	}
 	return wnd
 }
 
@@ -463,21 +476,54 @@ func (stats *Stats) updateFPS() {
 	}
 }
 
-// LoadTexture loads a texture into video memory. The call is asynchronous.
-// After the texture is loaded OnTextureLoaded is triggered.
+// LoadTexture loads a texture into video memory. This is asynchronous.
+// After the texture has been loaded OnTextureLoaded is called.
+// (Loading a new texture with same id as a previous one will release the
+// previous texture.)
 func (gfx *Graphics) LoadTexture(texture Texture) {
 	go func() {
-		bytes, w, h, err := texture.RGBABytes()
+		var w, h int
+		bytes, err := texture.RGBABytes()
 		if err == nil {
-			if texture.Id() < 0 || texture.Id() > 79 {
-				err = errors.New(fmt.Sprintf("texture (%i) has invalid id", texture.Id()))
-			} else if len(bytes) == 0 {
-				err = errors.New(fmt.Sprintf("texture (%i) is empty", texture.Id()))
-			} else if w <= 0 || h <= 0 {
-				err = errors.New(fmt.Sprintf("texture (%i) has invalid dimensions (%i, %i)", texture.Id(), w, h))
+			id := texture.Id()
+			if id < 0 || id >= MaxTextures {
+				err = errors.New(fmt.Sprintf("texture (%i) has invalid id", id))
+			} else {
+				w, h = texture.Dimensions()
+				if w <= 0 || h <= 0 {
+					err = errors.New(fmt.Sprintf("texture (%i) has invalid dimensions (%i, %i)", id, w, h))
+				}
 			}
 		}
-		gfx.eventsChan <- &tGraphicsEvent{typeId: imageType, valA: w, valB: h, valC: texture, valD: bytes, err: err}
+		if err == nil {
+			gfx.eventsChan <- &tGraphicsEvent{typeId: textureType, valC: texture, valD: bytes, err: err}
+		} else {
+			gfx.eventsChan <- &tGraphicsEvent{typeId: textureType, err: err}
+		}
+	}()
+}
+
+// CreateFramebuffer creates a buffer to draw to.
+func (gfx *Graphics) CreateFramebuffer(texture Texture) {
+	go func() {
+		var w, h int
+		bytes, err := texture.RGBABytes()
+		if err == nil {
+			id := texture.Id()
+			if texture.Id() < 0 || texture.Id() >= MaxTextures {
+				err = errors.New(fmt.Sprintf("texture (%i) has invalid id", id))
+			} else {
+				w, h = texture.Dimensions()
+				if w <= 0 || h <= 0 {
+					err = errors.New(fmt.Sprintf("texture (%i) has invalid dimensions (%i, %i)", id, w, h))
+				}
+			}
+		}
+		if err == nil {
+			gfx.eventsChan <- &tGraphicsEvent{typeId: texBufType, valA: w, valB: h, valC: texture, valD: bytes, err: err}
+		} else {
+			gfx.eventsChan <- &tGraphicsEvent{typeId: texBufType, err: err}
+		}
 	}()
 }
 
@@ -599,6 +645,8 @@ func (wnd *tWindow) logicThread() {
 						wnd.onClose()
 					case textureType:
 						wnd.onTextureLoaded(event.obj.(Texture))
+					case texBufType:
+						wnd.onFramebufferCreated(event.obj.(Texture))
 					case minimizeType:
 						wnd.onMinimize()
 					case restoreType:
@@ -859,6 +907,21 @@ func (wnd *tWindow) onTextureLoaded(texture Texture) {
 	}
 }
 
+func (wnd *tWindow) onFramebufferCreated(texture Framebuffer) {
+	props := wnd.impl.Props
+	err := wnd.abst.OnFramebufferCreated(texture)
+	if err == nil {
+		setPropsReq := props.compare(&wnd.impl.Props)
+		if setPropsReq != nil {
+			setPropsReq.wndId = wnd.id
+			postRequest(setPropsReq)
+		}
+	} else {
+		wnd.state = closingState
+		postRequest(&tErrorRequest{err: err})
+	}
+}
+
 func (wnd *tWindow) onMinimize() {
 	props := wnd.impl.Props
 	err := wnd.abst.OnMinimize()
@@ -1008,6 +1071,11 @@ func (wnd *WindowImpl) OnCustom(obj interface{}) error {
 
 // OnTextureLoaded is called after texture has been loaded to video memory.
 func (wnd *WindowImpl) OnTextureLoaded(texture Texture) error {
+	return nil
+}
+
+// OnFramebufferCreated is called after texture has been created.
+func (wnd *WindowImpl) OnFramebufferCreated(texture Framebuffer) error {
 	return nil
 }
 

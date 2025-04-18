@@ -50,20 +50,21 @@
 #define WGL_SWAP_UNDEFINED_EXT            0x202A
 
 // copied from glcorearb.h
-#define GL_TEXTURE0                       0x84C0
-#define GL_ARRAY_BUFFER                   0x8892
-#define GL_ELEMENT_ARRAY_BUFFER           0x8893
-#define GL_STATIC_DRAW                    0x88E4
-#define GL_DYNAMIC_DRAW                   0x88E8
-#define GL_FRAGMENT_SHADER                0x8B30
-#define GL_VERTEX_SHADER                  0x8B31
-#define GL_COMPILE_STATUS                 0x8B81
-#define GL_INFO_LOG_LENGTH                0x8B84
-#define GL_LINK_STATUS                    0x8B82
-#define GL_VALIDATE_STATUS                0x8B83
-#define GL_CLAMP_TO_BORDER                0x812D
-#define GL_CLAMP_TO_EDGE                  0x812F
-#define GL_MAX_TEXTURE_IMAGE_UNITS        0x8872
+#define GL_TEXTURE0                         0x84C0
+#define GL_ARRAY_BUFFER                     0x8892
+#define GL_ELEMENT_ARRAY_BUFFER             0x8893
+#define GL_STATIC_DRAW                      0x88E4
+#define GL_DYNAMIC_DRAW                     0x88E8
+#define GL_FRAGMENT_SHADER                  0x8B30
+#define GL_VERTEX_SHADER                    0x8B31
+#define GL_COMPILE_STATUS                   0x8B81
+#define GL_INFO_LOG_LENGTH                  0x8B84
+#define GL_LINK_STATUS                      0x8B82
+#define GL_VALIDATE_STATUS                  0x8B83
+#define GL_CLAMP_TO_BORDER                  0x812D
+#define GL_CLAMP_TO_EDGE                    0x812F
+#define GL_MAX_TEXTURE_IMAGE_UNITS          0x8872
+#define GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS 0x8B4D
 
 /* from wglext.h */
 typedef BOOL(WINAPI * PFNWGLCHOOSEPIXELFORMATARBPROC) (HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
@@ -108,8 +109,8 @@ typedef void (APIENTRY *PFNGLUNIFORM1IPROC) (GLint location, GLint v0);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX4FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (APIENTRY *PFNGLUNIFORMMATRIX2X3FVPROC) (GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
-typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 typedef void (APIENTRY *PFNGLGENERATEMIPMAPPROC) (GLenum target);
+typedef void (APIENTRY *PFNGLACTIVETEXTUREPROC) (GLenum texture);
 
 static PFNWGLCHOOSEPIXELFORMATARBPROC    wglChoosePixelFormatARB    = NULL;
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;

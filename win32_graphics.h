@@ -226,16 +226,21 @@ static void bind_texture(const GLuint texture, const int err_a, const int err_b,
 	}
 }
 
-void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int w, const int h, const int tex_unit, long long *const err1) {
-	GLuint texture; glGenTextures(1, &texture);
+void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int mm, const int w, const int h, int *const texture, const int tex_unit, long long *const err1) {
+	if (texture[0] >= 0) {
+		const GLuint tex = (GLuint)texture[0];
+		glDeleteTextures(1, &tex);
+	}
+	GLuint tex_id; glGenTextures(1, &tex_id);
+	texture[0] = (int)tex_id;
 	glActiveTexture((GLenum)(GL_TEXTURE0+tex_unit));
-	bind_texture(texture, G2D_ERR_1002052, G2D_ERR_1002053, G2D_ERR_1002054, err1);
+	bind_texture(tex_id, G2D_ERR_1002052, G2D_ERR_1002053, G2D_ERR_1002054, err1);
 	if (err1[0] == 0) {
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		/* glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); */
 		/* glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); */
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mm ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex_data);
 		const GLenum err_enum = glGetError();
@@ -245,6 +250,8 @@ void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int w, 
 			err1[0] = G2D_ERR_1002056;
 		} else if (err_enum == GL_INVALID_OPERATION) {
 			err1[0] = G2D_ERR_1002057;
+		} else if (mm) {
+			glGenerateMipmap(GL_TEXTURE_2D);
 		}
 	}
 }

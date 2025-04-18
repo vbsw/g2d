@@ -32,14 +32,14 @@ const (
 func Init() {
 	mutex.Lock()
 	if !initialized {
-		var numbers [4]C.int
+		var numbers [5]C.int
 		var err1, err2 C.longlong
 		var errInfo *C.char
 		C.g2d_init(&numbers[0], &err1, &err2, &errInfo)
 		if err1 == 0 {
 			Err = nil
-			MaxTexSize, MaxTexUnits = int(numbers[0]), int(numbers[1])
-			VSyncAvailable, AVSyncAvailable = (numbers[2] != 0), (numbers[3] != 0)
+			MaxTexSize, MaxTexUnits, MaxTextures = int(numbers[0]), int(numbers[1]), int(numbers[2])
+			VSyncAvailable, AVSyncAvailable = (numbers[3] != 0), (numbers[4] != 0)
 			initialized, initFailed, quitting = true, false, false
 		} else {
 			initFailed = true
@@ -127,17 +127,8 @@ func (wnd *tWindow) graphicsThread() {
 						wnd.impl.Gfx.w, wnd.impl.Gfx.h = event.valA, event.valB
 					case leaveType:
 						wnd.impl.Gfx.running = false
-					case imageType:
-						texUnit := event.valC.(Texture).Id()
-						C.g2d_gfx_gen_tex(wnd.data, unsafe.Pointer(&event.valD[0]), C.int(event.valA), C.int(event.valB), C.int(texUnit), &err1)
-						if err1 == 0 {
-							dimIndex := texUnit * 2
-							wnd.impl.Gfx.texDims[dimIndex+0] = event.valA
-							wnd.impl.Gfx.texDims[dimIndex+1] = event.valB
-							wnd.eventsChan <- &tLogicEvent{typeId: textureType, obj: event.valC, time: appTime.Millis()}
-						} else {
-							postRequest(&tErrorRequest{err: toError(err1, 0, nil)})
-						}
+					case textureType:
+						wnd.onGfxTexture(event.valC.(Texture), event.valD)
 					}
 				} else {
 					postRequest(&tErrorRequest{err: event.err})
@@ -178,6 +169,31 @@ func (wnd *tWindow) onGfxRefresh() {
 	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
 }
 
+func (wnd *tWindow) onGfxTexture(texture Texture, rgbaBytes []byte) {
+	var err1 C.longlong
+	var texData unsafe.Pointer
+	var isMipMap C.int
+	texUnit := texture.Id()
+	glTexId := C.int(wnd.impl.Gfx.glTexIds[texUnit])
+	texWidth, texHeight := texture.Dimensions()
+	if len(rgbaBytes) > 0 {
+		texData = unsafe.Pointer(&rgbaBytes[0])
+	}
+	if texture.IsMipMap() {
+		isMipMap = 1
+	}
+	C.g2d_gfx_gen_tex(wnd.data, texData, isMipMap, C.int(texWidth), C.int(texHeight), &glTexId, C.int(texUnit), &err1)
+	if err1 == 0 {
+		dimIndex := texUnit * 2
+		wnd.impl.Gfx.glTexIds[texUnit] = int(glTexId)
+		wnd.impl.Gfx.texDims[dimIndex+0] = texWidth
+		wnd.impl.Gfx.texDims[dimIndex+1] = texHeight
+		wnd.eventsChan <- &tLogicEvent{typeId: textureType, obj: texture, time: appTime.Millis()}
+	} else {
+		postRequest(&tErrorRequest{err: toError(err1, 0, nil)})
+	}
+}
+
 func (layer *RectanglesLayer) getBatch(layers []Layer, texDims []int, buffer []C.float) ([]Layer, []C.float, C.int, unsafe.Pointer) {
 	var count int
 	for len(layers) > 0 {
@@ -185,6 +201,9 @@ func (layer *RectanglesLayer) getBatch(layers []Layer, texDims []int, buffer []C
 			if curr.Enabled && curr.count > 0 {
 				var index int
 				buffer = ensureCFloatLen(buffer, 48+(count+curr.count)*16)
+				if layer.texMap == nil {
+					layer.texMap = make([]int, 16, 16)
+				}
 				// texture references (16)
 				for index = 0; index < 16; index++ {
 					buffer[index] = C.float(layer.texMap[index])

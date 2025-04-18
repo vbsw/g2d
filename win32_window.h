@@ -350,8 +350,8 @@ void g2d_window_create(void **const data, const int cb_id, const int x, const in
 							WGL_ALPHA_BITS_ARB, 8,
 							WGL_DEPTH_BITS_ARB, 24,
 							/* anti aliasing */
-							/* WGL_SAMPLE_BUFFERS_ARB, 1, */
-							/* WGL_SAMPLES_ARB, 4, */
+							WGL_SAMPLE_BUFFERS_ARB, 1,
+							WGL_SAMPLES_ARB, 4,
 							0
 						};
 						const int contextAttributes[] = {
