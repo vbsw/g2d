@@ -109,52 +109,6 @@ func (props *Properties) update(data unsafe.Pointer, title string) {
 	props.Title = title
 }
 
-func (layer *RectanglesLayer) getProcessing(layers []Layer, texDims []int) ([]Layer, []C.float, int, unsafe.Pointer) {
-	var count, index int
-	for len(layers) > 0 {
-		if curr, ok := layers[0].(*RectanglesLayer); ok {
-			if curr.Enabled && curr.count > 0 {
-				layer.buffer = ensureCFloatLen(layer.buffer, 48+(count+curr.count)*13)
-				// indices of samples (16)
-				for index = 0; index < 16; index++ {
-					layer.buffer[index] = C.float(layer.texMap[index])
-				}
-				// dimensions of textures (32=2*16)
-				for index = 16; index < 48; index++ {
-					layer.buffer[index] = C.float(texDims[index-16])
-				}
-				for _, entity := range layer.entities {
-					if entity.Enabled {
-						layer.buffer[index+0] = C.float(entity.X)
-						layer.buffer[index+1] = C.float(entity.Y)
-						layer.buffer[index+2] = C.float(entity.Width)
-						layer.buffer[index+3] = C.float(entity.Height)
-						layer.buffer[index+4] = C.float(entity.R)
-						layer.buffer[index+5] = C.float(entity.G)
-						layer.buffer[index+6] = C.float(entity.B)
-						layer.buffer[index+7] = C.float(entity.A)
-						if entity.Sampler >= 0 && entity.Sampler <= 15 {
-							layer.buffer[index+8] = C.float(entity.Sampler)
-						} else {
-							layer.buffer[index+8] = -1.0
-						}
-						layer.buffer[index+9] = C.float(entity.TexX)
-						layer.buffer[index+10] = C.float(entity.TexY)
-						layer.buffer[index+11] = C.float(entity.TexWidth)
-						layer.buffer[index+12] = C.float(entity.TexHeight)
-						index += 13
-						count++
-					}
-				}
-			}
-			layers = layers[1:]
-		} else {
-			break
-		}
-	}
-	return layers, layer.buffer, count, unsafe.Pointer(C.g2d_gfx_draw_rectangles)
-}
-
 func (wnd *tWindow) graphicsThread() {
 	var err1, err2 C.longlong
 	var errInfo *C.char
@@ -206,16 +160,16 @@ func (wnd *tWindow) onGfxRefresh() {
 	wnd.impl.Gfx.updating = false
 	read := wnd.impl.Gfx.getReadBuffer()
 	wnd.impl.Gfx.mutex.Unlock()
-	buffers, lengths, procs := read.getBatchProcessing(wnd.impl.Gfx.texDims)
-	w, h, i, r, g, b := read.w, read.h, read.si, read.r, read.g, read.b
-	if len(buffers) > 0 {
-		// calling with &buffers[0] may cause "pointer to unpinned Go pointer" error
+	batches, lengths, procs := read.batchesPtrs, read.lengths, read.procs
+	w, h, i, r, g, b := read.w, read.h, read.sw, read.r, read.g, read.b
+	if len(batches) > 0 {
+		// calling with &batches[0] may cause "pointer to unpinned Go pointer" error
 		// https://github.com/PowerDNS/lmdb-go/issues/28
 		var pinner runtime.Pinner
-		for _, buf := range buffers {
-			pinner.Pin(buf)
+		for _, batch := range batches {
+			pinner.Pin(batch)
 		}
-		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &buffers[0], &lengths[0], &procs[0], C.int(len(buffers)), &err1, &err2)
+		C.g2d_gfx_draw(wnd.data, w, h, i, r, b, g, &batches[0], &lengths[0], &procs[0], C.int(len(batches)), &err1, &err2)
 		pinner.Unpin()
 	} else {
 		// just draw background
@@ -224,24 +178,54 @@ func (wnd *tWindow) onGfxRefresh() {
 	wnd.eventsChan <- &tLogicEvent{typeId: refreshType, time: appTime.Millis()}
 }
 
-func (gfx *tGraphics) getBatchProcessing(texDims []int) ([]*C.float, []C.int, []unsafe.Pointer) {
-	var buffers []*C.float
-	var lengths []C.int
-	var procs []unsafe.Pointer
-	layers := gfx.layers
-	// multiple layers may be "batched" together, until no layer left
+func (layer *RectanglesLayer) getBatch(layers []Layer, texDims []int, buffer []C.float) ([]Layer, []C.float, C.int, unsafe.Pointer) {
+	var count int
 	for len(layers) > 0 {
-		var buffer []C.float
-		var length int
-		var proc unsafe.Pointer
-		layers, buffer, length, proc = layers[0].getProcessing(layers, texDims)
-		if length > 0 {
-			buffers = append(buffers, &buffer[0])
-			lengths = append(lengths, C.int(length))
-			procs = append(procs, proc)
+		if curr, ok := layers[0].(*RectanglesLayer); ok {
+			if curr.Enabled && curr.count > 0 {
+				var index int
+				buffer = ensureCFloatLen(buffer, 48+(count+curr.count)*16)
+				// texture references (16)
+				for index = 0; index < 16; index++ {
+					buffer[index] = C.float(layer.texMap[index])
+				}
+				// dimensions of textures (2*16)
+				for index = 16; index < 48; index++ {
+					buffer[index] = C.float(texDims[index-16])
+				}
+				for _, entity := range layer.entities {
+					if entity.Enabled {
+						buffer[index+0] = C.float(entity.X)
+						buffer[index+1] = C.float(entity.Y)
+						buffer[index+2] = C.float(entity.Width)
+						buffer[index+3] = C.float(entity.Height)
+						buffer[index+4] = C.float(entity.R)
+						buffer[index+5] = C.float(entity.G)
+						buffer[index+6] = C.float(entity.B)
+						buffer[index+7] = C.float(entity.A)
+						if entity.TexRef >= 0 && entity.TexRef <= 15 {
+							buffer[index+8] = C.float(entity.TexRef)
+						} else {
+							buffer[index+8] = -1.0
+						}
+						buffer[index+9] = C.float(entity.TexX)
+						buffer[index+10] = C.float(entity.TexY)
+						buffer[index+11] = C.float(entity.TexWidth)
+						buffer[index+12] = C.float(entity.TexHeight)
+						buffer[index+13] = C.float(entity.X - entity.RotX)
+						buffer[index+14] = C.float(entity.Y - entity.RotY)
+						buffer[index+15] = C.float(entity.RotAlpha)
+						index += 16
+						count++
+					}
+				}
+			}
+			layers = layers[1:]
+		} else {
+			break
 		}
 	}
-	return buffers, lengths, procs
+	return layers, buffer, C.int(count), unsafe.Pointer(C.g2d_gfx_draw_rectangles)
 }
 
 func (request *tConfigWindowRequest) process() {

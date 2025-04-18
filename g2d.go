@@ -157,15 +157,13 @@ type Graphics struct {
 	quittedChan   chan bool
 	mutex         sync.Mutex
 	w, h          int
-	read          *tGraphics
-	buffer        *tGraphics
-	write         *tGraphics
+	read          *tGfxBuffer
+	buffer        *tGfxBuffer
 	bufferReady   bool
 	updating      bool
 	running       bool
-	txIds         []C.int
-	txWs, txHs    []int
 	texDims       []int
+	Layers        []Layer
 }
 
 // RectanglesLayer is a layer holding rectangles.
@@ -174,21 +172,21 @@ type RectanglesLayer struct {
 	entityNextId []int
 	count        int
 	Enabled      bool
-	buffer       []C.float
 	texMap       []int
 }
 
 // Rectangle is an entity from a RectanglesLayer.
 type Rectangle struct {
-	id                  int
-	X, Y, Width, Height float32
-	R, G, B, A          float32
-	Sampler, TexX, TexY int
-	TexWidth, TexHeight int
-	Enabled             bool
+	id                   int
+	X, Y, Width, Height  float32
+	R, G, B, A           float32
+	RotX, RotY, RotAlpha float32
+	TexRef, TexX, TexY   int
+	TexWidth, TexHeight  int
+	Enabled              bool
 }
 
-// Texture provides a texture. Id must be in range [0, 79].
+// Texture provides a texture. Id must be in range of [0, 79].
 type Texture interface {
 	Id() int
 	RGBABytes() ([]byte, int, int, error)
@@ -205,15 +203,17 @@ type tWindow struct {
 	update          bool
 }
 
-type tGraphics struct {
-	w, h, si C.int
-	r, g, b  C.float
-	layers   []Layer
+type tGfxBuffer struct {
+	w, h, sw    C.int
+	r, g, b     C.float
+	batches     [][]C.float
+	batchesPtrs []*C.float
+	lengths     []C.int
+	procs       []unsafe.Pointer
 }
 
 type Layer interface {
-	copyTo(Layer)
-	getProcessing([]Layer, []int) ([]Layer, []C.float, int, unsafe.Pointer)
+	getBatch([]Layer, []int, []C.float) ([]Layer, []C.float, C.int, unsafe.Pointer)
 }
 
 type tLogicEvent struct {
@@ -346,9 +346,8 @@ func newWindow(abst Window) *tWindow {
 	wnd.impl.Gfx.VSync = VSyncAvailable
 	wnd.impl.Gfx.eventsChan = make(chan *tGraphicsEvent, 1000)
 	wnd.impl.Gfx.quittedChan = make(chan bool, 1)
-	wnd.impl.Gfx.read = new(tGraphics)
-	wnd.impl.Gfx.buffer = new(tGraphics)
-	wnd.impl.Gfx.write = new(tGraphics)
+	wnd.impl.Gfx.read = new(tGfxBuffer)
+	wnd.impl.Gfx.buffer = new(tGfxBuffer)
 	wnd.impl.Gfx.texDims = make([]int, 80*2, 80*2)
 	return wnd
 }
@@ -464,28 +463,6 @@ func (stats *Stats) updateFPS() {
 	}
 }
 
-// NewRectanglesLayer returns an instance of RectanglesLayer.
-func NewRectanglesLayer(enabled bool) *RectanglesLayer {
-	rects := new(RectanglesLayer)
-	rects.texMap = make([]int, 16, 16)
-	rects.Enabled = enabled
-	return rects
-}
-
-// SetLayer sets a layer. Index should be in range of [0, n].
-func (gfx *Graphics) SetLayer(index int, layer Layer) {
-	if len(gfx.write.layers) <= index {
-		if cap(gfx.write.layers) > index {
-			gfx.write.layers = gfx.write.layers[:index+1]
-		} else {
-			newLayers := make([]Layer, index+1)
-			copy(newLayers, gfx.write.layers)
-			gfx.write.layers = newLayers
-		}
-	}
-	gfx.write.layers[index] = layer
-}
-
 // LoadTexture loads a texture into video memory. The call is asynchronous.
 // After the texture is loaded OnTextureLoaded is triggered.
 func (gfx *Graphics) LoadTexture(texture Texture) {
@@ -504,11 +481,11 @@ func (gfx *Graphics) LoadTexture(texture Texture) {
 	}()
 }
 
-func (gfx *Graphics) getReadBuffer() *tGraphics {
+func (gfx *Graphics) getReadBuffer() *tGfxBuffer {
 	if gfx.bufferReady {
-		read := gfx.buffer
+		tmp := gfx.buffer
 		gfx.buffer = gfx.read
-		gfx.read = read
+		gfx.read = tmp
 		gfx.bufferReady = false
 	}
 	return gfx.read
@@ -522,7 +499,7 @@ func (gfx *Graphics) postRefresh() {
 	} else if gfx.AVSync {
 		swapInt = -1
 	}
-	gfx.write.copyTo(gfx.buffer, gfx.w, gfx.h, swapInt, gfx.BgR, gfx.BgG, gfx.BgB)
+	gfx.buffer.adopt(gfx.Layers, gfx.texDims, gfx.w, gfx.h, swapInt, gfx.BgR, gfx.BgG, gfx.BgB)
 	gfx.bufferReady = true
 	if !gfx.updating {
 		gfx.updating = true
@@ -545,7 +522,7 @@ func (layer *RectanglesLayer) NewEntity() *Rectangle {
 		entity = layer.entities[id]
 	}
 	entity.Enabled = true
-	entity.Sampler = -1
+	entity.TexRef = -1
 	layer.count++
 	return entity
 }
@@ -558,39 +535,21 @@ func (layer *RectanglesLayer) Release(r *Rectangle) *Rectangle {
 	return nil
 }
 
-// UseTexture associates an sampler with a texture. Sampler must be in range of [0, 15].
-func (layer *RectanglesLayer) UseTexture(sampler, textureId int) {
-	if sampler >= 0 && sampler <= 15 {
+// UseTexture associates a reference with a texture. Reference must be in range of [0, 15].
+func (layer *RectanglesLayer) UseTexture(ref, textureId int) {
+	if ref >= 0 && ref <= 15 {
 		if textureId >= 0 && textureId <= 79 {
-			layer.texMap[sampler] = textureId
+			if len(layer.texMap) != 0 {
+				layer.texMap[ref] = textureId
+			} else {
+				layer.texMap = make([]int, 16, 16)
+				layer.texMap[ref] = textureId
+			}
 		} else {
 			panic(fmt.Sprintf("invalid texture id (%i)", textureId))
 		}
 	} else {
-		panic(fmt.Sprintf("invalid sampler (%i) for texture (%i)", sampler, textureId))
-	}
-}
-
-func (layer *RectanglesLayer) copyTo(dest Layer) {
-	destLayer := dest.(*RectanglesLayer)
-	destLayer.Enabled = layer.Enabled
-	if layer.Enabled {
-		destLayer.count = layer.count
-		destLen := len(destLayer.entities)
-		copy(destLayer.texMap, layer.texMap)
-		if cap(destLayer.entities) < len(layer.entities) {
-			entitiesNew := make([]*Rectangle, len(layer.entities), cap(layer.entities))
-			copy(entitiesNew, destLayer.entities)
-			destLayer.entities = entitiesNew
-		} else if destLen < len(layer.entities) {
-			destLayer.entities = destLayer.entities[:len(layer.entities)]
-		}
-		for i := destLen; i < len(layer.entities); i++ {
-			destLayer.entities[i] = new(Rectangle)
-		}
-		for i, entity := range layer.entities {
-			*destLayer.entities[i] = *entity
-		}
+		panic(fmt.Sprintf("invalid reference (%i) for texture (%i)", ref, textureId))
 	}
 }
 
@@ -945,21 +904,32 @@ func (wnd *tWindow) onFocus(focus bool) {
 	}
 }
 
-func (gfx *tGraphics) copyTo(dest *tGraphics, w, h, si int, r, g, b float32) {
-	dest.w, dest.h, dest.si = C.int(w), C.int(h), C.int(si)
-	dest.r, dest.g, dest.b = C.float(r), C.float(g), C.float(b)
-	for i, layer := range gfx.layers {
-		switch layer.(type) {
-		case *RectanglesLayer:
-			if len(dest.layers) == i {
-				dest.layers = append(dest.layers, NewRectanglesLayer(false))
-			} else if _, ok := dest.layers[i].(*RectanglesLayer); !ok {
-				dest.layers[i] = NewRectanglesLayer(false)
+func (buf *tGfxBuffer) adopt(layers []Layer, texDims []int, w, h, sw int, r, g, b float32) {
+	var index int
+	buf.w, buf.h, buf.sw = C.int(w), C.int(h), C.int(sw)
+	buf.r, buf.g, buf.b = C.float(r), C.float(g), C.float(b)
+	buf.batches = buf.batches[:0]
+	buf.batchesPtrs = buf.batchesPtrs[:0]
+	buf.lengths = buf.lengths[:0]
+	buf.procs = buf.procs[:0]
+	for len(layers) > 0 {
+		if len(buf.batches) == index {
+			if cap(buf.batches) == index {
+				buf.batches = append(buf.batches, make([]C.float, 500))
+				buf.lengths = append(buf.lengths, 0)
+			} else {
+				buf.batches = buf.batches[:index+1]
+				buf.lengths = buf.lengths[:index+1]
 			}
-		default:
-			panic("unknown layer type")
+			if cap(buf.procs) == index {
+				buf.procs = append(buf.procs, nil)
+			} else {
+				buf.procs = buf.procs[:index+1]
+			}
 		}
-		layer.copyTo(dest.layers[i])
+		layers, buf.batches[index], buf.lengths[index], buf.procs[index] = layers[index].getBatch(layers, texDims, buf.batches[index][:0])
+		buf.batchesPtrs = append(buf.batchesPtrs, &buf.batches[index][0])
+		index++
 	}
 }
 

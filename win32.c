@@ -190,11 +190,21 @@ out vec4 fragementColor; \
 out vec3 texCoord; \
 uniform float[48] unif; \
 void main() { \
-  int texIdx = int(in2[0]); \
-  gl_Position = mat4(unif[0], unif[1], unif[2], unif[3], unif[4], unif[5], unif[6], unif[7], unif[8], unif[9], unif[10], unif[11], unif[12], unif[13], unif[14], unif[15]) * vec4(in0[0], in0[1], 1.0, 1.0); \
+  int tex = int(in2[0]); \
+  mat4 projection = mat4(unif[0], unif[1], unif[2], unif[3], unif[4], unif[5], unif[6], unif[7], unif[8], unif[9], unif[10], unif[11], unif[12], unif[13], unif[14], unif[15]); \
+  float x = in0[0]; float y = in0[1]; float alpha = in2[1]; \
+  if (alpha == 0) { \
+    gl_Position = projection * vec4(x, y, 1.0, 1.0); \
+  } else { \
+    float rad = radians(alpha); \
+    float rx = in0[2]; float ry = in0[3]; \
+    float x0 = x-rx; float y0 = y-ry; \
+    float rs = sin(rad); float rc = cos(rad); \
+    gl_Position = projection * vec4(x0*rc-y0*rs+rx, x0*rs+y0*rc+ry, 1.0, 1.0); \
+  } \
   fragementColor = in1; \
-  if (texIdx >= 0) { \
-    int offset = 16 + texIdx*2; \
+  if (tex >= 0) { \
+    int offset = 16 + tex*2; \
     float texWidth = unif[offset + 0]; \
     float texHeight = unif[offset + 1]; \
     texCoord = vec3(in2[0], in3[0]/texWidth, in3[1]/texHeight); \
@@ -211,9 +221,9 @@ uniform sampler2D tex04; uniform sampler2D tex05; uniform sampler2D tex06; unifo
 uniform sampler2D tex08; uniform sampler2D tex09; uniform sampler2D tex10; uniform sampler2D tex11; \
 uniform sampler2D tex12; uniform sampler2D tex13; uniform sampler2D tex14; uniform sampler2D tex15; \
 void main() { \
-  int texIdx = int(texCoord[0]); \
-  if (texIdx >= 0) { \
-    switch (texIdx) { \
+  int tex = int(texCoord[0]); \
+  if (tex >= 0) { \
+    switch (tex) { \
       case 0: color = texture(tex00, vec2(texCoord[1], texCoord[2])); break; \
       case 1: color = texture(tex01, vec2(texCoord[1], texCoord[2])); break; \
       case 2: color = texture(tex02, vec2(texCoord[1], texCoord[2])); break; \
