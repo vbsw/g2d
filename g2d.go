@@ -194,6 +194,7 @@ type Texture interface {
 	Id() int
 	RGBABytes() ([]byte, error)
 	Dimensions() (int, int)
+	GenMipMap() bool
 	IsMipMap() bool
 }
 
@@ -566,6 +567,7 @@ func (layer *RectanglesLayer) NewEntity() *Rectangle {
 		id := layer.entityNextId[idLast]
 		layer.entityNextId = layer.entityNextId[:idLast]
 		entity = layer.entities[id]
+		entity.RotAlpha = 0
 	}
 	entity.Enabled = true
 	entity.TexRef = -1
@@ -991,7 +993,11 @@ func (buf *tGfxBuffer) adopt(layers []Layer, texDims []int, w, h, sw int, r, g, 
 			}
 		}
 		layers, buf.batches[index], buf.lengths[index], buf.procs[index] = layers[index].getBatch(layers, texDims, buf.batches[index][:0])
-		buf.batchesPtrs = append(buf.batchesPtrs, &buf.batches[index][0])
+		if len(buf.batches[index]) > 0 {
+			buf.batchesPtrs = append(buf.batchesPtrs, &buf.batches[index][0])
+		} else {
+			buf.batchesPtrs = append(buf.batchesPtrs, nil)
+		}
 		index++
 	}
 }

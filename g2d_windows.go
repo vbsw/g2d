@@ -172,17 +172,17 @@ func (wnd *tWindow) onGfxRefresh() {
 func (wnd *tWindow) onGfxTexture(texture Texture, rgbaBytes []byte) {
 	var err1 C.longlong
 	var texData unsafe.Pointer
-	var isMipMap C.int
+	var genMipMap C.int
 	texUnit := texture.Id()
 	glTexId := C.int(wnd.impl.Gfx.glTexIds[texUnit])
 	texWidth, texHeight := texture.Dimensions()
 	if len(rgbaBytes) > 0 {
 		texData = unsafe.Pointer(&rgbaBytes[0])
 	}
-	if texture.IsMipMap() {
-		isMipMap = 1
+	if texture.GenMipMap() {
+		genMipMap = 1
 	}
-	C.g2d_gfx_gen_tex(wnd.data, texData, isMipMap, C.int(texWidth), C.int(texHeight), &glTexId, C.int(texUnit), &err1)
+	C.g2d_gfx_gen_tex(wnd.data, texData, genMipMap, C.int(texWidth), C.int(texHeight), &glTexId, C.int(texUnit), &err1)
 	if err1 == 0 {
 		dimIndex := texUnit * 2
 		wnd.impl.Gfx.glTexIds[texUnit] = int(glTexId)
@@ -231,8 +231,8 @@ func (layer *RectanglesLayer) getBatch(layers []Layer, texDims []int, buffer []C
 						buffer[index+10] = C.float(entity.TexY)
 						buffer[index+11] = C.float(entity.TexWidth)
 						buffer[index+12] = C.float(entity.TexHeight)
-						buffer[index+13] = C.float(entity.X - entity.RotX)
-						buffer[index+14] = C.float(entity.Y - entity.RotY)
+						buffer[index+13] = C.float(entity.X+entity.RotX)
+						buffer[index+14] = C.float(entity.Y+entity.RotY)
 						buffer[index+15] = C.float(entity.RotAlpha)
 						index += 16
 						count++

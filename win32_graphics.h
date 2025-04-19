@@ -226,7 +226,7 @@ static void bind_texture(const GLuint texture, const int err_a, const int err_b,
 	}
 }
 
-void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int mm, const int w, const int h, int *const texture, const int tex_unit, long long *const err1) {
+void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int gen_mm, const int w, const int h, int *const texture, const int tex_unit, long long *const err1) {
 	if (texture[0] >= 0) {
 		const GLuint tex = (GLuint)texture[0];
 		glDeleteTextures(1, &tex);
@@ -238,10 +238,8 @@ void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int mm,
 	if (err1[0] == 0) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		/* glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); */
-		/* glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); */
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mm ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gen_mm ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); /* GL_NEAREST, GL_LINEAR */
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex_data);
 		const GLenum err_enum = glGetError();
 		if (err_enum == GL_INVALID_ENUM) {
@@ -250,7 +248,7 @@ void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int mm,
 			err1[0] = G2D_ERR_1002056;
 		} else if (err_enum == GL_INVALID_OPERATION) {
 			err1[0] = G2D_ERR_1002057;
-		} else if (mm) {
+		} else if (gen_mm) {
 			glGenerateMipmap(GL_TEXTURE_2D);
 		}
 	}
@@ -360,7 +358,8 @@ void g2d_gfx_draw(void *const data, const int w, const int h, const int i, const
 		wglSwapIntervalEXT(i);
 	}
 	glClear(GL_COLOR_BUFFER_BIT);
-	for (k = 0; k < l && err1[0] == 0; k++) {
+	for (k = 0; k < l && bs[k] > 0 && err1[0] == 0; k++) {
+	//for (k = 0; k < l && err1[0] == 0; k++) {
 		gfx_draw_t *const draw = (gfx_draw_t*) procs[k];
 		draw(data, buffs[k], bs[k], err1);
 	}
