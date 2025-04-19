@@ -488,11 +488,11 @@ func (gfx *Graphics) LoadTexture(texture Texture) {
 		if err == nil {
 			id := texture.Id()
 			if id < 0 || id >= MaxTextures {
-				err = errors.New(fmt.Sprintf("texture (%i) has invalid id", id))
+				err = errors.New(fmt.Sprintf("texture (%d) has invalid id", id))
 			} else {
 				w, h = texture.Dimensions()
 				if w <= 0 || h <= 0 {
-					err = errors.New(fmt.Sprintf("texture (%i) has invalid dimensions (%i, %i)", id, w, h))
+					err = errors.New(fmt.Sprintf("texture (%d) has invalid dimensions (%d, %d)", id, w, h))
 				}
 			}
 		}
@@ -512,11 +512,11 @@ func (gfx *Graphics) CreateFramebuffer(texture Texture) {
 		if err == nil {
 			id := texture.Id()
 			if texture.Id() < 0 || texture.Id() >= MaxTextures {
-				err = errors.New(fmt.Sprintf("texture (%i) has invalid id", id))
+				err = errors.New(fmt.Sprintf("texture (%d) has invalid id", id))
 			} else {
 				w, h = texture.Dimensions()
 				if w <= 0 || h <= 0 {
-					err = errors.New(fmt.Sprintf("texture (%i) has invalid dimensions (%i, %i)", id, w, h))
+					err = errors.New(fmt.Sprintf("texture (%d) has invalid dimensions (%d, %d)", id, w, h))
 				}
 			}
 		}
@@ -594,10 +594,10 @@ func (layer *RectanglesLayer) UseTexture(ref, textureId int) {
 				layer.texMap[ref] = textureId
 			}
 		} else {
-			panic(fmt.Sprintf("invalid texture id (%i)", textureId))
+			panic(fmt.Sprintf("invalid texture id (%d)", textureId))
 		}
 	} else {
-		panic(fmt.Sprintf("invalid reference (%i) for texture (%i)", ref, textureId))
+		panic(fmt.Sprintf("invalid reference (%d) for texture (%d)", ref, textureId))
 	}
 }
 
@@ -1202,4 +1202,22 @@ func ensureCFloatLen(arr []C.float, length int) []C.float {
 		return arr[:length]
 	}
 	return arr
+}
+
+func boolToCInt1(b1 bool) C.int {
+	if b1 {
+		return 1
+	}
+	return 0
+}
+
+func boolToCInt2(b1, b2 bool) (C.int, C.int) {
+	var i1, i2 C.int
+	if b1 {
+		i1 = 1
+	}
+	if b2 {
+		i2 = 1
+	}
+	return i1, i2
 }

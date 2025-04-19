@@ -226,7 +226,7 @@ static void bind_texture(const GLuint texture, const int err_a, const int err_b,
 	}
 }
 
-void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int gen_mm, const int w, const int h, int *const texture, const int tex_unit, long long *const err1) {
+void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int gen_mm, const int is_mm, const int w, const int h, int *const texture, const int tex_unit, long long *const err1) {
 	if (texture[0] >= 0) {
 		const GLuint tex = (GLuint)texture[0];
 		glDeleteTextures(1, &tex);
@@ -238,7 +238,7 @@ void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int gen
 	if (err1[0] == 0) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gen_mm ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gen_mm || is_mm ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); /* GL_NEAREST, GL_LINEAR */
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex_data);
 		const GLenum err_enum = glGetError();
@@ -250,6 +250,20 @@ void g2d_gfx_gen_tex(void *const data, const void *const tex_data, const int gen
 			err1[0] = G2D_ERR_1002057;
 		} else if (gen_mm) {
 			glGenerateMipmap(GL_TEXTURE_2D);
+		} else if (is_mm) {
+			int lev_i, lev_w, lev_h, from = w*h*4;
+			for (lev_i = 1, lev_w = w/2, lev_h = h/2; err1[0] == 0 && lev_w > 0 && lev_h > 0; lev_i++, lev_w/=2, lev_h/=2) {
+				glTexImage2D(GL_TEXTURE_2D, (GLint)lev_i, GL_RGBA, (GLsizei)lev_w, (GLsizei)lev_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)&((char*)tex_data)[from]);
+				from += lev_w * lev_h * 4;
+				const GLenum err1_enum = glGetError();
+				if (err1_enum == GL_INVALID_ENUM) {
+					err1[0] = G2D_ERR_1002055;
+				} else if (err1_enum == GL_INVALID_VALUE) {
+					err1[0] = G2D_ERR_1002056;
+				} else if (err1_enum == GL_INVALID_OPERATION) {
+					err1[0] = G2D_ERR_1002057;
+				}
+			}
 		}
 	}
 }
