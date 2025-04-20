@@ -5,7 +5,7 @@
 ## About
 g2d is a framework to create 2D graphic applications. It is published on <https://github.com/vbsw/g2d> and <https://gitlab.com/vbsw/g2d>.
 
-Demo is available here <https://github.com/vbsw/g2d-demo>.
+Demo is available on <https://github.com/vbsw/g2d-demo>.
 
 ## Copyright
 Copyright 2023, 2025, Vitali Baumtrok (vbsw@mailbox.org).
@@ -24,8 +24,8 @@ g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 		"runtime"
 	)
 
-	// Arrange that main.main runs on main thread.
 	func init() {
+		// run Main on main thread
 		runtime.LockOSThread()
 	}
 

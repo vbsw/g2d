@@ -10,6 +10,9 @@ package g2d
 // #cgo CFLAGS: -DG2D_WIN32 -DUNICODE
 // #cgo LDFLAGS: -luser32 -lgdi32 -lOpenGL32
 // #cgo noescape g2d_gfx_draw
+// #cgo noescape g2d_window_props
+// #cgo nocallback g2d_gfx_draw
+// #cgo nocallback g2d_window_props
 // #include "g2d.h"
 import "C"
 import (
@@ -178,8 +181,8 @@ func (wnd *tWindow) onGfxTexture(texture Texture, rgbaBytes []byte) {
 	if len(rgbaBytes) > 0 {
 		texData = unsafe.Pointer(&rgbaBytes[0])
 	}
-	genMM, isMM := boolToCInt2(texture.GenMipMap(), texture.IsMipMap())
-	C.g2d_gfx_gen_tex(wnd.data, texData, genMM, isMM, C.int(texWidth), C.int(texHeight), &glTexId, C.int(texUnit), &err1)
+	genMM, isMM, fLin := boolToCInt3(texture.GenMipMap(), texture.IsMipMap(), texture.FilterLinear())
+	C.g2d_gfx_gen_tex(wnd.data, texData, genMM, isMM, fLin, C.int(texWidth), C.int(texHeight), &glTexId, C.int(texUnit), &err1)
 	if err1 == 0 {
 		dimIndex := texUnit * 2
 		wnd.impl.Gfx.glTexIds[texUnit] = int(glTexId)
@@ -698,6 +701,12 @@ func toError(err1, err2 C.longlong, errInfo *C.char) error {
 			case 1002056:
 				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
 			case 1002057:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
+			case 1002058:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
+			case 1002059:
+				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
+			case 1002060:
 				errStr = fmt.Sprintf(functionFailedG2D, "load texture")
 			}
 		}

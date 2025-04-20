@@ -196,6 +196,7 @@ type Texture interface {
 	Dimensions() (int, int)
 	GenMipMap() bool
 	IsMipMap() bool
+	FilterLinear() bool
 }
 
 // Framebuffer provides a buffer to draw to.
@@ -504,7 +505,7 @@ func (gfx *Graphics) LoadTexture(texture Texture) {
 	}()
 }
 
-// CreateFramebuffer creates a buffer to draw to.
+// CreateFramebuffer creates a buffer to draw to. [not implemented]
 func (gfx *Graphics) CreateFramebuffer(texture Texture) {
 	go func() {
 		var w, h int
@@ -1220,4 +1221,18 @@ func boolToCInt2(b1, b2 bool) (C.int, C.int) {
 		i2 = 1
 	}
 	return i1, i2
+}
+
+func boolToCInt3(b1, b2, b3 bool) (C.int, C.int, C.int) {
+	var i1, i2, i3 C.int
+	if b1 {
+		i1 = 1
+	}
+	if b2 {
+		i2 = 1
+	}
+	if b3 {
+		i3 = 1
+	}
+	return i1, i2, i3
 }
