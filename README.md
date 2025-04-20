@@ -14,6 +14,14 @@ g2d is distributed under the Boost Software License, version 1.0. (See accompany
 
 g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the Boost Software License for more details.
 
+## Compile
+Install Go (<https://golang.org/doc/install>). For Cgo install a C compiler (<https://jmeubank.github.io/tdm-gcc/>).
+
+For Windows:
+To compile an executable that doesn't open a console, use
+
+	-ldflags -H=windowsgui
+
 ## Example
 
 	package main
@@ -45,3 +53,5 @@ g2d is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 - https://github.com/golang/go/wiki/cgo
 - https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
 - https://pkg.go.dev/cmd/link
+- https://www.toomanyatoms.com/computer/usb_keyboard_codes.html
+- http://ts.thrustmaster.com/download/accessories/pc/hotas/software/TARGET/TARGET_SCRIPT_EDITOR_basics_v1.2_Appendix.pdf
