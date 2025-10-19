@@ -6,8 +6,8 @@
  */
 
 /* wglGetProcAddress could return -1, 1, 2 or 3 on failure (https://www.khronos.org/opengl/wiki/Load_OpenGL_Functions). */
-#define LOAD_WGL(t, n) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_err = GetLastError(); if (last_err == 0) n = (t) proc; else { err1[0] = G2D_ERR_1000101; err2[0] = (long long)last_err; err_nfo[0] = #n; }}
-#define LOAD_OGL(t, n) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); const DWORD last_err = GetLastError(); if (last_err == 0) n = (t) proc; else { err1[0] = G2D_ERR_1000102; err2[0] = (long long)last_err; err_nfo[0] = #n; }}
+#define LOAD_WGL(t, n) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); if (proc && proc != (void*)0x1 && proc != (void*)0x2 && proc != (void*)0x3 && proc != (void*)-1) n = (t)proc; else { err1[0] = G2D_ERR_1000101; err2[0] = (long long)GetLastError(); err_nfo[0] = #n; }}
+#define LOAD_OGL(t, n) if (err1[0] == 0) { PROC const proc = wglGetProcAddress(#n); if (proc && proc != (void*)0x1 && proc != (void*)0x2 && proc != (void*)0x3 && proc != (void*)-1) n = (t)proc; else { err1[0] = G2D_ERR_1000102; err2[0] = (long long)GetLastError(); err_nfo[0] = #n; }}
 
 void g2d_init(int *const numbers, long long *const err1, long long *const err2, char **const err_nfo) {
 	if (!initialized) {
@@ -48,15 +48,23 @@ void g2d_init(int *const numbers, long long *const err1, long long *const err2, 
 										glGetIntegerv(GL_MAX_TEXTURE_SIZE, &numbers[0]);
 										glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numbers[1]);
 										glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &numbers[2]);
-										LOAD_WGL(PFNWGLCHOOSEPIXELFORMATARBPROC,    wglChoosePixelFormatARB)
-										LOAD_WGL(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB)
-										LOAD_WGL(PFNWGLGETEXTENSIONSSTRINGARBPROC,  wglGetExtensionsStringARB)
+										LOAD_WGL(PFNWGLGETEXTENSIONSSTRINGARBPROC, wglGetExtensionsStringARB)
 										if (err1[0] == 0) {
 											int begin = 0, end = 0, i;
 											LPCSTR const extensions = (LPCSTR)wglGetExtensionsStringARB(dummy_dc);
-											while (extensions[end] && (!numbers[3] || !numbers[4])) {
+											while (extensions[end] && (!wglChoosePixelFormatARB || !wglCreateContextAttribsARB || !numbers[3] || !numbers[4])) {
 												/* find end of word */
 												for (end = begin; extensions[end] && extensions[end] != ' '; end++);
+												/* find WGL_ARB_pixel_format */
+												for (i = begin; i < end && extensions[i] == "WGL_ARB_pixel_format"[i-begin]; i++);
+												if (i == end && "WGL_ARB_pixel_format"[end-begin] == 0) {
+													LOAD_WGL(PFNWGLCHOOSEPIXELFORMATARBPROC, wglChoosePixelFormatARB)
+												}
+												/* find WGL_ARB_create_context */
+												for (i = begin; i < end && extensions[i] == "WGL_ARB_create_context"[i-begin]; i++);
+												if (i == end && "WGL_ARB_create_context"[end-begin] == 0) {
+													LOAD_WGL(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB)
+												}
 												/* find WGL_EXT_swap_control */
 												for (i = begin; i < end && extensions[i] == "WGL_EXT_swap_control"[i-begin]; i++);
 												if (i == end && "WGL_EXT_swap_control"[end-begin] == 0) {
@@ -70,6 +78,13 @@ void g2d_init(int *const numbers, long long *const err1, long long *const err2, 
 													numbers[4] = 1;
 												}
 												begin = end + 1;
+											}
+											if (err1[0] == 0) {
+												if (wglChoosePixelFormatARB == NULL) {
+													LOAD_WGL(PFNWGLCHOOSEPIXELFORMATARBPROC, wglChoosePixelFormatARB)
+												} else if (wglCreateContextAttribsARB == NULL) {
+													LOAD_WGL(PFNWGLCREATECONTEXTATTRIBSARBPROC, wglCreateContextAttribsARB)
+												}
 											}
 										}
 										LOAD_OGL(PFNGLCREATESHADERPROC,             glCreateShader)
